@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "tegenett_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.27">
+<!ENTITY version   "2026.01.27a">
 <!ENTITY launch    "Settings/TegenettBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett_backup/tegenett_backup.plg">
 ]>
@@ -10,7 +10,17 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
-##&version;
+##2026.01.27a
+- BUGFIX: Changed default port to 39982 to avoid conflicts
+- BUGFIX: Fixed double-logging issue
+- BUGFIX: Fixed settings save returning empty response
+- BUGFIX: Fixed Discord webhook SSL issues
+- NEW: Retry on failure - automatically retries failed jobs
+- NEW: Configurable retry interval and max attempts
+- IMPROVED: Better error messages in API responses
+- IMPROVED: Ajax handler reads port from settings file
+
+##2026.01.27
 - Initial release
 - Local backup (array to share)
 - Remote SMB backup with Unassigned Devices integration
@@ -26,9 +36,6 @@
 - Exclude patterns support
 </CHANGES>
 
-<!--
-TegenettBackup.page - Main GUI
--->
 <FILE Name="/usr/local/emhttp/plugins/&name;/TegenettBackup.page">
 <INLINE>
 <![CDATA[
@@ -460,7 +467,7 @@ if (file_exists($pidFile)) {
             <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
             <div>
                 <h1>Tegenett Backup</h1>
-                <small style="color: var(--tb-text-muted)">v2026.01.27</small>
+                <small style="color: var(--tb-text-muted)">v2026.01.27a</small>
             </div>
         </div>
         <div class="tb-header-actions">
@@ -1411,16 +1418,13 @@ document.addEventListener('DOMContentLoaded', () => {
 </INLINE>
 </FILE>
 
-<!--
-tegenett_backup.py - Python daemon
--->
 <FILE Name="/usr/local/emhttp/plugins/&name;/&name;.py" Mode="0755">
 <INLINE>
 <![CDATA[
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Tegenett Backup - Python Daemon
+Tegenett Backup - Python Daemon v2026.01.27a
 Smart backup solution for Unraid with local, remote SMB, WOL, and cloud support
 Author: Tegenett
 """
@@ -1453,11 +1457,11 @@ class Config:
     DB_FILE = "tegenett_backup.db"
     SETTINGS_FILE = "settings.json"
     PID_FILE = f"/var/run/{PLUGIN_NAME}.pid"
-    VERSION = "2026.01.27"
+    VERSION = "2026.01.27a"
     
     DEFAULTS = {
         "ENABLED": True,
-        "SERVER_PORT": 9998,
+        "SERVER_PORT": 39982,
         "LOG_LEVEL": "INFO",
         "LOG_MAX_LINES": 10000,
         "DISCORD_WEBHOOK_URL": "",
@@ -1469,7 +1473,10 @@ class Config:
         "UD_MOUNT_TIMEOUT": 60,
         "WOL_WAIT_TIMEOUT": 120,
         "WOL_PING_INTERVAL": 5,
-        "SMB_SETTLE_TIME": 10
+        "SMB_SETTLE_TIME": 10,
+        "RETRY_ON_FAILURE": True,
+        "RETRY_INTERVAL_MINUTES": 60,
+        "RETRY_MAX_ATTEMPTS": 3
     }
     
     C = DEFAULTS.copy()
@@ -1493,9 +1500,22 @@ class Config:
         # Type conversions
         int_keys = ["SERVER_PORT", "LOG_MAX_LINES", "DISCORD_SUMMARY_HOUR", 
                     "DEFAULT_BANDWIDTH_LIMIT", "UD_MOUNT_TIMEOUT", 
-                    "WOL_WAIT_TIMEOUT", "WOL_PING_INTERVAL", "SMB_SETTLE_TIME"]
+                    "WOL_WAIT_TIMEOUT", "WOL_PING_INTERVAL", "SMB_SETTLE_TIME",
+                    "RETRY_INTERVAL_MINUTES", "RETRY_MAX_ATTEMPTS"]
         for key in int_keys:
-            cls.C[key] = int(cls.C.get(key, cls.DEFAULTS.get(key, 0)))
+            try:
+                cls.C[key] = int(cls.C.get(key, cls.DEFAULTS.get(key, 0)))
+            except (ValueError, TypeError):
+                cls.C[key] = cls.DEFAULTS.get(key, 0)
+        
+        # Boolean conversions
+        bool_keys = ["ENABLED", "DISCORD_DAILY_SUMMARY", "UNRAID_NOTIFICATIONS", "RETRY_ON_FAILURE"]
+        for key in bool_keys:
+            val = cls.C.get(key, cls.DEFAULTS.get(key, False))
+            if isinstance(val, str):
+                cls.C[key] = val.lower() in ('true', '1', 'yes')
+            else:
+                cls.C[key] = bool(val)
     
     @classmethod
     def save(cls):
@@ -1504,35 +1524,53 @@ class Config:
         try:
             with open(path, 'w') as f:
                 json.dump(cls.C, f, indent=2)
-            return True
+            return True, "Settings saved"
         except Exception as e:
-            if 'logger' in globals():
-                logger.error(f"[Config] Save error: {e}")
-            return False
+            return False, str(e)
+    
+    @classmethod
+    def update_and_save(cls, data):
+        """Update config with new data and save"""
+        try:
+            cls.C.update(data)
+            return cls.save()
+        except Exception as e:
+            return False, str(e)
 
 Config.load()
 
 # ============================================
-# LOGGING
+# LOGGING (fixed double-logging)
 # ============================================
 
 LOG_FILE = os.path.join(Config.DATA_DIR, "logs", f"{Config.PLUGIN_NAME}.log")
 os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 
+# Clear existing handlers to prevent duplicates
+logging.getLogger().handlers = []
+
 _log_level_str = Config.C.get('LOG_LEVEL', 'INFO').upper()
 _log_level = getattr(logging, _log_level_str, logging.INFO)
 
-logging.basicConfig(
-    filename=LOG_FILE,
-    level=_log_level,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-console = logging.StreamHandler()
-console.setLevel(_log_level)
-console.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
-logging.getLogger('').addHandler(console)
-logger = logging.getLogger(__name__)
+# Create logger
+logger = logging.getLogger(Config.PLUGIN_NAME)
+logger.setLevel(_log_level)
+logger.handlers = []  # Clear any existing handlers
+
+# File handler
+file_handler = logging.FileHandler(LOG_FILE)
+file_handler.setLevel(_log_level)
+file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', '%Y-%m-%d %H:%M:%S'))
+logger.addHandler(file_handler)
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(_log_level)
+console_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', '%Y-%m-%d %H:%M:%S'))
+logger.addHandler(console_handler)
+
+# Prevent propagation to root logger
+logger.propagate = False
 
 START_TIME = time.time()
 
@@ -1575,6 +1613,9 @@ class Database:
                     exclude_patterns TEXT,
                     retention_count INTEGER DEFAULT 0,
                     retention_days INTEGER DEFAULT 0,
+                    retry_on_failure INTEGER DEFAULT 1,
+                    retry_count INTEGER DEFAULT 0,
+                    last_retry_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -1592,6 +1633,7 @@ class Database:
                     transfer_speed_mbps REAL DEFAULT 0,
                     error_message TEXT,
                     dry_run INTEGER DEFAULT 0,
+                    is_retry INTEGER DEFAULT 0,
                     log_output TEXT,
                     FOREIGN KEY (job_id) REFERENCES backup_jobs(id) ON DELETE CASCADE
                 );
@@ -1642,25 +1684,42 @@ class Database:
     # ---- Job CRUD ----
     
     def get_jobs(self):
-        """Get all backup jobs"""
         with self._conn() as conn:
             rows = conn.execute("SELECT * FROM backup_jobs ORDER BY name").fetchall()
             return [dict(row) for row in rows]
     
     def get_enabled_jobs(self):
-        """Get enabled jobs only"""
         with self._conn() as conn:
             rows = conn.execute("SELECT * FROM backup_jobs WHERE enabled = 1 ORDER BY name").fetchall()
             return [dict(row) for row in rows]
     
+    def get_failed_jobs_for_retry(self):
+        """Get jobs that failed and need retry"""
+        with self._conn() as conn:
+            max_retries = Config.C.get("RETRY_MAX_ATTEMPTS", 3)
+            rows = conn.execute('''
+                SELECT j.* FROM backup_jobs j
+                INNER JOIN (
+                    SELECT job_id, MAX(id) as last_id 
+                    FROM backup_history 
+                    GROUP BY job_id
+                ) h ON j.id = h.job_id
+                INNER JOIN backup_history bh ON bh.id = h.last_id
+                WHERE j.enabled = 1 
+                AND j.retry_on_failure = 1
+                AND bh.status = 'failed'
+                AND j.retry_count < ?
+                AND (j.last_retry_at IS NULL OR 
+                     datetime(j.last_retry_at, '+' || ? || ' minutes') <= datetime('now'))
+            ''', (max_retries, Config.C.get("RETRY_INTERVAL_MINUTES", 60))).fetchall()
+            return [dict(row) for row in rows]
+    
     def get_job(self, job_id):
-        """Get a single job by ID"""
         with self._conn() as conn:
             row = conn.execute("SELECT * FROM backup_jobs WHERE id = ?", (job_id,)).fetchone()
             return dict(row) if row else None
     
     def create_job(self, job_data):
-        """Create a new backup job"""
         logger.info(f"[Database] Creating job: {job_data.get('name')}")
         with self._conn() as conn:
             cursor = conn.execute('''
@@ -1668,8 +1727,9 @@ class Database:
                     remote_host, remote_share, remote_mount_point, remote_user, remote_pass,
                     mac_address, use_wol, shutdown_after, schedule_type, 
                     schedule_hour, schedule_minute, schedule_day, schedule_cron,
-                    bandwidth_limit, exclude_patterns, retention_count, retention_days, enabled)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    bandwidth_limit, exclude_patterns, retention_count, retention_days, 
+                    enabled, retry_on_failure)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 job_data.get('name'),
                 job_data.get('job_type', 'local'),
@@ -1692,14 +1752,12 @@ class Database:
                 job_data.get('exclude_patterns'),
                 int(job_data.get('retention_count', 0)),
                 int(job_data.get('retention_days', 0)),
-                int(job_data.get('enabled', 1))
+                int(job_data.get('enabled', 1)),
+                int(job_data.get('retry_on_failure', 1))
             ))
-            job_id = cursor.lastrowid
-            logger.info(f"[Database] Created job ID: {job_id}")
-            return job_id
+            return cursor.lastrowid
     
     def update_job(self, job_id, job_data):
-        """Update an existing backup job"""
         logger.info(f"[Database] Updating job ID: {job_id}")
         with self._conn() as conn:
             conn.execute('''
@@ -1710,7 +1768,7 @@ class Database:
                     mac_address = ?, use_wol = ?, shutdown_after = ?, schedule_type = ?,
                     schedule_hour = ?, schedule_minute = ?, schedule_day = ?, schedule_cron = ?,
                     bandwidth_limit = ?, exclude_patterns = ?, retention_count = ?, retention_days = ?,
-                    enabled = ?, updated_at = CURRENT_TIMESTAMP
+                    enabled = ?, retry_on_failure = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             ''', (
                 job_data.get('name'),
@@ -1735,11 +1793,25 @@ class Database:
                 int(job_data.get('retention_count', 0)),
                 int(job_data.get('retention_days', 0)),
                 int(job_data.get('enabled', 1)),
+                int(job_data.get('retry_on_failure', 1)),
                 job_id
             ))
     
+    def reset_retry_count(self, job_id):
+        """Reset retry count after successful backup"""
+        with self._conn() as conn:
+            conn.execute("UPDATE backup_jobs SET retry_count = 0, last_retry_at = NULL WHERE id = ?", (job_id,))
+    
+    def increment_retry_count(self, job_id):
+        """Increment retry count after failed retry"""
+        with self._conn() as conn:
+            conn.execute("""
+                UPDATE backup_jobs 
+                SET retry_count = retry_count + 1, last_retry_at = CURRENT_TIMESTAMP 
+                WHERE id = ?
+            """, (job_id,))
+    
     def delete_job(self, job_id):
-        """Delete a backup job and its history"""
         logger.info(f"[Database] Deleting job ID: {job_id}")
         with self._conn() as conn:
             conn.execute("DELETE FROM backup_history WHERE job_id = ?", (job_id,))
@@ -1747,18 +1819,16 @@ class Database:
     
     # ---- History ----
     
-    def add_history(self, job_id, job_name, status, dry_run=False):
-        """Start a new history entry"""
+    def add_history(self, job_id, job_name, status, dry_run=False, is_retry=False):
         with self._conn() as conn:
             cursor = conn.execute('''
-                INSERT INTO backup_history (job_id, job_name, status, dry_run)
-                VALUES (?, ?, ?, ?)
-            ''', (job_id, job_name, status, 1 if dry_run else 0))
+                INSERT INTO backup_history (job_id, job_name, status, dry_run, is_retry)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (job_id, job_name, status, 1 if dry_run else 0, 1 if is_retry else 0))
             return cursor.lastrowid
     
     def update_history(self, history_id, status, bytes_transferred=0, files_transferred=0,
                        duration_seconds=0, transfer_speed_mbps=0, error_message=None, log_output=None):
-        """Update history entry with results"""
         with self._conn() as conn:
             conn.execute('''
                 UPDATE backup_history SET
@@ -1771,7 +1841,6 @@ class Database:
                   transfer_speed_mbps, error_message, log_output, history_id))
     
     def get_history(self, limit=100, job_id=None, status=None):
-        """Get backup history"""
         with self._conn() as conn:
             query = "SELECT * FROM backup_history WHERE 1=1"
             params = []
@@ -1790,7 +1859,6 @@ class Database:
             return [dict(row) for row in rows]
     
     def get_last_run(self, job_id):
-        """Get last run for a job (any status)"""
         with self._conn() as conn:
             row = conn.execute('''
                 SELECT * FROM backup_history 
@@ -1799,28 +1867,9 @@ class Database:
             ''', (job_id,)).fetchone()
             return dict(row) if row else None
     
-    def get_last_successful_run(self, job_id):
-        """Get last successful run for a job"""
-        with self._conn() as conn:
-            row = conn.execute('''
-                SELECT * FROM backup_history 
-                WHERE job_id = ? AND status = 'completed'
-                ORDER BY started_at DESC LIMIT 1
-            ''', (job_id,)).fetchone()
-            return dict(row) if row else None
-    
-    def cleanup_history(self, days=90):
-        """Remove history older than X days"""
-        with self._conn() as conn:
-            conn.execute('''
-                DELETE FROM backup_history 
-                WHERE started_at < datetime('now', ?)
-            ''', (f'-{days} days',))
-    
     # ---- Statistics ----
     
     def update_daily_stats(self, bytes_transferred, files_transferred, duration, success):
-        """Update daily statistics"""
         today = datetime.now().strftime('%Y-%m-%d')
         with self._conn() as conn:
             conn.execute('''
@@ -1840,7 +1889,6 @@ class Database:
                   files_transferred, duration))
     
     def get_stats(self, days=30):
-        """Get statistics for the last N days"""
         with self._conn() as conn:
             rows = conn.execute('''
                 SELECT * FROM daily_stats 
@@ -1850,7 +1898,6 @@ class Database:
             return [dict(row) for row in rows]
     
     def get_totals(self):
-        """Get overall totals"""
         with self._conn() as conn:
             row = conn.execute('''
                 SELECT 
@@ -1873,24 +1920,19 @@ DB = Database()
 class WakeOnLan:
     @staticmethod
     def send_magic_packet(mac_address, broadcast_ip='255.255.255.255', port=9):
-        """Send Wake-on-LAN magic packet"""
         try:
-            # Clean MAC address - accept multiple formats
             mac = mac_address.replace(':', '').replace('-', '').replace('.', '').lower()
             if len(mac) != 12:
                 raise ValueError(f"Invalid MAC address: {mac_address}")
             
-            # Validate hex
             try:
                 int(mac, 16)
             except ValueError:
                 raise ValueError(f"Invalid MAC address (not hex): {mac_address}")
             
-            # Build magic packet: 6x FF + 16x MAC
             mac_bytes = bytes.fromhex(mac)
             packet = b'\xff' * 6 + mac_bytes * 16
             
-            # Send via UDP broadcast
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             sock.sendto(packet, (broadcast_ip, port))
@@ -1904,7 +1946,6 @@ class WakeOnLan:
     
     @staticmethod
     def wait_for_host(host, timeout=120, interval=5):
-        """Wait for host to come online (respond to ping)"""
         logger.info(f"[WOL] Waiting for {host} to come online (timeout: {timeout}s)")
         start = time.time()
         while time.time() - start < timeout:
@@ -1918,7 +1959,6 @@ class WakeOnLan:
     
     @staticmethod
     def ping(host, timeout=2):
-        """Ping a host, return True if reachable"""
         try:
             result = subprocess.run(
                 ['ping', '-c', '1', '-W', str(timeout), host],
@@ -1935,14 +1975,6 @@ class WakeOnLan:
 class RemoteShutdown:
     @staticmethod
     def shutdown_windows(host, username, password, timeout_seconds=30, force=True, message="Backup completed"):
-        """
-        Shutdown Windows machine via net rpc (Samba)
-        
-        Requires on Windows:
-        - Registry: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
-          DWORD: LocalAccountTokenFilterPolicy = 1
-        - Firewall: Enable "Remote Service Management (NP-In)"
-        """
         try:
             cmd = ['net', 'rpc', 'shutdown', '-I', host, '-U', f'{username}%{password}']
             
@@ -1966,22 +1998,17 @@ class RemoteShutdown:
                 logger.error(f"[RemoteShutdown] Failed - {error}")
                 return False, error
         except subprocess.TimeoutExpired:
-            logger.error(f"[RemoteShutdown] Command timed out")
             return False, "Command timed out"
         except FileNotFoundError:
-            logger.error(f"[RemoteShutdown] 'net' command not found")
             return False, "Samba net command not found"
         except Exception as e:
-            logger.error(f"[RemoteShutdown] Exception - {e}")
             return False, str(e)
 
 # ============================================
-# MOUNT MANAGER (Unassigned Devices)
+# MOUNT MANAGER
 # ============================================
 
 class MountManager:
-    """Manages remote share mounting via Unassigned Devices plugin"""
-    
     RC_PATHS = [
         '/usr/local/sbin/rc.unassigned',
         '/var/local/overlay/usr/local/sbin/rc.unassigned'
@@ -1989,7 +2016,6 @@ class MountManager:
     
     @classmethod
     def get_rc_path(cls):
-        """Find rc.unassigned executable"""
         for path in cls.RC_PATHS:
             if os.path.exists(path) and os.access(path, os.X_OK):
                 return path
@@ -1997,15 +2023,10 @@ class MountManager:
     
     @classmethod
     def is_ud_available(cls):
-        """Check if Unassigned Devices is available"""
         return cls.get_rc_path() is not None
     
     @classmethod
     def mount(cls, share_name, timeout=60):
-        """
-        Mount a remote share via Unassigned Devices
-        share_name: e.g., "//192.168.0.31/backups"
-        """
         rc_path = cls.get_rc_path()
         if not rc_path:
             return False, "Unassigned Devices plugin not installed"
@@ -2017,7 +2038,6 @@ class MountManager:
                 capture_output=True, text=True, timeout=timeout
             )
             
-            # rc.unassigned returns "success" or "failure"
             output = (result.stdout + result.stderr).lower()
             
             if result.returncode == 0 or 'success' in output:
@@ -2028,15 +2048,12 @@ class MountManager:
                 logger.error(f"[MountManager] Mount failed - {error}")
                 return False, error
         except subprocess.TimeoutExpired:
-            logger.error(f"[MountManager] Mount timed out after {timeout}s")
             return False, f"Mount timed out after {timeout}s"
         except Exception as e:
-            logger.error(f"[MountManager] Exception - {e}")
             return False, str(e)
     
     @classmethod
     def unmount(cls, share_name, timeout=30):
-        """Unmount a remote share"""
         rc_path = cls.get_rc_path()
         if not rc_path:
             return False, "Unassigned Devices plugin not installed"
@@ -2058,12 +2075,10 @@ class MountManager:
                 logger.error(f"[MountManager] Unmount failed - {error}")
                 return False, error
         except Exception as e:
-            logger.error(f"[MountManager] Exception - {e}")
             return False, str(e)
     
     @classmethod
     def is_mounted(cls, mount_point):
-        """Check if a path is currently mounted"""
         try:
             result = subprocess.run(
                 ['mountpoint', '-q', mount_point],
@@ -2078,22 +2093,16 @@ class MountManager:
 # ============================================
 
 class NotifyManager:
-    """Handles Unraid and Discord notifications"""
-    
     COLORS = {
-        "blue": 3447003,      # Started / Info
-        "green": 5763719,     # Success
-        "red": 15548997,      # Error
-        "orange": 15105570,   # Warning
-        "grey": 9807270       # Neutral
+        "blue": 3447003,
+        "green": 5763719,
+        "red": 15548997,
+        "orange": 15105570,
+        "grey": 9807270
     }
     
     @classmethod
     def unraid_notify(cls, subject, description, importance="normal"):
-        """
-        Send Unraid notification
-        importance: normal, warning, alert
-        """
         if not Config.C.get("UNRAID_NOTIFICATIONS", True):
             return True
         
@@ -2114,19 +2123,20 @@ class NotifyManager:
     
     @classmethod
     def discord_notify(cls, title, description, color="blue", fields=None, footer=None):
-        """Send Discord webhook notification with embed"""
         url = Config.C.get("DISCORD_WEBHOOK_URL", "")
         if not url:
-            return True  # Not configured, not an error
+            logger.debug("[Notify] Discord webhook not configured")
+            return True
         
         try:
             import urllib.request
+            import ssl
             
             embed = {
                 "title": title,
                 "description": description,
                 "color": cls.COLORS.get(color, cls.COLORS["grey"]),
-                "footer": {"text": footer or "Tegenett Backup"},
+                "footer": {"text": footer or f"Tegenett Backup v{Config.VERSION}"},
                 "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
             }
             
@@ -2134,6 +2144,7 @@ class NotifyManager:
                 embed["fields"] = fields
             
             data = json.dumps({"embeds": [embed]}).encode()
+            
             req = urllib.request.Request(
                 url,
                 data=data,
@@ -2142,10 +2153,16 @@ class NotifyManager:
                     'User-Agent': f'TegenettBackup/{Config.VERSION}'
                 }
             )
-            with urllib.request.urlopen(req, timeout=10):
+            
+            # Create SSL context that doesn't verify (for compatibility)
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            
+            with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
                 pass
             
-            logger.debug(f"[Notify] Discord notification sent: {title}")
+            logger.info(f"[Notify] Discord notification sent: {title}")
             return True
         except Exception as e:
             logger.error(f"[Notify] Discord notification failed - {e}")
@@ -2153,7 +2170,6 @@ class NotifyManager:
     
     @classmethod
     def send_daily_summary(cls):
-        """Send daily summary to Discord"""
         if not Config.C.get("DISCORD_DAILY_SUMMARY", False):
             return
         
@@ -2173,7 +2189,7 @@ class NotifyManager:
         failed = stat.get('failed_jobs', 0)
         total_bytes = stat.get('total_bytes', 0)
         
-        gb = total_bytes / (1024**3)
+        gb = total_bytes / (1024**3) if total_bytes else 0
         
         color = "green" if failed == 0 else ("orange" if success > 0 else "red")
         
@@ -2192,8 +2208,6 @@ class NotifyManager:
 # ============================================
 
 class BackupEngine:
-    """Main backup execution engine"""
-    
     current_job = None
     current_history_id = None
     current_progress = {}
@@ -2202,13 +2216,11 @@ class BackupEngine:
     
     @classmethod
     def is_running(cls):
-        """Check if a backup is currently running"""
         with cls._lock:
             return cls.current_job is not None
     
     @classmethod
     def get_status(cls):
-        """Get current running status"""
         with cls._lock:
             if cls.current_job:
                 return {
@@ -2221,16 +2233,14 @@ class BackupEngine:
     
     @classmethod
     def abort(cls):
-        """Request abort of current backup"""
         cls.abort_flag = True
         logger.warning("[BackupEngine] Abort requested")
     
     @classmethod
-    def run_job(cls, job, dry_run=False):
-        """Execute a backup job"""
+    def run_job(cls, job, dry_run=False, is_retry=False):
         with cls._lock:
             if cls.current_job:
-                logger.warning(f"[BackupEngine] Cannot start job - another job is running")
+                logger.warning("[BackupEngine] Cannot start job - another job is running")
                 return False, "Another backup is already running"
             cls.current_job = job
             cls.current_progress = {'phase': 'starting', 'percent': 0}
@@ -2242,16 +2252,15 @@ class BackupEngine:
         
         logger.info("=" * 60)
         logger.info(f"[BackupEngine] Starting job: {job_name}")
-        logger.info(f"[BackupEngine] Type: {job_type}, Dry run: {dry_run}")
+        logger.info(f"[BackupEngine] Type: {job_type}, Dry run: {dry_run}, Retry: {is_retry}")
         logger.info("=" * 60)
         
-        # Create history entry
-        history_id = DB.add_history(job_id, job_name, 'running', dry_run)
+        history_id = DB.add_history(job_id, job_name, 'running', dry_run, is_retry)
         cls.current_history_id = history_id
         
-        # Send start notification
+        retry_text = " (Retry)" if is_retry else ""
         NotifyManager.discord_notify(
-            f"🔄 Backup Started: {job_name}",
+            f"🔄 Backup Started{retry_text}: {job_name}",
             f"Type: {job_type}\nDry run: {'Yes' if dry_run else 'No'}",
             "blue"
         )
@@ -2280,25 +2289,28 @@ class BackupEngine:
             logger.exception(f"[BackupEngine] Exception in job '{job_name}'")
         
         duration = int(time.time() - start_time)
-        speed = (bytes_transferred / (1024*1024)) / max(duration, 1)  # MB/s
+        speed = (bytes_transferred / (1024*1024)) / max(duration, 1)
         
-        # Update history
         status = 'completed' if success else 'failed'
         DB.update_history(
             history_id, status, bytes_transferred, files_transferred,
             duration, speed, error_message, log_output
         )
         
-        # Update daily stats
         if not dry_run:
             DB.update_daily_stats(bytes_transferred, files_transferred, duration, success)
         
-        # Send completion notification
-        gb = bytes_transferred / (1024**3)
+        # Handle retry logic
+        if success:
+            DB.reset_retry_count(job_id)
+        elif not dry_run and job.get('retry_on_failure', 1):
+            DB.increment_retry_count(job_id)
+        
+        gb = bytes_transferred / (1024**3) if bytes_transferred else 0
         if success:
             logger.info(f"[BackupEngine] Job completed: {gb:.2f} GB in {duration}s ({speed:.1f} MB/s)")
             NotifyManager.discord_notify(
-                f"✅ Backup Completed: {job_name}",
+                f"✅ Backup Completed{retry_text}: {job_name}",
                 f"Duration: {duration}s\nTransferred: {gb:.2f} GB" + (" (dry run)" if dry_run else ""),
                 "green",
                 [
@@ -2306,24 +2318,23 @@ class BackupEngine:
                     {"name": "Speed", "value": f"{speed:.1f} MB/s", "inline": True}
                 ]
             )
-            NotifyManager.unraid_notify(
-                f"Backup OK: {job_name}",
-                f"Transferred {gb:.2f} GB in {duration}s"
-            )
+            NotifyManager.unraid_notify(f"Backup OK: {job_name}", f"Transferred {gb:.2f} GB in {duration}s")
         else:
             logger.error(f"[BackupEngine] Job failed: {error_message}")
+            retry_info = ""
+            if job.get('retry_on_failure', 1) and Config.C.get("RETRY_ON_FAILURE", True):
+                retry_count = job.get('retry_count', 0) + 1
+                max_retries = Config.C.get("RETRY_MAX_ATTEMPTS", 3)
+                if retry_count < max_retries:
+                    retry_info = f"\n\n🔁 Will retry in {Config.C.get('RETRY_INTERVAL_MINUTES', 60)} minutes ({retry_count}/{max_retries})"
+            
             NotifyManager.discord_notify(
-                f"❌ Backup Failed: {job_name}",
-                f"Error: {error_message or 'Unknown error'}",
+                f"❌ Backup Failed{retry_text}: {job_name}",
+                f"Error: {error_message or 'Unknown error'}{retry_info}",
                 "red"
             )
-            NotifyManager.unraid_notify(
-                f"Backup FAILED: {job_name}",
-                error_message or "Unknown error",
-                "alert"
-            )
+            NotifyManager.unraid_notify(f"Backup FAILED: {job_name}", error_message or "Unknown error", "alert")
         
-        # Cleanup
         with cls._lock:
             cls.current_job = None
             cls.current_history_id = None
@@ -2337,7 +2348,6 @@ class BackupEngine:
     
     @classmethod
     def _run_local(cls, job, dry_run):
-        """Run local backup (array to share)"""
         source = job.get('source_path', '')
         dest = job.get('dest_path', '')
         
@@ -2349,18 +2359,16 @@ class BackupEngine:
         if not os.path.exists(source):
             return False, 0, 0, f"Source path does not exist: {source}", ""
         
-        # Create destination if needed
         os.makedirs(dest, exist_ok=True)
         
         return cls._run_rsync(source, dest, job, dry_run)
     
     @classmethod
     def _run_remote_smb(cls, job, dry_run):
-        """Run remote SMB backup"""
         source = job.get('source_path', '')
         remote_share = job.get('remote_share', '')
         mount_point = job.get('remote_mount_point', '')
-        dest_subdir = job.get('dest_path', '')  # Subdirectory within mount
+        dest_subdir = job.get('dest_path', '')
         
         if not source:
             return False, 0, 0, "Source path not configured", ""
@@ -2372,11 +2380,9 @@ class BackupEngine:
         if not MountManager.is_ud_available():
             return False, 0, 0, "Unassigned Devices plugin not installed", ""
         
-        # Check source exists
         if not os.path.exists(source):
             return False, 0, 0, f"Source path does not exist: {source}", ""
         
-        # Check if already mounted
         was_mounted = MountManager.is_mounted(mount_point)
         
         if not was_mounted:
@@ -2385,14 +2391,11 @@ class BackupEngine:
             if not success:
                 return False, 0, 0, f"Failed to mount remote share: {msg}", ""
             
-            # Wait for mount to settle
             time.sleep(Config.C.get('SMB_SETTLE_TIME', 10))
             
-            # Verify mount
             if not MountManager.is_mounted(mount_point):
                 return False, 0, 0, "Mount point not available after mount command", ""
         
-        # Build final destination path
         dest = os.path.join(mount_point, dest_subdir) if dest_subdir else mount_point
         os.makedirs(dest, exist_ok=True)
         
@@ -2401,21 +2404,18 @@ class BackupEngine:
         try:
             return cls._run_rsync(source, dest, job, dry_run)
         finally:
-            # Only unmount if we mounted it
             if not was_mounted:
                 cls.current_progress['phase'] = 'unmounting'
                 MountManager.unmount(remote_share)
     
     @classmethod
     def _run_remote_smb_wol(cls, job, dry_run):
-        """Run remote SMB backup with Wake-on-LAN and optional shutdown"""
         host = job.get('remote_host', '')
         mac = job.get('mac_address', '')
         
         if not host:
             return False, 0, 0, "Remote host not configured", ""
         
-        # Check if host is online
         cls.current_progress['phase'] = 'checking host'
         host_was_online = WakeOnLan.ping(host)
         logger.info(f"[BackupEngine] Host {host} online: {host_was_online}")
@@ -2424,13 +2424,11 @@ class BackupEngine:
             if not mac:
                 return False, 0, 0, "Host offline and no MAC address configured for WOL", ""
             
-            # Send WOL
             cls.current_progress['phase'] = 'sending WOL'
             success, msg = WakeOnLan.send_magic_packet(mac)
             if not success:
                 return False, 0, 0, f"Failed to send WOL packet: {msg}", ""
             
-            # Wait for host to come online
             cls.current_progress['phase'] = 'waiting for host'
             timeout = Config.C.get("WOL_WAIT_TIMEOUT", 120)
             interval = Config.C.get("WOL_PING_INTERVAL", 5)
@@ -2439,15 +2437,12 @@ class BackupEngine:
             if not online:
                 return False, 0, 0, f"Host did not come online within {timeout}s", ""
             
-            # Extra wait for SMB service to start
             smb_wait = Config.C.get("SMB_SETTLE_TIME", 10)
             logger.info(f"[BackupEngine] Waiting {smb_wait}s for SMB service...")
             time.sleep(smb_wait)
         
-        # Run the actual backup
         success, bytes_transferred, files_transferred, error, log_output = cls._run_remote_smb(job, dry_run)
         
-        # Shutdown if configured and host wasn't already on
         if success and job.get('shutdown_after') and not host_was_online:
             user = job.get('remote_user', '')
             password = job.get('remote_pass', '')
@@ -2459,58 +2454,44 @@ class BackupEngine:
                 if not shutdown_ok:
                     logger.warning(f"[BackupEngine] Shutdown failed: {shutdown_msg}")
             else:
-                logger.info(f"[BackupEngine] Skipping shutdown - credentials not configured")
+                logger.info("[BackupEngine] Skipping shutdown - credentials not configured")
         
         return success, bytes_transferred, files_transferred, error, log_output
     
     @classmethod
     def _run_rsync(cls, source, dest, job, dry_run):
-        """Execute rsync with progress parsing"""
-        # Build rsync command
         cmd = ['rsync']
         
-        # Base options
         options = Config.C.get("RSYNC_OPTIONS", "-avh --delete --stats")
         cmd.extend(options.split())
         
-        # Bandwidth limit (KB/s)
         bw_limit = job.get('bandwidth_limit', 0) or Config.C.get("DEFAULT_BANDWIDTH_LIMIT", 0)
         if bw_limit > 0:
             cmd.append(f'--bwlimit={bw_limit}')
         
-        # Exclude patterns
         excludes = job.get('exclude_patterns', '') or ''
         for pattern in excludes.split('\n'):
             pattern = pattern.strip()
             if pattern and not pattern.startswith('#'):
                 cmd.append(f'--exclude={pattern}')
         
-        # Dry run
         if dry_run:
             cmd.append('--dry-run')
         
-        # Source (ensure trailing slash for rsync behavior)
         source = source.rstrip('/') + '/'
         cmd.extend([source, dest])
         
         logger.info(f"[BackupEngine] Rsync command: {' '.join(cmd)}")
         
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=86400  # 24 hour timeout
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=86400)
             
             output = result.stdout + '\n' + result.stderr
             
-            # Parse rsync stats
             bytes_transferred = 0
             files_transferred = 0
             
             for line in output.split('\n'):
-                # "Total transferred file size: 1,234,567 bytes"
                 if 'Total transferred file size:' in line:
                     try:
                         match = re.search(r'([\d,]+)\s*bytes', line)
@@ -2518,7 +2499,6 @@ class BackupEngine:
                             bytes_transferred = int(match.group(1).replace(',', ''))
                     except:
                         pass
-                # "Number of regular files transferred: 123"
                 elif 'Number of regular files transferred:' in line:
                     try:
                         match = re.search(r'(\d+)', line.split(':')[1])
@@ -2530,7 +2510,6 @@ class BackupEngine:
             if result.returncode == 0:
                 return True, bytes_transferred, files_transferred, None, output
             else:
-                # rsync exit codes: 0 = success, 23/24 = partial transfer (often ok)
                 if result.returncode in [23, 24]:
                     logger.warning(f"[BackupEngine] Rsync completed with warnings (exit {result.returncode})")
                     return True, bytes_transferred, files_transferred, f"Completed with warnings (exit {result.returncode})", output
@@ -2548,16 +2527,13 @@ class BackupEngine:
 # ============================================
 
 class Scheduler:
-    """Scheduler for automated backup jobs"""
-    
     _thread = None
     _running = False
-    _last_run = {}  # job_id -> datetime of last scheduled run
+    _last_run = {}
     _summary_sent_today = False
     
     @classmethod
     def start(cls):
-        """Start the scheduler thread"""
         if cls._thread and cls._thread.is_alive():
             logger.warning("[Scheduler] Already running")
             return
@@ -2569,7 +2545,6 @@ class Scheduler:
     
     @classmethod
     def stop(cls):
-        """Stop the scheduler"""
         cls._running = False
         if cls._thread:
             cls._thread.join(timeout=5)
@@ -2577,26 +2552,19 @@ class Scheduler:
     
     @classmethod
     def _run(cls):
-        """Main scheduler loop - runs every minute"""
         while cls._running:
             try:
                 now = datetime.now()
-                
-                # Check for daily summary
                 cls._check_daily_summary(now)
-                
-                # Check jobs
                 cls._check_jobs(now)
-                
+                cls._check_retries()
             except Exception as e:
                 logger.error(f"[Scheduler] Error in main loop: {e}")
             
-            # Sleep until next minute
             time.sleep(60)
     
     @classmethod
     def _check_daily_summary(cls, now):
-        """Check if daily summary should be sent"""
         summary_hour = Config.C.get("DISCORD_SUMMARY_HOUR", 20)
         
         if now.hour == summary_hour and now.minute == 0:
@@ -2608,9 +2576,8 @@ class Scheduler:
     
     @classmethod
     def _check_jobs(cls, now):
-        """Check if any scheduled jobs should run"""
         if BackupEngine.is_running():
-            return  # Don't start new jobs while one is running
+            return
         
         jobs = DB.get_enabled_jobs()
         
@@ -2622,7 +2589,6 @@ class Scheduler:
                 continue
             
             if cls._should_run(job, now):
-                # Prevent running same job twice in same minute
                 last = cls._last_run.get(job_id)
                 if last and (now - last).total_seconds() < 60:
                     continue
@@ -2630,34 +2596,49 @@ class Scheduler:
                 cls._last_run[job_id] = now
                 logger.info(f"[Scheduler] Starting scheduled job: {job['name']}")
                 
-                # Run in separate thread
                 thread = threading.Thread(
                     target=BackupEngine.run_job,
-                    args=(job, False),
+                    args=(job, False, False),
                     name=f"Backup-{job['name']}"
                 )
                 thread.start()
-                
-                # Only run one job at a time
                 break
     
     @classmethod
+    def _check_retries(cls):
+        """Check for failed jobs that need retry"""
+        if not Config.C.get("RETRY_ON_FAILURE", True):
+            return
+        
+        if BackupEngine.is_running():
+            return
+        
+        jobs = DB.get_failed_jobs_for_retry()
+        
+        for job in jobs:
+            logger.info(f"[Scheduler] Retrying failed job: {job['name']} (attempt {job.get('retry_count', 0) + 1})")
+            
+            thread = threading.Thread(
+                target=BackupEngine.run_job,
+                args=(job, False, True),
+                name=f"Retry-{job['name']}"
+            )
+            thread.start()
+            break
+    
+    @classmethod
     def _should_run(cls, job, now):
-        """Determine if a job should run at the given time"""
         schedule_type = job.get('schedule_type', 'disabled')
         hour = job.get('schedule_hour', 0)
         minute = job.get('schedule_minute', 0)
-        day = job.get('schedule_day', 0)  # 0=Monday for weekly
+        day = job.get('schedule_day', 0)
         
         if schedule_type == 'hourly':
             return now.minute == minute
-        
         elif schedule_type == 'daily':
             return now.hour == hour and now.minute == minute
-        
         elif schedule_type == 'weekly':
             return now.weekday() == day and now.hour == hour and now.minute == minute
-        
         elif schedule_type == 'custom':
             cron = job.get('schedule_cron', '')
             return cls._match_cron(cron, now)
@@ -2666,7 +2647,6 @@ class Scheduler:
     
     @classmethod
     def _match_cron(cls, cron_expr, dt):
-        """Simple cron expression matching (minute hour day month weekday)"""
         if not cron_expr:
             return False
         
@@ -2695,11 +2675,9 @@ class Scheduler:
     
     @classmethod
     def _cron_match(cls, pattern, value):
-        """Match a single cron field"""
         if pattern == '*':
             return True
         
-        # Handle */N
         if pattern.startswith('*/'):
             try:
                 step = int(pattern[2:])
@@ -2707,12 +2685,10 @@ class Scheduler:
             except:
                 return False
         
-        # Handle comma-separated values
         if ',' in pattern:
             values = [int(v) for v in pattern.split(',')]
             return value in values
         
-        # Handle ranges (N-M)
         if '-' in pattern:
             try:
                 start, end = pattern.split('-')
@@ -2720,7 +2696,6 @@ class Scheduler:
             except:
                 return False
         
-        # Single value
         try:
             return value == int(pattern)
         except:
@@ -2731,14 +2706,10 @@ class Scheduler:
 # ============================================
 
 class APIHandler(BaseHTTPRequestHandler):
-    """HTTP request handler for the REST API"""
-    
     def log_message(self, format, *args):
-        """Suppress default logging, use our logger"""
         logger.debug(f"[API] {args[0]}")
     
     def _send_json(self, data, status=200):
-        """Send JSON response"""
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -2748,7 +2719,6 @@ class APIHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data, default=str).encode())
     
     def _read_json(self):
-        """Read JSON from request body"""
         content_length = int(self.headers.get('Content-Length', 0))
         if content_length > 0:
             body = self.rfile.read(content_length)
@@ -2756,17 +2726,14 @@ class APIHandler(BaseHTTPRequestHandler):
         return {}
     
     def do_OPTIONS(self):
-        """Handle CORS preflight"""
         self._send_json({'success': True})
     
     def do_GET(self):
-        """Handle GET requests"""
         parsed = urlparse(self.path)
         path = parsed.path
         params = parse_qs(parsed.query)
         
         try:
-            # Status
             if path == '/api/status':
                 uptime = int(time.time() - START_TIME)
                 status = BackupEngine.get_status()
@@ -2778,16 +2745,13 @@ class APIHandler(BaseHTTPRequestHandler):
                     'backup': status
                 })
             
-            # Jobs list
             elif path == '/api/jobs':
                 jobs = DB.get_jobs()
-                # Add last run info
                 for job in jobs:
                     last = DB.get_last_run(job['id'])
                     job['last_run'] = last
                 self._send_json({'success': True, 'jobs': jobs})
             
-            # Single job
             elif path.startswith('/api/jobs/') and path.count('/') == 3:
                 job_id = int(path.split('/')[-1])
                 job = DB.get_job(job_id)
@@ -2797,7 +2761,6 @@ class APIHandler(BaseHTTPRequestHandler):
                 else:
                     self._send_json({'success': False, 'error': 'Job not found'}, 404)
             
-            # History
             elif path == '/api/history':
                 limit = int(params.get('limit', [100])[0])
                 job_id = params.get('job_id', [None])[0]
@@ -2806,14 +2769,12 @@ class APIHandler(BaseHTTPRequestHandler):
                 history = DB.get_history(limit, job_id)
                 self._send_json({'success': True, 'history': history})
             
-            # Statistics
             elif path == '/api/stats':
                 days = int(params.get('days', [30])[0])
                 stats = DB.get_stats(days)
                 totals = DB.get_totals()
                 self._send_json({'success': True, 'stats': stats, 'totals': totals})
             
-            # Logs
             elif path == '/api/logs':
                 lines = int(params.get('lines', [200])[0])
                 if os.path.exists(LOG_FILE):
@@ -2824,7 +2785,6 @@ class APIHandler(BaseHTTPRequestHandler):
                     log_content = "No log file found"
                 self._send_json({'success': True, 'logs': log_content})
             
-            # Settings
             elif path == '/api/settings':
                 self._send_json({'success': True, 'settings': Config.C})
             
@@ -2836,18 +2796,15 @@ class APIHandler(BaseHTTPRequestHandler):
             self._send_json({'success': False, 'error': str(e)}, 500)
     
     def do_POST(self):
-        """Handle POST requests"""
         path = self.path
         
         try:
             data = self._read_json()
             
-            # Create job
             if path == '/api/jobs':
                 job_id = DB.create_job(data)
                 self._send_json({'success': True, 'id': job_id})
             
-            # Run job
             elif path.startswith('/api/jobs/') and path.endswith('/run'):
                 job_id = int(path.split('/')[-2])
                 job = DB.get_job(job_id)
@@ -2859,7 +2816,7 @@ class APIHandler(BaseHTTPRequestHandler):
                     else:
                         thread = threading.Thread(
                             target=BackupEngine.run_job,
-                            args=(job, dry_run),
+                            args=(job, dry_run, False),
                             name=f"Backup-{job['name']}"
                         )
                         thread.start()
@@ -2867,18 +2824,14 @@ class APIHandler(BaseHTTPRequestHandler):
                 else:
                     self._send_json({'success': False, 'error': 'Job not found'}, 404)
             
-            # Abort running job
             elif path == '/api/abort':
                 BackupEngine.abort()
                 self._send_json({'success': True, 'message': 'Abort requested'})
             
-            # Update settings
             elif path == '/api/settings':
-                Config.C.update(data)
-                Config.save()
-                self._send_json({'success': True})
+                success, msg = Config.update_and_save(data)
+                self._send_json({'success': success, 'message': msg})
             
-            # Test WOL
             elif path == '/api/test/wol':
                 mac = data.get('mac_address')
                 if mac:
@@ -2887,7 +2840,6 @@ class APIHandler(BaseHTTPRequestHandler):
                 else:
                     self._send_json({'success': False, 'error': 'MAC address required'})
             
-            # Test ping
             elif path == '/api/test/ping':
                 host = data.get('host')
                 if host:
@@ -2896,16 +2848,18 @@ class APIHandler(BaseHTTPRequestHandler):
                 else:
                     self._send_json({'success': False, 'error': 'Host required'})
             
-            # Test Discord
             elif path == '/api/test/discord':
-                success = NotifyManager.discord_notify(
-                    "🧪 Test Notification",
-                    "This is a test message from Tegenett Backup",
-                    "blue"
-                )
-                self._send_json({'success': success})
+                url = Config.C.get("DISCORD_WEBHOOK_URL", "")
+                if not url:
+                    self._send_json({'success': False, 'error': 'Discord webhook URL not configured'})
+                else:
+                    success = NotifyManager.discord_notify(
+                        "🧪 Test Notification",
+                        "This is a test message from Tegenett Backup",
+                        "blue"
+                    )
+                    self._send_json({'success': success, 'message': 'Test sent' if success else 'Failed to send'})
             
-            # Test mount
             elif path == '/api/test/mount':
                 share = data.get('share')
                 if share:
@@ -2925,7 +2879,6 @@ class APIHandler(BaseHTTPRequestHandler):
             self._send_json({'success': False, 'error': str(e)}, 500)
     
     def do_PUT(self):
-        """Handle PUT requests"""
         path = self.path
         
         try:
@@ -2935,7 +2888,6 @@ class APIHandler(BaseHTTPRequestHandler):
                 job_id = int(path.split('/')[-1])
                 job = DB.get_job(job_id)
                 if job:
-                    # Merge existing data with updates
                     updated = {**job, **data}
                     DB.update_job(job_id, updated)
                     self._send_json({'success': True})
@@ -2949,7 +2901,6 @@ class APIHandler(BaseHTTPRequestHandler):
             self._send_json({'success': False, 'error': str(e)}, 500)
     
     def do_DELETE(self):
-        """Handle DELETE requests"""
         path = self.path
         
         try:
@@ -2971,7 +2922,6 @@ class APIHandler(BaseHTTPRequestHandler):
 server = None
 
 def signal_handler(signum, frame):
-    """Handle shutdown signals gracefully"""
     logger.info(f"[Main] Received signal {signum}, shutting down...")
     Scheduler.stop()
     if server:
@@ -2987,30 +2937,27 @@ def main():
     logger.info(f"Config directory: {Config.CONFIG_DIR}")
     logger.info(f"API port: {Config.C['SERVER_PORT']}")
     logger.info(f"Unassigned Devices: {'Available' if MountManager.is_ud_available() else 'Not found'}")
+    logger.info(f"Retry on failure: {Config.C.get('RETRY_ON_FAILURE', True)}")
     logger.info("=" * 60)
     
-    # Write PID file
     try:
         with open(Config.PID_FILE, 'w') as f:
             f.write(str(os.getpid()))
     except Exception as e:
         logger.warning(f"[Main] Could not write PID file: {e}")
     
-    # Set up signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
     
-    # Start scheduler
     Scheduler.start()
     
-    # Start HTTP server
     port = Config.C['SERVER_PORT']
     try:
         server = ThreadingHTTPServer(('0.0.0.0', port), APIHandler)
         logger.info(f"[Main] API server listening on port {port}")
         server.serve_forever()
     except OSError as e:
-        if e.errno == 98:  # Address already in use
+        if e.errno == 98:
             logger.error(f"[Main] Port {port} already in use!")
         else:
             raise
@@ -3031,9 +2978,6 @@ if __name__ == "__main__":
 </INLINE>
 </FILE>
 
-<!--
-rc.tegenett_backup - Service control script
--->
 <FILE Name="/usr/local/emhttp/plugins/&name;/rc.&name;" Mode="0755">
 <INLINE>
 <![CDATA[
@@ -3083,7 +3027,6 @@ stop() {
         echo "Stopping ${PLUGIN_NAME} (PID $PID)..."
         kill "$PID" 2>/dev/null
         
-        # Wait for graceful shutdown
         for i in {1..10}; do
             if ! kill -0 "$PID" 2>/dev/null; then
                 break
@@ -3091,7 +3034,6 @@ stop() {
             sleep 1
         done
         
-        # Force kill if still running
         if kill -0 "$PID" 2>/dev/null; then
             echo "Force killing ${PLUGIN_NAME}..."
             kill -9 "$PID" 2>/dev/null
@@ -3128,30 +3070,16 @@ status() {
 }
 
 case "$1" in
-    start)
-        start
-        ;;
-    stop)
-        stop
-        ;;
-    restart)
-        restart
-        ;;
-    status)
-        status
-        ;;
-    *)
-        echo "Usage: $0 {start|stop|restart|status}"
-        exit 1
-        ;;
+    start) start ;;
+    stop) stop ;;
+    restart) restart ;;
+    status) status ;;
+    *) echo "Usage: $0 {start|stop|restart|status}"; exit 1 ;;
 esac
 ]]>
 </INLINE>
 </FILE>
 
-<!--
-ajax.php - AJAX handler
--->
 <FILE Name="/usr/local/emhttp/plugins/&name;/include/ajax.php">
 <INLINE>
 <![CDATA[
@@ -3161,9 +3089,17 @@ ajax.php - AJAX handler
  * Proxies requests to Python daemon API
  */
 
-// Configuration
-$API_PORT = 9998;
+// Read port from settings
+$CONFIG_FILE = "/boot/config/plugins/tegenett_backup/settings.json";
+$API_PORT = 39982; // New default port
 $API_HOST = "127.0.0.1";
+
+if (file_exists($CONFIG_FILE)) {
+    $config = json_decode(file_get_contents($CONFIG_FILE), true);
+    if (isset($config['SERVER_PORT'])) {
+        $API_PORT = intval($config['SERVER_PORT']);
+    }
+}
 
 // Helper function to make API requests
 function apiCall($endpoint, $method = 'GET', $data = null) {
@@ -3202,9 +3138,13 @@ function apiCall($endpoint, $method = 'GET', $data = null) {
         return ['success' => false, 'error' => "API unavailable: {$curlError}"];
     }
     
+    if (empty($response)) {
+        return ['success' => false, 'error' => 'Empty response from API'];
+    }
+    
     $decoded = json_decode($response, true);
     if ($decoded === null) {
-        return ['success' => false, 'error' => 'Invalid API response'];
+        return ['success' => false, 'error' => 'Invalid API response: ' . substr($response, 0, 100)];
     }
     
     return $decoded;
@@ -3217,12 +3157,10 @@ header('Content-Type: application/json');
 
 switch ($action) {
     
-    // ====== Status ======
     case 'status':
         echo json_encode(apiCall('/api/status'));
         break;
     
-    // ====== Jobs ======
     case 'get_jobs':
         echo json_encode(apiCall('/api/jobs'));
         break;
@@ -3254,7 +3192,6 @@ switch ($action) {
         echo json_encode(apiCall("/api/jobs/{$id}/run", 'POST', ['dry_run' => $dryRun]));
         break;
     
-    // ====== History ======
     case 'get_history':
         $limit = intval($_REQUEST['limit'] ?? 100);
         $jobId = $_REQUEST['job_id'] ?? '';
@@ -3263,19 +3200,27 @@ switch ($action) {
         echo json_encode(apiCall("/api/history{$query}"));
         break;
     
-    // ====== Statistics ======
     case 'get_stats':
         $days = intval($_REQUEST['days'] ?? 30);
         echo json_encode(apiCall("/api/stats?days={$days}"));
         break;
     
-    // ====== Logs ======
     case 'get_logs':
         $lines = intval($_REQUEST['lines'] ?? 200);
-        echo json_encode(apiCall("/api/logs?lines={$lines}"));
+        $result = apiCall("/api/logs?lines={$lines}");
+        
+        // Fallback: read log file directly if API fails
+        if (!$result['success']) {
+            $logFile = '/mnt/user/appdata/tegenett_backup/logs/tegenett_backup.log';
+            if (file_exists($logFile)) {
+                $logLines = file($logFile);
+                $logLines = array_slice($logLines, -$lines);
+                $result = ['success' => true, 'logs' => implode("", $logLines)];
+            }
+        }
+        echo json_encode($result);
         break;
     
-    // ====== Settings ======
     case 'get_settings':
         echo json_encode(apiCall('/api/settings'));
         break;
@@ -3285,7 +3230,6 @@ switch ($action) {
         echo json_encode(apiCall('/api/settings', 'POST', $data));
         break;
     
-    // ====== Tests ======
     case 'test_wol':
         $mac = $_REQUEST['mac_address'] ?? '';
         echo json_encode(apiCall('/api/test/wol', 'POST', ['mac_address' => $mac]));
@@ -3305,7 +3249,6 @@ switch ($action) {
         echo json_encode(apiCall('/api/test/mount', 'POST', ['share' => $share]));
         break;
     
-    // ====== Service Control ======
     case 'service':
         $cmd = $_REQUEST['cmd'] ?? '';
         $validCmds = ['start', 'stop', 'restart', 'status'];
@@ -3325,7 +3268,6 @@ switch ($action) {
         ]);
         break;
     
-    // ====== Abort ======
     case 'abort':
         echo json_encode(apiCall('/api/abort', 'POST'));
         break;
@@ -3338,9 +3280,6 @@ switch ($action) {
 </INLINE>
 </FILE>
 
-<!--
-Install script
--->
 <FILE Run="/bin/bash" Method="install">
 <INLINE>
 <![CDATA[
@@ -3357,9 +3296,19 @@ mkdir -p "${DATA_DIR}/logs"
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "/usr/local/emhttp/plugins/${PLUGIN_NAME}/include"
 
+# Create default settings if not exists
+if [ ! -f "${CONFIG_DIR}/settings.json" ]; then
+    echo '{"SERVER_PORT": 39982, "LOG_LEVEL": "INFO"}' > "${CONFIG_DIR}/settings.json"
+fi
+
 # Set permissions
 chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/${PLUGIN_NAME}.py"
 chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
+
+# Stop any existing process first
+pkill -f "${PLUGIN_NAME}.py" 2>/dev/null || true
+rm -f "/var/run/${PLUGIN_NAME}.pid"
+sleep 1
 
 # Start service
 echo "Starting ${PLUGIN_NAME} service..."
@@ -3374,9 +3323,6 @@ echo ""
 </INLINE>
 </FILE>
 
-<!--
-Remove script
--->
 <FILE Run="/bin/bash" Method="remove">
 <INLINE>
 <![CDATA[
@@ -3388,13 +3334,11 @@ echo "Removing Tegenett Backup..."
 
 # Stop service
 /usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME} stop 2>/dev/null
+pkill -f "${PLUGIN_NAME}.py" 2>/dev/null || true
+rm -f "/var/run/${PLUGIN_NAME}.pid"
 
 # Remove plugin files
 rm -rf "/usr/local/emhttp/plugins/${PLUGIN_NAME}"
-
-# Note: We do NOT remove data or config directories
-# /mnt/user/appdata/tegenett_backup
-# /boot/config/plugins/tegenett_backup
 
 echo "Tegenett Backup removed."
 echo "Note: Data and config directories preserved."

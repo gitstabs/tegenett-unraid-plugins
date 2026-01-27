@@ -6,7 +6,7 @@ Open source Unraid plugins by Tegenett.
 
 | Plugin | Description | Version |
 |--------|-------------|---------|
-| [Tegenett Backup](tegenett_backup/) | Smart backup with local, remote SMB, WOL, and cloud support | 2026.01.27 |
+| [Tegenett Backup](tegenett_backup/) | Smart backup with local, remote SMB, WOL, and cloud support | 2026.01.27a |
 
 ## Installation
 
@@ -20,7 +20,3 @@ https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett
 ## Support
 
 Report issues at: https://github.com/gitstabs/tegenett-unraid-plugins/issues
-
-## License
-
-MIT License
