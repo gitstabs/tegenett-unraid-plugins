@@ -1,0 +1,3405 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name      "tegenett_backup">
+<!ENTITY author    "Tegenett">
+<!ENTITY version   "2026.01.27">
+<!ENTITY launch    "Settings/TegenettBackup">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett_backup/tegenett_backup.plg">
+]>
+
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
+
+<CHANGES>
+##&version;
+- Initial release
+- Local backup (array to share)
+- Remote SMB backup with Unassigned Devices integration
+- Wake-on-LAN support for remote hosts
+- Remote Windows shutdown capability
+- Discord webhook notifications
+- Unraid native notifications
+- SQLite-backed job history and statistics
+- Flexible scheduling (hourly, daily, weekly, custom cron)
+- Dry-run mode for testing
+- Real-time progress in GUI
+- Bandwidth limiting
+- Exclude patterns support
+</CHANGES>
+
+<!--
+TegenettBackup.page - Main GUI
+-->
+<FILE Name="/usr/local/emhttp/plugins/&name;/TegenettBackup.page">
+<INLINE>
+<![CDATA[
+Menu="Utilities"
+Title="Tegenett Backup"
+Icon="shield"
+---
+<?php
+$plugin = "tegenett_backup";
+$docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
+$pluginDir = "{$docroot}/plugins/{$plugin}";
+
+// Check if service is running
+$pidFile = "/var/run/{$plugin}.pid";
+$isRunning = false;
+if (file_exists($pidFile)) {
+    $pid = trim(file_get_contents($pidFile));
+    if ($pid && file_exists("/proc/{$pid}")) {
+        $isRunning = true;
+    }
+}
+?>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<style>
+/* ============================================
+   TEGENETT BACKUP - CSS
+   ============================================ */
+
+:root {
+    --tb-primary: #e67e22;
+    --tb-primary-dark: #d35400;
+    --tb-success: #27ae60;
+    --tb-danger: #c0392b;
+    --tb-warning: #f39c12;
+    --tb-info: #3498db;
+    --tb-bg: var(--body-background, #1a1a1a);
+    --tb-card-bg: var(--card-background, #262626);
+    --tb-text: var(--text-color, #e0e0e0);
+    --tb-text-muted: var(--text-muted, #888);
+    --tb-border: var(--border-color, #3a3a3a);
+}
+
+.tb-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+.tb-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--tb-border);
+}
+
+.tb-title {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.tb-title h1 {
+    margin: 0;
+    color: var(--tb-primary);
+    font-size: 1.8em;
+}
+
+.tb-status-badge {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.85em;
+    font-weight: 600;
+}
+
+.tb-status-running { background: var(--tb-success); color: white; }
+.tb-status-stopped { background: var(--tb-danger); color: white; }
+
+.tb-header-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* Tabs */
+.tb-tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--tb-border);
+    padding-bottom: 0;
+}
+
+.tb-tab {
+    padding: 12px 24px;
+    background: transparent;
+    border: none;
+    color: var(--tb-text-muted);
+    cursor: pointer;
+    font-size: 0.95em;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+}
+
+.tb-tab:hover {
+    color: var(--tb-text);
+}
+
+.tb-tab.active {
+    color: var(--tb-primary);
+    border-bottom-color: var(--tb-primary);
+}
+
+.tb-tab i {
+    margin-right: 8px;
+}
+
+/* Tab Content */
+.tb-tab-content {
+    display: none;
+}
+
+.tb-tab-content.active {
+    display: block;
+}
+
+/* Cards */
+.tb-card {
+    background: var(--tb-card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid var(--tb-border);
+}
+
+.tb-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--tb-border);
+}
+
+.tb-card-title {
+    margin: 0;
+    font-size: 1.1em;
+    color: var(--tb-primary);
+}
+
+/* Dashboard Stats Grid */
+.tb-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.tb-stat-card {
+    background: var(--tb-card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid var(--tb-border);
+    text-align: center;
+}
+
+.tb-stat-icon {
+    font-size: 2em;
+    margin-bottom: 10px;
+    color: var(--tb-primary);
+}
+
+.tb-stat-value {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: var(--tb-text);
+}
+
+.tb-stat-label {
+    color: var(--tb-text-muted);
+    font-size: 0.9em;
+    margin-top: 5px;
+}
+
+/* Buttons */
+.tb-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+
+.tb-btn-primary {
+    background: var(--tb-primary);
+    color: white;
+}
+
+.tb-btn-primary:hover {
+    background: var(--tb-primary-dark);
+}
+
+.tb-btn-success {
+    background: var(--tb-success);
+    color: white;
+}
+
+.tb-btn-danger {
+    background: var(--tb-danger);
+    color: white;
+}
+
+.tb-btn-secondary {
+    background: var(--tb-border);
+    color: var(--tb-text);
+}
+
+.tb-btn-sm {
+    padding: 5px 10px;
+    font-size: 0.85em;
+}
+
+.tb-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Tables */
+.tb-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.tb-table th,
+.tb-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--tb-border);
+}
+
+.tb-table th {
+    color: var(--tb-text-muted);
+    font-weight: 600;
+    font-size: 0.9em;
+}
+
+.tb-table tr:hover {
+    background: rgba(255,255,255,0.02);
+}
+
+/* Forms */
+.tb-form-group {
+    margin-bottom: 15px;
+}
+
+.tb-form-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--tb-text);
+    font-weight: 500;
+}
+
+.tb-form-group input,
+.tb-form-group select,
+.tb-form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--tb-border);
+    border-radius: 4px;
+    background: var(--tb-bg);
+    color: var(--tb-text);
+    font-size: 0.95em;
+}
+
+.tb-form-group input:focus,
+.tb-form-group select:focus,
+.tb-form-group textarea:focus {
+    outline: none;
+    border-color: var(--tb-primary);
+}
+
+.tb-form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.tb-form-hint {
+    font-size: 0.85em;
+    color: var(--tb-text-muted);
+    margin-top: 4px;
+}
+
+/* Status badges */
+.tb-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+}
+
+.tb-badge-success { background: rgba(39, 174, 96, 0.2); color: #27ae60; }
+.tb-badge-danger { background: rgba(192, 57, 43, 0.2); color: #e74c3c; }
+.tb-badge-warning { background: rgba(243, 156, 18, 0.2); color: #f39c12; }
+.tb-badge-info { background: rgba(52, 152, 219, 0.2); color: #3498db; }
+.tb-badge-secondary { background: rgba(136, 136, 136, 0.2); color: #888; }
+
+/* Log viewer */
+.tb-log-viewer {
+    background: #1a1a1a;
+    border: 1px solid var(--tb-border);
+    border-radius: 4px;
+    padding: 15px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.85em;
+    line-height: 1.5;
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Modal */
+.tb-modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.tb-modal-overlay.active {
+    display: flex;
+}
+
+.tb-modal {
+    background: var(--tb-card-bg);
+    border-radius: 8px;
+    width: 90%;
+    max-width: 700px;
+    max-height: 90vh;
+    overflow-y: auto;
+    border: 1px solid var(--tb-border);
+}
+
+.tb-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--tb-border);
+}
+
+.tb-modal-header h3 {
+    margin: 0;
+    color: var(--tb-primary);
+}
+
+.tb-modal-close {
+    background: none;
+    border: none;
+    color: var(--tb-text-muted);
+    font-size: 1.5em;
+    cursor: pointer;
+}
+
+.tb-modal-body {
+    padding: 20px;
+}
+
+.tb-modal-footer {
+    padding: 15px 20px;
+    border-top: 1px solid var(--tb-border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+/* Animations */
+@keyframes tb-spin {
+    to { transform: rotate(360deg); }
+}
+
+.tb-spin {
+    animation: tb-spin 1s linear infinite;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .tb-header {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .tb-tabs {
+        flex-wrap: wrap;
+    }
+    
+    .tb-tab {
+        padding: 10px 15px;
+        font-size: 0.85em;
+    }
+    
+    .tb-form-row {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<div class="tb-container">
+    <!-- Header -->
+    <div class="tb-header">
+        <div class="tb-title">
+            <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
+            <div>
+                <h1>Tegenett Backup</h1>
+                <small style="color: var(--tb-text-muted)">v2026.01.27</small>
+            </div>
+        </div>
+        <div class="tb-header-actions">
+            <span id="serviceStatus" class="tb-status-badge <?=$isRunning ? 'tb-status-running' : 'tb-status-stopped'?>">
+                <i class="fas fa-circle"></i>
+                <?=$isRunning ? 'Running' : 'Stopped'?>
+            </span>
+            <button class="tb-btn tb-btn-secondary" onclick="toggleService()">
+                <i class="fas fa-power-off"></i>
+                <span id="serviceToggleText"><?=$isRunning ? 'Stop' : 'Start'?></span>
+            </button>
+        </div>
+    </div>
+    
+    <!-- Tabs -->
+    <div class="tb-tabs">
+        <button class="tb-tab active" onclick="showTab('dashboard')">
+            <i class="fas fa-tachometer-alt"></i> Dashboard
+        </button>
+        <button class="tb-tab" onclick="showTab('jobs')">
+            <i class="fas fa-tasks"></i> Jobs
+        </button>
+        <button class="tb-tab" onclick="showTab('history')">
+            <i class="fas fa-history"></i> History
+        </button>
+        <button class="tb-tab" onclick="showTab('stats')">
+            <i class="fas fa-chart-bar"></i> Statistics
+        </button>
+        <button class="tb-tab" onclick="showTab('logs')">
+            <i class="fas fa-file-alt"></i> Logs
+        </button>
+        <button class="tb-tab" onclick="showTab('settings')">
+            <i class="fas fa-cog"></i> Settings
+        </button>
+    </div>
+    
+    <!-- Dashboard Tab -->
+    <div id="tab-dashboard" class="tb-tab-content active">
+        <div class="tb-stats-grid">
+            <div class="tb-stat-card">
+                <div class="tb-stat-icon"><i class="fas fa-play-circle"></i></div>
+                <div class="tb-stat-value" id="statTotalJobs">-</div>
+                <div class="tb-stat-label">Total Jobs</div>
+            </div>
+            <div class="tb-stat-card">
+                <div class="tb-stat-icon"><i class="fas fa-check-circle" style="color: var(--tb-success)"></i></div>
+                <div class="tb-stat-value" id="statSuccessful">-</div>
+                <div class="tb-stat-label">Successful (30d)</div>
+            </div>
+            <div class="tb-stat-card">
+                <div class="tb-stat-icon"><i class="fas fa-times-circle" style="color: var(--tb-danger)"></i></div>
+                <div class="tb-stat-value" id="statFailed">-</div>
+                <div class="tb-stat-label">Failed (30d)</div>
+            </div>
+            <div class="tb-stat-card">
+                <div class="tb-stat-icon"><i class="fas fa-database"></i></div>
+                <div class="tb-stat-value" id="statTotalData">-</div>
+                <div class="tb-stat-label">Data Transferred</div>
+            </div>
+        </div>
+        
+        <div class="tb-card">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-running"></i> Current Status</h3>
+                <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="refreshDashboard()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+            <div id="currentStatus">
+                <p style="color: var(--tb-text-muted)">Loading...</p>
+            </div>
+        </div>
+        
+        <div class="tb-card">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-clock"></i> Recent Activity</h3>
+            </div>
+            <div id="recentActivity">
+                <p style="color: var(--tb-text-muted)">Loading...</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Jobs Tab -->
+    <div id="tab-jobs" class="tb-tab-content">
+        <div class="tb-card">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-tasks"></i> Backup Jobs</h3>
+                <button class="tb-btn tb-btn-primary" onclick="showJobModal()">
+                    <i class="fas fa-plus"></i> Add Job
+                </button>
+            </div>
+            <div id="jobsList">
+                <p style="color: var(--tb-text-muted)">Loading...</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- History Tab -->
+    <div id="tab-history" class="tb-tab-content">
+        <div class="tb-card">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-history"></i> Backup History</h3>
+                <select id="historyFilter" onchange="loadHistory()" style="padding: 5px 10px; background: var(--tb-bg); color: var(--tb-text); border: 1px solid var(--tb-border); border-radius: 4px;">
+                    <option value="">All Jobs</option>
+                </select>
+            </div>
+            <div id="historyList">
+                <p style="color: var(--tb-text-muted)">Loading...</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Statistics Tab -->
+    <div id="tab-stats" class="tb-tab-content">
+        <div class="tb-card">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-chart-bar"></i> Backup Statistics (30 Days)</h3>
+            </div>
+            <canvas id="statsChart" height="100"></canvas>
+        </div>
+    </div>
+    
+    <!-- Logs Tab -->
+    <div id="tab-logs" class="tb-tab-content">
+        <div class="tb-card">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-file-alt"></i> Service Log</h3>
+                <div>
+                    <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="loadLogs()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div id="logViewer" class="tb-log-viewer">Loading...</div>
+        </div>
+    </div>
+    
+    <!-- Settings Tab -->
+    <div id="tab-settings" class="tb-tab-content">
+        <div class="tb-card">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-cog"></i> General Settings</h3>
+            </div>
+            <form id="settingsForm">
+                <div class="tb-form-row">
+                    <div class="tb-form-group">
+                        <label>Log Level</label>
+                        <select name="LOG_LEVEL" id="setLogLevel">
+                            <option value="DEBUG">DEBUG</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARNING">WARNING</option>
+                            <option value="ERROR">ERROR</option>
+                        </select>
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Default Bandwidth Limit (KB/s, 0=unlimited)</label>
+                        <input type="number" name="DEFAULT_BANDWIDTH_LIMIT" id="setBandwidth" min="0">
+                    </div>
+                </div>
+                
+                <h4 style="color: var(--tb-primary); margin-top: 20px;">
+                    <i class="fab fa-discord"></i> Discord Notifications
+                </h4>
+                <div class="tb-form-group">
+                    <label>Webhook URL</label>
+                    <input type="text" name="DISCORD_WEBHOOK_URL" id="setDiscordUrl" placeholder="https://discord.com/api/webhooks/...">
+                </div>
+                <div class="tb-form-row">
+                    <div class="tb-form-group">
+                        <label>
+                            <input type="checkbox" name="DISCORD_DAILY_SUMMARY" id="setDailySummary">
+                            Enable Daily Summary
+                        </label>
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Summary Hour (0-23)</label>
+                        <input type="number" name="DISCORD_SUMMARY_HOUR" id="setSummaryHour" min="0" max="23">
+                    </div>
+                </div>
+                
+                <h4 style="color: var(--tb-primary); margin-top: 20px;">
+                    <i class="fas fa-bell"></i> Unraid Notifications
+                </h4>
+                <div class="tb-form-group">
+                    <label>
+                        <input type="checkbox" name="UNRAID_NOTIFICATIONS" id="setUnraidNotify" checked>
+                        Enable Unraid Notifications
+                    </label>
+                </div>
+                
+                <h4 style="color: var(--tb-primary); margin-top: 20px;">
+                    <i class="fas fa-network-wired"></i> Wake-on-LAN Settings
+                </h4>
+                <div class="tb-form-row">
+                    <div class="tb-form-group">
+                        <label>WOL Wait Timeout (seconds)</label>
+                        <input type="number" name="WOL_WAIT_TIMEOUT" id="setWolTimeout" min="30" max="600">
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Ping Interval (seconds)</label>
+                        <input type="number" name="WOL_PING_INTERVAL" id="setWolInterval" min="1" max="30">
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <button type="submit" class="tb-btn tb-btn-primary">
+                        <i class="fas fa-save"></i> Save Settings
+                    </button>
+                    <button type="button" class="tb-btn tb-btn-secondary" onclick="testDiscord()">
+                        <i class="fab fa-discord"></i> Test Discord
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Job Modal -->
+<div id="jobModal" class="tb-modal-overlay">
+    <div class="tb-modal">
+        <div class="tb-modal-header">
+            <h3 id="jobModalTitle">Add Backup Job</h3>
+            <button class="tb-modal-close" onclick="closeJobModal()">&times;</button>
+        </div>
+        <div class="tb-modal-body">
+            <form id="jobForm">
+                <input type="hidden" id="jobId" name="id">
+                
+                <div class="tb-form-group">
+                    <label>Job Name *</label>
+                    <input type="text" id="jobName" name="name" required placeholder="My Backup Job">
+                </div>
+                
+                <div class="tb-form-group">
+                    <label>Job Type *</label>
+                    <select id="jobType" name="job_type" onchange="toggleJobFields()" required>
+                        <option value="local">Local (Array to Share)</option>
+                        <option value="remote_smb">Remote SMB</option>
+                        <option value="remote_smb_wol">Remote SMB with WOL</option>
+                    </select>
+                </div>
+                
+                <div class="tb-form-group">
+                    <label>Source Path *</label>
+                    <input type="text" id="jobSource" name="source_path" required placeholder="/mnt/user/appdata">
+                </div>
+                
+                <div class="tb-form-group">
+                    <label>Destination Path</label>
+                    <input type="text" id="jobDest" name="dest_path" placeholder="/mnt/user/backups">
+                    <div class="tb-form-hint">For remote: subdirectory within mount point</div>
+                </div>
+                
+                <!-- Remote fields -->
+                <div id="remoteFields" style="display: none;">
+                    <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
+                        <i class="fas fa-server"></i> Remote Settings
+                    </h4>
+                    
+                    <div class="tb-form-row">
+                        <div class="tb-form-group">
+                            <label>Remote Host (IP)</label>
+                            <input type="text" id="jobRemoteHost" name="remote_host" placeholder="192.168.0.31">
+                        </div>
+                        <div class="tb-form-group">
+                            <label>Remote Share</label>
+                            <input type="text" id="jobRemoteShare" name="remote_share" placeholder="//192.168.0.31/backups">
+                        </div>
+                    </div>
+                    
+                    <div class="tb-form-group">
+                        <label>Mount Point</label>
+                        <input type="text" id="jobMountPoint" name="remote_mount_point" placeholder="/mnt/remotes/192.168.0.31_backups">
+                        <div class="tb-form-hint">As configured in Unassigned Devices</div>
+                    </div>
+                </div>
+                
+                <!-- WOL fields -->
+                <div id="wolFields" style="display: none;">
+                    <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
+                        <i class="fas fa-broadcast-tower"></i> Wake-on-LAN Settings
+                    </h4>
+                    
+                    <div class="tb-form-row">
+                        <div class="tb-form-group">
+                            <label>MAC Address</label>
+                            <input type="text" id="jobMac" name="mac_address" placeholder="AA:BB:CC:DD:EE:FF">
+                        </div>
+                        <div class="tb-form-group" style="display: flex; align-items: flex-end;">
+                            <button type="button" class="tb-btn tb-btn-secondary" onclick="testWol()">
+                                <i class="fas fa-bolt"></i> Test WOL
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="tb-form-group">
+                        <label>
+                            <input type="checkbox" id="jobShutdown" name="shutdown_after">
+                            Shutdown after backup (if woken by WOL)
+                        </label>
+                    </div>
+                    
+                    <div id="shutdownCredentials" style="display: none;">
+                        <div class="tb-form-row">
+                            <div class="tb-form-group">
+                                <label>Windows Username</label>
+                                <input type="text" id="jobRemoteUser" name="remote_user" placeholder="Administrator">
+                            </div>
+                            <div class="tb-form-group">
+                                <label>Windows Password</label>
+                                <input type="password" id="jobRemotePass" name="remote_pass">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
+                    <i class="fas fa-clock"></i> Schedule
+                </h4>
+                
+                <div class="tb-form-row">
+                    <div class="tb-form-group">
+                        <label>Schedule Type</label>
+                        <select id="jobScheduleType" name="schedule_type" onchange="toggleScheduleFields()">
+                            <option value="disabled">Disabled (Manual only)</option>
+                            <option value="hourly">Hourly</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="custom">Custom (Cron)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div id="scheduleFields" style="display: none;">
+                    <div class="tb-form-row">
+                        <div class="tb-form-group" id="scheduleHourGroup">
+                            <label>Hour (0-23)</label>
+                            <input type="number" id="jobScheduleHour" name="schedule_hour" min="0" max="23" value="2">
+                        </div>
+                        <div class="tb-form-group" id="scheduleMinuteGroup">
+                            <label>Minute (0-59)</label>
+                            <input type="number" id="jobScheduleMinute" name="schedule_minute" min="0" max="59" value="0">
+                        </div>
+                        <div class="tb-form-group" id="scheduleDayGroup" style="display: none;">
+                            <label>Day of Week</label>
+                            <select id="jobScheduleDay" name="schedule_day">
+                                <option value="0">Monday</option>
+                                <option value="1">Tuesday</option>
+                                <option value="2">Wednesday</option>
+                                <option value="3">Thursday</option>
+                                <option value="4">Friday</option>
+                                <option value="5">Saturday</option>
+                                <option value="6">Sunday</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="tb-form-group" id="scheduleCronGroup" style="display: none;">
+                        <label>Cron Expression</label>
+                        <input type="text" id="jobScheduleCron" name="schedule_cron" placeholder="0 2 * * *">
+                        <div class="tb-form-hint">Format: minute hour day month weekday</div>
+                    </div>
+                </div>
+                
+                <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
+                    <i class="fas fa-sliders-h"></i> Advanced
+                </h4>
+                
+                <div class="tb-form-row">
+                    <div class="tb-form-group">
+                        <label>Bandwidth Limit (KB/s, 0=unlimited)</label>
+                        <input type="number" id="jobBandwidth" name="bandwidth_limit" min="0" value="0">
+                    </div>
+                    <div class="tb-form-group">
+                        <label>
+                            <input type="checkbox" id="jobEnabled" name="enabled" checked>
+                            Enabled
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="tb-form-group">
+                    <label>Exclude Patterns (one per line)</label>
+                    <textarea id="jobExcludes" name="exclude_patterns" rows="3" placeholder="*.tmp&#10;*.log&#10;cache/"></textarea>
+                </div>
+            </form>
+        </div>
+        <div class="tb-modal-footer">
+            <button class="tb-btn tb-btn-secondary" onclick="closeJobModal()">Cancel</button>
+            <button class="tb-btn tb-btn-primary" onclick="saveJob()">
+                <i class="fas fa-save"></i> Save Job
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================
+// TEGENETT BACKUP - JavaScript
+// ============================================
+
+const TB = {
+    ajaxUrl: '/plugins/tegenett_backup/include/ajax.php',
+    refreshInterval: null,
+    statsChart: null
+};
+
+// ====== Tab Navigation ======
+
+function showTab(tabName) {
+    document.querySelectorAll('.tb-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tb-tab-content').forEach(t => t.classList.remove('active'));
+    
+    document.querySelector(`.tb-tab[onclick="showTab('${tabName}')"]`).classList.add('active');
+    document.getElementById(`tab-${tabName}`).classList.add('active');
+    
+    // Load data for tab
+    switch(tabName) {
+        case 'dashboard': refreshDashboard(); break;
+        case 'jobs': loadJobs(); break;
+        case 'history': loadHistory(); break;
+        case 'stats': loadStats(); break;
+        case 'logs': loadLogs(); break;
+        case 'settings': loadSettings(); break;
+    }
+}
+
+// ====== API Helper ======
+
+async function apiCall(action, params = {}) {
+    const url = new URL(TB.ajaxUrl, window.location.origin);
+    url.searchParams.set('action', action);
+    
+    for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== null) {
+            url.searchParams.set(key, value);
+        }
+    }
+    
+    try {
+        const response = await fetch(url);
+        return await response.json();
+    } catch (e) {
+        console.error('API Error:', e);
+        return { success: false, error: e.message };
+    }
+}
+
+async function apiPost(action, data = {}) {
+    const url = new URL(TB.ajaxUrl, window.location.origin);
+    url.searchParams.set('action', action);
+    
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        return await response.json();
+    } catch (e) {
+        console.error('API Error:', e);
+        return { success: false, error: e.message };
+    }
+}
+
+// ====== Dashboard ======
+
+async function refreshDashboard() {
+    // Load status
+    const status = await apiCall('status');
+    const statusDiv = document.getElementById('currentStatus');
+    
+    if (status.success) {
+        if (status.backup?.running) {
+            statusDiv.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <i class="fas fa-sync-alt tb-spin" style="font-size: 2em; color: var(--tb-primary)"></i>
+                    <div>
+                        <strong>Running:</strong> ${status.backup.job_name}<br>
+                        <small style="color: var(--tb-text-muted)">Phase: ${status.backup.progress?.phase || 'running'}</small>
+                    </div>
+                </div>
+            `;
+        } else {
+            statusDiv.innerHTML = `
+                <p><i class="fas fa-check-circle" style="color: var(--tb-success)"></i> No backup currently running</p>
+                <p style="color: var(--tb-text-muted); font-size: 0.9em;">
+                    Uptime: ${formatDuration(status.uptime)} |
+                    Unassigned Devices: ${status.ud_available ? '<span style="color: var(--tb-success)">Available</span>' : '<span style="color: var(--tb-danger)">Not found</span>'}
+                </p>
+            `;
+        }
+    } else {
+        statusDiv.innerHTML = `<p style="color: var(--tb-danger)"><i class="fas fa-exclamation-triangle"></i> Service not responding</p>`;
+    }
+    
+    // Load stats
+    const stats = await apiCall('get_stats', { days: 30 });
+    if (stats.success) {
+        const totals = stats.totals || {};
+        document.getElementById('statTotalJobs').textContent = stats.jobs?.length || totals.total_runs || 0;
+        document.getElementById('statSuccessful').textContent = totals.successful || 0;
+        document.getElementById('statFailed').textContent = totals.failed || 0;
+        document.getElementById('statTotalData').textContent = formatBytes(totals.total_bytes || 0);
+    }
+    
+    // Load recent activity
+    const history = await apiCall('get_history', { limit: 5 });
+    const activityDiv = document.getElementById('recentActivity');
+    
+    if (history.success && history.history?.length > 0) {
+        let html = '<table class="tb-table"><thead><tr><th>Job</th><th>Status</th><th>Time</th><th>Size</th></tr></thead><tbody>';
+        for (const h of history.history) {
+            const statusBadge = h.status === 'completed' ? 'tb-badge-success' : 
+                               h.status === 'running' ? 'tb-badge-info' : 'tb-badge-danger';
+            html += `<tr>
+                <td>${h.job_name}</td>
+                <td><span class="tb-badge ${statusBadge}">${h.status}</span></td>
+                <td>${formatDate(h.started_at)}</td>
+                <td>${formatBytes(h.bytes_transferred)}</td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+        activityDiv.innerHTML = html;
+    } else {
+        activityDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No recent activity</p>';
+    }
+}
+
+// ====== Jobs ======
+
+async function loadJobs() {
+    const result = await apiCall('get_jobs');
+    const jobsDiv = document.getElementById('jobsList');
+    
+    // Also populate history filter
+    const historyFilter = document.getElementById('historyFilter');
+    historyFilter.innerHTML = '<option value="">All Jobs</option>';
+    
+    if (result.success && result.jobs?.length > 0) {
+        let html = '<table class="tb-table"><thead><tr><th>Name</th><th>Type</th><th>Schedule</th><th>Last Run</th><th>Actions</th></tr></thead><tbody>';
+        
+        for (const job of result.jobs) {
+            const typeBadge = job.job_type === 'local' ? 'tb-badge-info' : 
+                             job.job_type.includes('wol') ? 'tb-badge-warning' : 'tb-badge-secondary';
+            const lastRun = job.last_run ? formatDate(job.last_run.started_at) : 'Never';
+            const lastStatus = job.last_run ? 
+                (job.last_run.status === 'completed' ? '✅' : '❌') : '';
+            
+            html += `<tr>
+                <td>
+                    ${job.enabled ? '' : '<i class="fas fa-pause-circle" style="color: var(--tb-text-muted)" title="Disabled"></i> '}
+                    ${job.name}
+                </td>
+                <td><span class="tb-badge ${typeBadge}">${job.job_type}</span></td>
+                <td>${job.schedule_type === 'disabled' ? '<span style="color: var(--tb-text-muted)">Manual</span>' : job.schedule_type}</td>
+                <td>${lastStatus} ${lastRun}</td>
+                <td>
+                    <button class="tb-btn tb-btn-sm tb-btn-success" onclick="runJob(${job.id})" title="Run Now">
+                        <i class="fas fa-play"></i>
+                    </button>
+                    <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="runJob(${job.id}, true)" title="Dry Run">
+                        <i class="fas fa-vial"></i>
+                    </button>
+                    <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="editJob(${job.id})" title="Edit">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="tb-btn tb-btn-sm tb-btn-danger" onclick="deleteJob(${job.id})" title="Delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>`;
+            
+            historyFilter.innerHTML += `<option value="${job.id}">${job.name}</option>`;
+        }
+        
+        html += '</tbody></table>';
+        jobsDiv.innerHTML = html;
+    } else {
+        jobsDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No backup jobs configured. Click "Add Job" to create one.</p>';
+    }
+}
+
+async function runJob(jobId, dryRun = false) {
+    const action = dryRun ? 'dry run' : 'run';
+    if (!confirm(`Are you sure you want to ${action} this job?`)) return;
+    
+    const result = await apiCall('run_job', { id: jobId, dry_run: dryRun ? 'true' : 'false' });
+    
+    if (result.success) {
+        alert(`Job started${dryRun ? ' (dry run)' : ''}!`);
+        showTab('dashboard');
+    } else {
+        alert('Error: ' + (result.error || 'Unknown error'));
+    }
+}
+
+async function deleteJob(jobId) {
+    if (!confirm('Are you sure you want to delete this job? This will also delete all history for this job.')) return;
+    
+    const result = await apiCall('delete_job', { id: jobId });
+    
+    if (result.success) {
+        loadJobs();
+    } else {
+        alert('Error: ' + (result.error || 'Unknown error'));
+    }
+}
+
+// ====== Job Modal ======
+
+function showJobModal(jobId = null) {
+    document.getElementById('jobModalTitle').textContent = jobId ? 'Edit Backup Job' : 'Add Backup Job';
+    document.getElementById('jobForm').reset();
+    document.getElementById('jobId').value = jobId || '';
+    document.getElementById('jobEnabled').checked = true;
+    
+    toggleJobFields();
+    toggleScheduleFields();
+    
+    if (jobId) {
+        loadJobForEdit(jobId);
+    }
+    
+    document.getElementById('jobModal').classList.add('active');
+}
+
+function closeJobModal() {
+    document.getElementById('jobModal').classList.remove('active');
+}
+
+async function loadJobForEdit(jobId) {
+    const result = await apiCall('get_job', { id: jobId });
+    
+    if (result.success && result.job) {
+        const job = result.job;
+        
+        document.getElementById('jobName').value = job.name || '';
+        document.getElementById('jobType').value = job.job_type || 'local';
+        document.getElementById('jobSource').value = job.source_path || '';
+        document.getElementById('jobDest').value = job.dest_path || '';
+        document.getElementById('jobRemoteHost').value = job.remote_host || '';
+        document.getElementById('jobRemoteShare').value = job.remote_share || '';
+        document.getElementById('jobMountPoint').value = job.remote_mount_point || '';
+        document.getElementById('jobMac').value = job.mac_address || '';
+        document.getElementById('jobShutdown').checked = !!job.shutdown_after;
+        document.getElementById('jobRemoteUser').value = job.remote_user || '';
+        document.getElementById('jobRemotePass').value = job.remote_pass || '';
+        document.getElementById('jobScheduleType').value = job.schedule_type || 'disabled';
+        document.getElementById('jobScheduleHour').value = job.schedule_hour || 0;
+        document.getElementById('jobScheduleMinute').value = job.schedule_minute || 0;
+        document.getElementById('jobScheduleDay').value = job.schedule_day || 0;
+        document.getElementById('jobScheduleCron').value = job.schedule_cron || '';
+        document.getElementById('jobBandwidth').value = job.bandwidth_limit || 0;
+        document.getElementById('jobEnabled').checked = !!job.enabled;
+        document.getElementById('jobExcludes').value = job.exclude_patterns || '';
+        
+        toggleJobFields();
+        toggleScheduleFields();
+        toggleShutdownCredentials();
+    }
+}
+
+function toggleJobFields() {
+    const jobType = document.getElementById('jobType').value;
+    
+    document.getElementById('remoteFields').style.display = 
+        jobType.includes('remote') ? 'block' : 'none';
+    
+    document.getElementById('wolFields').style.display = 
+        jobType.includes('wol') ? 'block' : 'none';
+}
+
+function toggleScheduleFields() {
+    const scheduleType = document.getElementById('jobScheduleType').value;
+    const show = scheduleType !== 'disabled';
+    
+    document.getElementById('scheduleFields').style.display = show ? 'block' : 'none';
+    document.getElementById('scheduleHourGroup').style.display = 
+        ['daily', 'weekly'].includes(scheduleType) ? 'block' : 'none';
+    document.getElementById('scheduleDayGroup').style.display = 
+        scheduleType === 'weekly' ? 'block' : 'none';
+    document.getElementById('scheduleCronGroup').style.display = 
+        scheduleType === 'custom' ? 'block' : 'none';
+}
+
+function toggleShutdownCredentials() {
+    const show = document.getElementById('jobShutdown').checked;
+    document.getElementById('shutdownCredentials').style.display = show ? 'block' : 'none';
+}
+
+document.getElementById('jobShutdown').addEventListener('change', toggleShutdownCredentials);
+
+async function saveJob() {
+    const form = document.getElementById('jobForm');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    
+    // Convert checkboxes
+    data.enabled = document.getElementById('jobEnabled').checked ? 1 : 0;
+    data.shutdown_after = document.getElementById('jobShutdown').checked ? 1 : 0;
+    data.use_wol = data.job_type.includes('wol') ? 1 : 0;
+    
+    const jobId = data.id;
+    delete data.id;
+    
+    let result;
+    if (jobId) {
+        result = await apiPost('update_job', { ...data, id: jobId });
+    } else {
+        result = await apiPost('create_job', data);
+    }
+    
+    if (result.success) {
+        closeJobModal();
+        loadJobs();
+    } else {
+        alert('Error: ' + (result.error || 'Unknown error'));
+    }
+}
+
+async function editJob(jobId) {
+    showJobModal(jobId);
+}
+
+// ====== History ======
+
+async function loadHistory() {
+    const jobId = document.getElementById('historyFilter').value;
+    const result = await apiCall('get_history', { limit: 100, job_id: jobId || undefined });
+    const historyDiv = document.getElementById('historyList');
+    
+    if (result.success && result.history?.length > 0) {
+        let html = '<table class="tb-table"><thead><tr><th>Job</th><th>Status</th><th>Started</th><th>Duration</th><th>Size</th><th>Speed</th></tr></thead><tbody>';
+        
+        for (const h of result.history) {
+            const statusBadge = h.status === 'completed' ? 'tb-badge-success' : 
+                               h.status === 'running' ? 'tb-badge-info' : 'tb-badge-danger';
+            
+            html += `<tr>
+                <td>${h.job_name}${h.dry_run ? ' <span class="tb-badge tb-badge-secondary">dry run</span>' : ''}</td>
+                <td><span class="tb-badge ${statusBadge}">${h.status}</span></td>
+                <td>${formatDate(h.started_at)}</td>
+                <td>${formatDuration(h.duration_seconds)}</td>
+                <td>${formatBytes(h.bytes_transferred)}</td>
+                <td>${h.transfer_speed_mbps?.toFixed(1) || '-'} MB/s</td>
+            </tr>`;
+        }
+        
+        html += '</tbody></table>';
+        historyDiv.innerHTML = html;
+    } else {
+        historyDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No backup history</p>';
+    }
+}
+
+// ====== Statistics ======
+
+async function loadStats() {
+    const result = await apiCall('get_stats', { days: 30 });
+    
+    if (result.success && result.stats?.length > 0) {
+        const labels = result.stats.map(s => s.date).reverse();
+        const successful = result.stats.map(s => s.successful_jobs).reverse();
+        const failed = result.stats.map(s => s.failed_jobs).reverse();
+        
+        const ctx = document.getElementById('statsChart').getContext('2d');
+        
+        if (TB.statsChart) {
+            TB.statsChart.destroy();
+        }
+        
+        TB.statsChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Successful',
+                        data: successful,
+                        backgroundColor: 'rgba(39, 174, 96, 0.7)'
+                    },
+                    {
+                        label: 'Failed',
+                        data: failed,
+                        backgroundColor: 'rgba(192, 57, 43, 0.7)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: { stacked: true },
+                    y: { stacked: true, beginAtZero: true }
+                }
+            }
+        });
+    }
+}
+
+// ====== Logs ======
+
+async function loadLogs() {
+    const result = await apiCall('get_logs', { lines: 200 });
+    const logDiv = document.getElementById('logViewer');
+    
+    if (result.success) {
+        logDiv.textContent = result.logs || 'No logs available';
+        logDiv.scrollTop = logDiv.scrollHeight;
+    } else {
+        logDiv.textContent = 'Error loading logs: ' + (result.error || 'Unknown');
+    }
+}
+
+// ====== Settings ======
+
+async function loadSettings() {
+    const result = await apiCall('get_settings');
+    
+    if (result.success && result.settings) {
+        const s = result.settings;
+        document.getElementById('setLogLevel').value = s.LOG_LEVEL || 'INFO';
+        document.getElementById('setBandwidth').value = s.DEFAULT_BANDWIDTH_LIMIT || 0;
+        document.getElementById('setDiscordUrl').value = s.DISCORD_WEBHOOK_URL || '';
+        document.getElementById('setDailySummary').checked = !!s.DISCORD_DAILY_SUMMARY;
+        document.getElementById('setSummaryHour').value = s.DISCORD_SUMMARY_HOUR || 20;
+        document.getElementById('setUnraidNotify').checked = s.UNRAID_NOTIFICATIONS !== false;
+        document.getElementById('setWolTimeout').value = s.WOL_WAIT_TIMEOUT || 120;
+        document.getElementById('setWolInterval').value = s.WOL_PING_INTERVAL || 5;
+    }
+}
+
+document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const data = {
+        LOG_LEVEL: document.getElementById('setLogLevel').value,
+        DEFAULT_BANDWIDTH_LIMIT: parseInt(document.getElementById('setBandwidth').value) || 0,
+        DISCORD_WEBHOOK_URL: document.getElementById('setDiscordUrl').value,
+        DISCORD_DAILY_SUMMARY: document.getElementById('setDailySummary').checked,
+        DISCORD_SUMMARY_HOUR: parseInt(document.getElementById('setSummaryHour').value) || 20,
+        UNRAID_NOTIFICATIONS: document.getElementById('setUnraidNotify').checked,
+        WOL_WAIT_TIMEOUT: parseInt(document.getElementById('setWolTimeout').value) || 120,
+        WOL_PING_INTERVAL: parseInt(document.getElementById('setWolInterval').value) || 5
+    };
+    
+    const result = await apiPost('save_settings', data);
+    
+    if (result.success) {
+        alert('Settings saved! Restart the service for some changes to take effect.');
+    } else {
+        alert('Error: ' + (result.error || 'Unknown error'));
+    }
+});
+
+async function testDiscord() {
+    const result = await apiCall('test_discord');
+    
+    if (result.success) {
+        alert('Test notification sent! Check your Discord channel.');
+    } else {
+        alert('Error: ' + (result.error || 'Failed to send'));
+    }
+}
+
+async function testWol() {
+    const mac = document.getElementById('jobMac').value;
+    if (!mac) {
+        alert('Please enter a MAC address first');
+        return;
+    }
+    
+    const result = await apiCall('test_wol', { mac_address: mac });
+    
+    if (result.success) {
+        alert('WOL packet sent to ' + mac);
+    } else {
+        alert('Error: ' + (result.error || 'Failed to send'));
+    }
+}
+
+// ====== Service Control ======
+
+async function toggleService() {
+    const status = document.getElementById('serviceStatus');
+    const isRunning = status.classList.contains('tb-status-running');
+    const cmd = isRunning ? 'stop' : 'start';
+    
+    const result = await apiCall('service', { cmd: cmd });
+    
+    if (result.success) {
+        // Update UI
+        if (cmd === 'start') {
+            status.classList.remove('tb-status-stopped');
+            status.classList.add('tb-status-running');
+            status.innerHTML = '<i class="fas fa-circle"></i> Running';
+            document.getElementById('serviceToggleText').textContent = 'Stop';
+        } else {
+            status.classList.remove('tb-status-running');
+            status.classList.add('tb-status-stopped');
+            status.innerHTML = '<i class="fas fa-circle"></i> Stopped';
+            document.getElementById('serviceToggleText').textContent = 'Start';
+        }
+    } else {
+        alert('Error: ' + (result.output || result.error || 'Unknown'));
+    }
+}
+
+// ====== Utilities ======
+
+function formatBytes(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function formatDuration(seconds) {
+    if (!seconds || seconds === 0) return '-';
+    if (seconds < 60) return seconds + 's';
+    if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + (seconds % 60) + 's';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return h + 'h ' + m + 'm';
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+}
+
+// ====== Init ======
+
+document.addEventListener('DOMContentLoaded', () => {
+    refreshDashboard();
+    
+    // Auto-refresh every 30 seconds
+    TB.refreshInterval = setInterval(() => {
+        if (document.getElementById('tab-dashboard').classList.contains('active')) {
+            refreshDashboard();
+        }
+    }, 30000);
+});
+</script>
+]]>
+</INLINE>
+</FILE>
+
+<!--
+tegenett_backup.py - Python daemon
+-->
+<FILE Name="/usr/local/emhttp/plugins/&name;/&name;.py" Mode="0755">
+<INLINE>
+<![CDATA[
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Tegenett Backup - Python Daemon
+Smart backup solution for Unraid with local, remote SMB, WOL, and cloud support
+Author: Tegenett
+"""
+
+import os
+import sys
+import time
+import json
+import sqlite3
+import logging
+import signal
+import socket
+import subprocess
+import threading
+import re
+from pathlib import Path
+from datetime import datetime, timedelta
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+# ============================================
+# CONFIGURATION
+# ============================================
+
+class Config:
+    PLUGIN_NAME = "tegenett_backup"
+    CONFIG_DIR = f"/boot/config/plugins/{PLUGIN_NAME}"
+    DATA_DIR = f"/mnt/user/appdata/{PLUGIN_NAME}"
+    DB_FILE = "tegenett_backup.db"
+    SETTINGS_FILE = "settings.json"
+    PID_FILE = f"/var/run/{PLUGIN_NAME}.pid"
+    VERSION = "2026.01.27"
+    
+    DEFAULTS = {
+        "ENABLED": True,
+        "SERVER_PORT": 9998,
+        "LOG_LEVEL": "INFO",
+        "LOG_MAX_LINES": 10000,
+        "DISCORD_WEBHOOK_URL": "",
+        "DISCORD_DAILY_SUMMARY": False,
+        "DISCORD_SUMMARY_HOUR": 20,
+        "UNRAID_NOTIFICATIONS": True,
+        "DEFAULT_BANDWIDTH_LIMIT": 0,
+        "RSYNC_OPTIONS": "-avh --delete --stats --progress",
+        "UD_MOUNT_TIMEOUT": 60,
+        "WOL_WAIT_TIMEOUT": 120,
+        "WOL_PING_INTERVAL": 5,
+        "SMB_SETTLE_TIME": 10
+    }
+    
+    C = DEFAULTS.copy()
+    
+    @classmethod
+    def load(cls):
+        """Load configuration from settings.json"""
+        os.makedirs(cls.CONFIG_DIR, exist_ok=True)
+        os.makedirs(cls.DATA_DIR, exist_ok=True)
+        os.makedirs(os.path.join(cls.DATA_DIR, "logs"), exist_ok=True)
+        
+        path = os.path.join(cls.CONFIG_DIR, cls.SETTINGS_FILE)
+        if os.path.exists(path):
+            try:
+                with open(path, 'r') as f:
+                    loaded = json.load(f)
+                    cls.C.update(loaded)
+            except Exception as e:
+                print(f"[Config] Load error: {e}")
+        
+        # Type conversions
+        int_keys = ["SERVER_PORT", "LOG_MAX_LINES", "DISCORD_SUMMARY_HOUR", 
+                    "DEFAULT_BANDWIDTH_LIMIT", "UD_MOUNT_TIMEOUT", 
+                    "WOL_WAIT_TIMEOUT", "WOL_PING_INTERVAL", "SMB_SETTLE_TIME"]
+        for key in int_keys:
+            cls.C[key] = int(cls.C.get(key, cls.DEFAULTS.get(key, 0)))
+    
+    @classmethod
+    def save(cls):
+        """Save current configuration to settings.json"""
+        path = os.path.join(cls.CONFIG_DIR, cls.SETTINGS_FILE)
+        try:
+            with open(path, 'w') as f:
+                json.dump(cls.C, f, indent=2)
+            return True
+        except Exception as e:
+            if 'logger' in globals():
+                logger.error(f"[Config] Save error: {e}")
+            return False
+
+Config.load()
+
+# ============================================
+# LOGGING
+# ============================================
+
+LOG_FILE = os.path.join(Config.DATA_DIR, "logs", f"{Config.PLUGIN_NAME}.log")
+os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+
+_log_level_str = Config.C.get('LOG_LEVEL', 'INFO').upper()
+_log_level = getattr(logging, _log_level_str, logging.INFO)
+
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=_log_level,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+console = logging.StreamHandler()
+console.setLevel(_log_level)
+console.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+logging.getLogger('').addHandler(console)
+logger = logging.getLogger(__name__)
+
+START_TIME = time.time()
+
+# ============================================
+# DATABASE
+# ============================================
+
+class Database:
+    def __init__(self):
+        self.db_path = os.path.join(Config.DATA_DIR, Config.DB_FILE)
+        self.lock = threading.RLock()
+        self._init_db()
+    
+    def _init_db(self):
+        """Initialize database tables"""
+        logger.info("[Database] Initializing database...")
+        with self._conn() as conn:
+            conn.executescript('''
+                CREATE TABLE IF NOT EXISTS backup_jobs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    enabled INTEGER DEFAULT 1,
+                    job_type TEXT NOT NULL,
+                    source_path TEXT NOT NULL,
+                    dest_path TEXT,
+                    remote_host TEXT,
+                    remote_share TEXT,
+                    remote_mount_point TEXT,
+                    remote_user TEXT,
+                    remote_pass TEXT,
+                    mac_address TEXT,
+                    use_wol INTEGER DEFAULT 0,
+                    shutdown_after INTEGER DEFAULT 0,
+                    schedule_type TEXT DEFAULT 'disabled',
+                    schedule_hour INTEGER DEFAULT 0,
+                    schedule_minute INTEGER DEFAULT 0,
+                    schedule_day INTEGER DEFAULT 0,
+                    schedule_cron TEXT,
+                    bandwidth_limit INTEGER DEFAULT 0,
+                    exclude_patterns TEXT,
+                    retention_count INTEGER DEFAULT 0,
+                    retention_days INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                
+                CREATE TABLE IF NOT EXISTS backup_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_id INTEGER NOT NULL,
+                    job_name TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    finished_at TIMESTAMP,
+                    bytes_transferred INTEGER DEFAULT 0,
+                    files_transferred INTEGER DEFAULT 0,
+                    duration_seconds INTEGER DEFAULT 0,
+                    transfer_speed_mbps REAL DEFAULT 0,
+                    error_message TEXT,
+                    dry_run INTEGER DEFAULT 0,
+                    log_output TEXT,
+                    FOREIGN KEY (job_id) REFERENCES backup_jobs(id) ON DELETE CASCADE
+                );
+                
+                CREATE TABLE IF NOT EXISTS daily_stats (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT UNIQUE NOT NULL,
+                    total_jobs_run INTEGER DEFAULT 0,
+                    successful_jobs INTEGER DEFAULT 0,
+                    failed_jobs INTEGER DEFAULT 0,
+                    total_bytes INTEGER DEFAULT 0,
+                    total_files INTEGER DEFAULT 0,
+                    total_duration INTEGER DEFAULT 0
+                );
+                
+                CREATE INDEX IF NOT EXISTS idx_history_job ON backup_history(job_id);
+                CREATE INDEX IF NOT EXISTS idx_history_status ON backup_history(status);
+                CREATE INDEX IF NOT EXISTS idx_history_started ON backup_history(started_at);
+                CREATE INDEX IF NOT EXISTS idx_stats_date ON daily_stats(date);
+            ''')
+        logger.info("[Database] Initialization complete")
+    
+    @contextmanager
+    def _conn(self):
+        """Thread-safe database connection context manager"""
+        acquired = self.lock.acquire(timeout=30)
+        if not acquired:
+            logger.error("[Database] Could not acquire lock within 30 seconds!")
+            raise Exception("Database lock timeout")
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=30, isolation_level='DEFERRED')
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=30000")
+            conn.execute("PRAGMA foreign_keys=ON")
+            try:
+                yield conn
+                conn.commit()
+            except Exception as e:
+                logger.error(f"[Database] Rolling back due to error: {e}")
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+        finally:
+            self.lock.release()
+    
+    # ---- Job CRUD ----
+    
+    def get_jobs(self):
+        """Get all backup jobs"""
+        with self._conn() as conn:
+            rows = conn.execute("SELECT * FROM backup_jobs ORDER BY name").fetchall()
+            return [dict(row) for row in rows]
+    
+    def get_enabled_jobs(self):
+        """Get enabled jobs only"""
+        with self._conn() as conn:
+            rows = conn.execute("SELECT * FROM backup_jobs WHERE enabled = 1 ORDER BY name").fetchall()
+            return [dict(row) for row in rows]
+    
+    def get_job(self, job_id):
+        """Get a single job by ID"""
+        with self._conn() as conn:
+            row = conn.execute("SELECT * FROM backup_jobs WHERE id = ?", (job_id,)).fetchone()
+            return dict(row) if row else None
+    
+    def create_job(self, job_data):
+        """Create a new backup job"""
+        logger.info(f"[Database] Creating job: {job_data.get('name')}")
+        with self._conn() as conn:
+            cursor = conn.execute('''
+                INSERT INTO backup_jobs (name, job_type, source_path, dest_path, 
+                    remote_host, remote_share, remote_mount_point, remote_user, remote_pass,
+                    mac_address, use_wol, shutdown_after, schedule_type, 
+                    schedule_hour, schedule_minute, schedule_day, schedule_cron,
+                    bandwidth_limit, exclude_patterns, retention_count, retention_days, enabled)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                job_data.get('name'),
+                job_data.get('job_type', 'local'),
+                job_data.get('source_path'),
+                job_data.get('dest_path'),
+                job_data.get('remote_host'),
+                job_data.get('remote_share'),
+                job_data.get('remote_mount_point'),
+                job_data.get('remote_user'),
+                job_data.get('remote_pass'),
+                job_data.get('mac_address'),
+                int(job_data.get('use_wol', 0)),
+                int(job_data.get('shutdown_after', 0)),
+                job_data.get('schedule_type', 'disabled'),
+                int(job_data.get('schedule_hour', 0)),
+                int(job_data.get('schedule_minute', 0)),
+                int(job_data.get('schedule_day', 0)),
+                job_data.get('schedule_cron'),
+                int(job_data.get('bandwidth_limit', 0)),
+                job_data.get('exclude_patterns'),
+                int(job_data.get('retention_count', 0)),
+                int(job_data.get('retention_days', 0)),
+                int(job_data.get('enabled', 1))
+            ))
+            job_id = cursor.lastrowid
+            logger.info(f"[Database] Created job ID: {job_id}")
+            return job_id
+    
+    def update_job(self, job_id, job_data):
+        """Update an existing backup job"""
+        logger.info(f"[Database] Updating job ID: {job_id}")
+        with self._conn() as conn:
+            conn.execute('''
+                UPDATE backup_jobs SET
+                    name = ?, job_type = ?, source_path = ?, dest_path = ?,
+                    remote_host = ?, remote_share = ?, remote_mount_point = ?,
+                    remote_user = ?, remote_pass = ?,
+                    mac_address = ?, use_wol = ?, shutdown_after = ?, schedule_type = ?,
+                    schedule_hour = ?, schedule_minute = ?, schedule_day = ?, schedule_cron = ?,
+                    bandwidth_limit = ?, exclude_patterns = ?, retention_count = ?, retention_days = ?,
+                    enabled = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (
+                job_data.get('name'),
+                job_data.get('job_type'),
+                job_data.get('source_path'),
+                job_data.get('dest_path'),
+                job_data.get('remote_host'),
+                job_data.get('remote_share'),
+                job_data.get('remote_mount_point'),
+                job_data.get('remote_user'),
+                job_data.get('remote_pass'),
+                job_data.get('mac_address'),
+                int(job_data.get('use_wol', 0)),
+                int(job_data.get('shutdown_after', 0)),
+                job_data.get('schedule_type'),
+                int(job_data.get('schedule_hour', 0)),
+                int(job_data.get('schedule_minute', 0)),
+                int(job_data.get('schedule_day', 0)),
+                job_data.get('schedule_cron'),
+                int(job_data.get('bandwidth_limit', 0)),
+                job_data.get('exclude_patterns'),
+                int(job_data.get('retention_count', 0)),
+                int(job_data.get('retention_days', 0)),
+                int(job_data.get('enabled', 1)),
+                job_id
+            ))
+    
+    def delete_job(self, job_id):
+        """Delete a backup job and its history"""
+        logger.info(f"[Database] Deleting job ID: {job_id}")
+        with self._conn() as conn:
+            conn.execute("DELETE FROM backup_history WHERE job_id = ?", (job_id,))
+            conn.execute("DELETE FROM backup_jobs WHERE id = ?", (job_id,))
+    
+    # ---- History ----
+    
+    def add_history(self, job_id, job_name, status, dry_run=False):
+        """Start a new history entry"""
+        with self._conn() as conn:
+            cursor = conn.execute('''
+                INSERT INTO backup_history (job_id, job_name, status, dry_run)
+                VALUES (?, ?, ?, ?)
+            ''', (job_id, job_name, status, 1 if dry_run else 0))
+            return cursor.lastrowid
+    
+    def update_history(self, history_id, status, bytes_transferred=0, files_transferred=0,
+                       duration_seconds=0, transfer_speed_mbps=0, error_message=None, log_output=None):
+        """Update history entry with results"""
+        with self._conn() as conn:
+            conn.execute('''
+                UPDATE backup_history SET
+                    status = ?, finished_at = CURRENT_TIMESTAMP,
+                    bytes_transferred = ?, files_transferred = ?,
+                    duration_seconds = ?, transfer_speed_mbps = ?,
+                    error_message = ?, log_output = ?
+                WHERE id = ?
+            ''', (status, bytes_transferred, files_transferred, duration_seconds,
+                  transfer_speed_mbps, error_message, log_output, history_id))
+    
+    def get_history(self, limit=100, job_id=None, status=None):
+        """Get backup history"""
+        with self._conn() as conn:
+            query = "SELECT * FROM backup_history WHERE 1=1"
+            params = []
+            
+            if job_id:
+                query += " AND job_id = ?"
+                params.append(job_id)
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+            
+            query += " ORDER BY started_at DESC LIMIT ?"
+            params.append(limit)
+            
+            rows = conn.execute(query, params).fetchall()
+            return [dict(row) for row in rows]
+    
+    def get_last_run(self, job_id):
+        """Get last run for a job (any status)"""
+        with self._conn() as conn:
+            row = conn.execute('''
+                SELECT * FROM backup_history 
+                WHERE job_id = ?
+                ORDER BY started_at DESC LIMIT 1
+            ''', (job_id,)).fetchone()
+            return dict(row) if row else None
+    
+    def get_last_successful_run(self, job_id):
+        """Get last successful run for a job"""
+        with self._conn() as conn:
+            row = conn.execute('''
+                SELECT * FROM backup_history 
+                WHERE job_id = ? AND status = 'completed'
+                ORDER BY started_at DESC LIMIT 1
+            ''', (job_id,)).fetchone()
+            return dict(row) if row else None
+    
+    def cleanup_history(self, days=90):
+        """Remove history older than X days"""
+        with self._conn() as conn:
+            conn.execute('''
+                DELETE FROM backup_history 
+                WHERE started_at < datetime('now', ?)
+            ''', (f'-{days} days',))
+    
+    # ---- Statistics ----
+    
+    def update_daily_stats(self, bytes_transferred, files_transferred, duration, success):
+        """Update daily statistics"""
+        today = datetime.now().strftime('%Y-%m-%d')
+        with self._conn() as conn:
+            conn.execute('''
+                INSERT INTO daily_stats (date, total_jobs_run, successful_jobs, failed_jobs,
+                    total_bytes, total_files, total_duration)
+                VALUES (?, 1, ?, ?, ?, ?, ?)
+                ON CONFLICT(date) DO UPDATE SET
+                    total_jobs_run = total_jobs_run + 1,
+                    successful_jobs = successful_jobs + ?,
+                    failed_jobs = failed_jobs + ?,
+                    total_bytes = total_bytes + ?,
+                    total_files = total_files + ?,
+                    total_duration = total_duration + ?
+            ''', (today, 1 if success else 0, 0 if success else 1, bytes_transferred,
+                  files_transferred, duration,
+                  1 if success else 0, 0 if success else 1, bytes_transferred,
+                  files_transferred, duration))
+    
+    def get_stats(self, days=30):
+        """Get statistics for the last N days"""
+        with self._conn() as conn:
+            rows = conn.execute('''
+                SELECT * FROM daily_stats 
+                WHERE date >= date('now', ?)
+                ORDER BY date DESC
+            ''', (f'-{days} days',)).fetchall()
+            return [dict(row) for row in rows]
+    
+    def get_totals(self):
+        """Get overall totals"""
+        with self._conn() as conn:
+            row = conn.execute('''
+                SELECT 
+                    COUNT(*) as total_runs,
+                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as successful,
+                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+                    SUM(bytes_transferred) as total_bytes,
+                    SUM(files_transferred) as total_files,
+                    SUM(duration_seconds) as total_duration
+                FROM backup_history
+            ''').fetchone()
+            return dict(row) if row else {}
+
+DB = Database()
+
+# ============================================
+# WAKE ON LAN
+# ============================================
+
+class WakeOnLan:
+    @staticmethod
+    def send_magic_packet(mac_address, broadcast_ip='255.255.255.255', port=9):
+        """Send Wake-on-LAN magic packet"""
+        try:
+            # Clean MAC address - accept multiple formats
+            mac = mac_address.replace(':', '').replace('-', '').replace('.', '').lower()
+            if len(mac) != 12:
+                raise ValueError(f"Invalid MAC address: {mac_address}")
+            
+            # Validate hex
+            try:
+                int(mac, 16)
+            except ValueError:
+                raise ValueError(f"Invalid MAC address (not hex): {mac_address}")
+            
+            # Build magic packet: 6x FF + 16x MAC
+            mac_bytes = bytes.fromhex(mac)
+            packet = b'\xff' * 6 + mac_bytes * 16
+            
+            # Send via UDP broadcast
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.sendto(packet, (broadcast_ip, port))
+            sock.close()
+            
+            logger.info(f"[WOL] Sent magic packet to {mac_address}")
+            return True, "Magic packet sent"
+        except Exception as e:
+            logger.error(f"[WOL] Failed to send magic packet: {e}")
+            return False, str(e)
+    
+    @staticmethod
+    def wait_for_host(host, timeout=120, interval=5):
+        """Wait for host to come online (respond to ping)"""
+        logger.info(f"[WOL] Waiting for {host} to come online (timeout: {timeout}s)")
+        start = time.time()
+        while time.time() - start < timeout:
+            if WakeOnLan.ping(host):
+                elapsed = int(time.time() - start)
+                logger.info(f"[WOL] {host} is online after {elapsed}s")
+                return True, elapsed
+            time.sleep(interval)
+        logger.warning(f"[WOL] Timeout waiting for {host}")
+        return False, timeout
+    
+    @staticmethod
+    def ping(host, timeout=2):
+        """Ping a host, return True if reachable"""
+        try:
+            result = subprocess.run(
+                ['ping', '-c', '1', '-W', str(timeout), host],
+                capture_output=True, timeout=timeout+2
+            )
+            return result.returncode == 0
+        except:
+            return False
+
+# ============================================
+# REMOTE SHUTDOWN
+# ============================================
+
+class RemoteShutdown:
+    @staticmethod
+    def shutdown_windows(host, username, password, timeout_seconds=30, force=True, message="Backup completed"):
+        """
+        Shutdown Windows machine via net rpc (Samba)
+        
+        Requires on Windows:
+        - Registry: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+          DWORD: LocalAccountTokenFilterPolicy = 1
+        - Firewall: Enable "Remote Service Management (NP-In)"
+        """
+        try:
+            cmd = ['net', 'rpc', 'shutdown', '-I', host, '-U', f'{username}%{password}']
+            
+            if timeout_seconds > 0:
+                cmd.extend(['-t', str(timeout_seconds)])
+            
+            if force:
+                cmd.append('-f')
+            
+            if message:
+                cmd.extend(['-C', message])
+            
+            logger.info(f"[RemoteShutdown] Sending shutdown to {host}")
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            
+            if result.returncode == 0:
+                logger.info(f"[RemoteShutdown] Shutdown command sent successfully to {host}")
+                return True, "Shutdown command sent"
+            else:
+                error = result.stderr.strip() or result.stdout.strip() or f"Exit code {result.returncode}"
+                logger.error(f"[RemoteShutdown] Failed - {error}")
+                return False, error
+        except subprocess.TimeoutExpired:
+            logger.error(f"[RemoteShutdown] Command timed out")
+            return False, "Command timed out"
+        except FileNotFoundError:
+            logger.error(f"[RemoteShutdown] 'net' command not found")
+            return False, "Samba net command not found"
+        except Exception as e:
+            logger.error(f"[RemoteShutdown] Exception - {e}")
+            return False, str(e)
+
+# ============================================
+# MOUNT MANAGER (Unassigned Devices)
+# ============================================
+
+class MountManager:
+    """Manages remote share mounting via Unassigned Devices plugin"""
+    
+    RC_PATHS = [
+        '/usr/local/sbin/rc.unassigned',
+        '/var/local/overlay/usr/local/sbin/rc.unassigned'
+    ]
+    
+    @classmethod
+    def get_rc_path(cls):
+        """Find rc.unassigned executable"""
+        for path in cls.RC_PATHS:
+            if os.path.exists(path) and os.access(path, os.X_OK):
+                return path
+        return None
+    
+    @classmethod
+    def is_ud_available(cls):
+        """Check if Unassigned Devices is available"""
+        return cls.get_rc_path() is not None
+    
+    @classmethod
+    def mount(cls, share_name, timeout=60):
+        """
+        Mount a remote share via Unassigned Devices
+        share_name: e.g., "//192.168.0.31/backups"
+        """
+        rc_path = cls.get_rc_path()
+        if not rc_path:
+            return False, "Unassigned Devices plugin not installed"
+        
+        try:
+            logger.info(f"[MountManager] Mounting {share_name}")
+            result = subprocess.run(
+                [rc_path, 'mount', share_name],
+                capture_output=True, text=True, timeout=timeout
+            )
+            
+            # rc.unassigned returns "success" or "failure"
+            output = (result.stdout + result.stderr).lower()
+            
+            if result.returncode == 0 or 'success' in output:
+                logger.info(f"[MountManager] Mounted {share_name}")
+                return True, "Mounted successfully"
+            else:
+                error = result.stderr.strip() or result.stdout.strip() or "Mount failed"
+                logger.error(f"[MountManager] Mount failed - {error}")
+                return False, error
+        except subprocess.TimeoutExpired:
+            logger.error(f"[MountManager] Mount timed out after {timeout}s")
+            return False, f"Mount timed out after {timeout}s"
+        except Exception as e:
+            logger.error(f"[MountManager] Exception - {e}")
+            return False, str(e)
+    
+    @classmethod
+    def unmount(cls, share_name, timeout=30):
+        """Unmount a remote share"""
+        rc_path = cls.get_rc_path()
+        if not rc_path:
+            return False, "Unassigned Devices plugin not installed"
+        
+        try:
+            logger.info(f"[MountManager] Unmounting {share_name}")
+            result = subprocess.run(
+                [rc_path, 'umount', share_name],
+                capture_output=True, text=True, timeout=timeout
+            )
+            
+            output = (result.stdout + result.stderr).lower()
+            
+            if result.returncode == 0 or 'success' in output:
+                logger.info(f"[MountManager] Unmounted {share_name}")
+                return True, "Unmounted successfully"
+            else:
+                error = result.stderr.strip() or result.stdout.strip() or "Unmount failed"
+                logger.error(f"[MountManager] Unmount failed - {error}")
+                return False, error
+        except Exception as e:
+            logger.error(f"[MountManager] Exception - {e}")
+            return False, str(e)
+    
+    @classmethod
+    def is_mounted(cls, mount_point):
+        """Check if a path is currently mounted"""
+        try:
+            result = subprocess.run(
+                ['mountpoint', '-q', mount_point],
+                capture_output=True, timeout=5
+            )
+            return result.returncode == 0
+        except:
+            return False
+
+# ============================================
+# NOTIFICATION MANAGER
+# ============================================
+
+class NotifyManager:
+    """Handles Unraid and Discord notifications"""
+    
+    COLORS = {
+        "blue": 3447003,      # Started / Info
+        "green": 5763719,     # Success
+        "red": 15548997,      # Error
+        "orange": 15105570,   # Warning
+        "grey": 9807270       # Neutral
+    }
+    
+    @classmethod
+    def unraid_notify(cls, subject, description, importance="normal"):
+        """
+        Send Unraid notification
+        importance: normal, warning, alert
+        """
+        if not Config.C.get("UNRAID_NOTIFICATIONS", True):
+            return True
+        
+        try:
+            cmd = [
+                '/usr/local/emhttp/webGui/scripts/notify',
+                '-e', 'Tegenett Backup',
+                '-s', subject,
+                '-d', description,
+                '-i', importance
+            ]
+            subprocess.run(cmd, capture_output=True, timeout=10)
+            logger.debug(f"[Notify] Unraid notification sent: {subject}")
+            return True
+        except Exception as e:
+            logger.error(f"[Notify] Unraid notification failed - {e}")
+            return False
+    
+    @classmethod
+    def discord_notify(cls, title, description, color="blue", fields=None, footer=None):
+        """Send Discord webhook notification with embed"""
+        url = Config.C.get("DISCORD_WEBHOOK_URL", "")
+        if not url:
+            return True  # Not configured, not an error
+        
+        try:
+            import urllib.request
+            
+            embed = {
+                "title": title,
+                "description": description,
+                "color": cls.COLORS.get(color, cls.COLORS["grey"]),
+                "footer": {"text": footer or "Tegenett Backup"},
+                "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            }
+            
+            if fields:
+                embed["fields"] = fields
+            
+            data = json.dumps({"embeds": [embed]}).encode()
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={
+                    'Content-Type': 'application/json',
+                    'User-Agent': f'TegenettBackup/{Config.VERSION}'
+                }
+            )
+            with urllib.request.urlopen(req, timeout=10):
+                pass
+            
+            logger.debug(f"[Notify] Discord notification sent: {title}")
+            return True
+        except Exception as e:
+            logger.error(f"[Notify] Discord notification failed - {e}")
+            return False
+    
+    @classmethod
+    def send_daily_summary(cls):
+        """Send daily summary to Discord"""
+        if not Config.C.get("DISCORD_DAILY_SUMMARY", False):
+            return
+        
+        url = Config.C.get("DISCORD_WEBHOOK_URL", "")
+        if not url:
+            return
+        
+        today = datetime.now().strftime('%Y-%m-%d')
+        stats = DB.get_stats(1)
+        
+        if not stats:
+            return
+        
+        stat = stats[0]
+        total = stat.get('total_jobs_run', 0)
+        success = stat.get('successful_jobs', 0)
+        failed = stat.get('failed_jobs', 0)
+        total_bytes = stat.get('total_bytes', 0)
+        
+        gb = total_bytes / (1024**3)
+        
+        color = "green" if failed == 0 else ("orange" if success > 0 else "red")
+        
+        cls.discord_notify(
+            f"📊 Daily Summary - {today}",
+            f"Total jobs: {total}\nSuccessful: {success}\nFailed: {failed}",
+            color,
+            [
+                {"name": "Data Transferred", "value": f"{gb:.2f} GB", "inline": True},
+                {"name": "Success Rate", "value": f"{(success/max(total,1))*100:.0f}%", "inline": True}
+            ]
+        )
+
+# ============================================
+# BACKUP ENGINE
+# ============================================
+
+class BackupEngine:
+    """Main backup execution engine"""
+    
+    current_job = None
+    current_history_id = None
+    current_progress = {}
+    abort_flag = False
+    _lock = threading.Lock()
+    
+    @classmethod
+    def is_running(cls):
+        """Check if a backup is currently running"""
+        with cls._lock:
+            return cls.current_job is not None
+    
+    @classmethod
+    def get_status(cls):
+        """Get current running status"""
+        with cls._lock:
+            if cls.current_job:
+                return {
+                    'running': True,
+                    'job_id': cls.current_job.get('id'),
+                    'job_name': cls.current_job.get('name'),
+                    'progress': cls.current_progress.copy()
+                }
+            return {'running': False}
+    
+    @classmethod
+    def abort(cls):
+        """Request abort of current backup"""
+        cls.abort_flag = True
+        logger.warning("[BackupEngine] Abort requested")
+    
+    @classmethod
+    def run_job(cls, job, dry_run=False):
+        """Execute a backup job"""
+        with cls._lock:
+            if cls.current_job:
+                logger.warning(f"[BackupEngine] Cannot start job - another job is running")
+                return False, "Another backup is already running"
+            cls.current_job = job
+            cls.current_progress = {'phase': 'starting', 'percent': 0}
+            cls.abort_flag = False
+        
+        job_id = job['id']
+        job_name = job['name']
+        job_type = job['job_type']
+        
+        logger.info("=" * 60)
+        logger.info(f"[BackupEngine] Starting job: {job_name}")
+        logger.info(f"[BackupEngine] Type: {job_type}, Dry run: {dry_run}")
+        logger.info("=" * 60)
+        
+        # Create history entry
+        history_id = DB.add_history(job_id, job_name, 'running', dry_run)
+        cls.current_history_id = history_id
+        
+        # Send start notification
+        NotifyManager.discord_notify(
+            f"🔄 Backup Started: {job_name}",
+            f"Type: {job_type}\nDry run: {'Yes' if dry_run else 'No'}",
+            "blue"
+        )
+        
+        start_time = time.time()
+        bytes_transferred = 0
+        files_transferred = 0
+        error_message = None
+        log_output = ""
+        success = False
+        
+        try:
+            cls.current_progress['phase'] = 'running'
+            
+            if job_type == 'local':
+                success, bytes_transferred, files_transferred, error_message, log_output = cls._run_local(job, dry_run)
+            elif job_type == 'remote_smb':
+                success, bytes_transferred, files_transferred, error_message, log_output = cls._run_remote_smb(job, dry_run)
+            elif job_type == 'remote_smb_wol':
+                success, bytes_transferred, files_transferred, error_message, log_output = cls._run_remote_smb_wol(job, dry_run)
+            else:
+                error_message = f"Unknown job type: {job_type}"
+                logger.error(f"[BackupEngine] {error_message}")
+        except Exception as e:
+            error_message = str(e)
+            logger.exception(f"[BackupEngine] Exception in job '{job_name}'")
+        
+        duration = int(time.time() - start_time)
+        speed = (bytes_transferred / (1024*1024)) / max(duration, 1)  # MB/s
+        
+        # Update history
+        status = 'completed' if success else 'failed'
+        DB.update_history(
+            history_id, status, bytes_transferred, files_transferred,
+            duration, speed, error_message, log_output
+        )
+        
+        # Update daily stats
+        if not dry_run:
+            DB.update_daily_stats(bytes_transferred, files_transferred, duration, success)
+        
+        # Send completion notification
+        gb = bytes_transferred / (1024**3)
+        if success:
+            logger.info(f"[BackupEngine] Job completed: {gb:.2f} GB in {duration}s ({speed:.1f} MB/s)")
+            NotifyManager.discord_notify(
+                f"✅ Backup Completed: {job_name}",
+                f"Duration: {duration}s\nTransferred: {gb:.2f} GB" + (" (dry run)" if dry_run else ""),
+                "green",
+                [
+                    {"name": "Files", "value": str(files_transferred), "inline": True},
+                    {"name": "Speed", "value": f"{speed:.1f} MB/s", "inline": True}
+                ]
+            )
+            NotifyManager.unraid_notify(
+                f"Backup OK: {job_name}",
+                f"Transferred {gb:.2f} GB in {duration}s"
+            )
+        else:
+            logger.error(f"[BackupEngine] Job failed: {error_message}")
+            NotifyManager.discord_notify(
+                f"❌ Backup Failed: {job_name}",
+                f"Error: {error_message or 'Unknown error'}",
+                "red"
+            )
+            NotifyManager.unraid_notify(
+                f"Backup FAILED: {job_name}",
+                error_message or "Unknown error",
+                "alert"
+            )
+        
+        # Cleanup
+        with cls._lock:
+            cls.current_job = None
+            cls.current_history_id = None
+            cls.current_progress = {}
+        
+        logger.info("=" * 60)
+        logger.info(f"[BackupEngine] Job finished: {job_name} - {status}")
+        logger.info("=" * 60)
+        
+        return success, error_message
+    
+    @classmethod
+    def _run_local(cls, job, dry_run):
+        """Run local backup (array to share)"""
+        source = job.get('source_path', '')
+        dest = job.get('dest_path', '')
+        
+        if not source:
+            return False, 0, 0, "Source path not configured", ""
+        if not dest:
+            return False, 0, 0, "Destination path not configured", ""
+        
+        if not os.path.exists(source):
+            return False, 0, 0, f"Source path does not exist: {source}", ""
+        
+        # Create destination if needed
+        os.makedirs(dest, exist_ok=True)
+        
+        return cls._run_rsync(source, dest, job, dry_run)
+    
+    @classmethod
+    def _run_remote_smb(cls, job, dry_run):
+        """Run remote SMB backup"""
+        source = job.get('source_path', '')
+        remote_share = job.get('remote_share', '')
+        mount_point = job.get('remote_mount_point', '')
+        dest_subdir = job.get('dest_path', '')  # Subdirectory within mount
+        
+        if not source:
+            return False, 0, 0, "Source path not configured", ""
+        if not remote_share:
+            return False, 0, 0, "Remote share not configured", ""
+        if not mount_point:
+            return False, 0, 0, "Mount point not configured", ""
+        
+        if not MountManager.is_ud_available():
+            return False, 0, 0, "Unassigned Devices plugin not installed", ""
+        
+        # Check source exists
+        if not os.path.exists(source):
+            return False, 0, 0, f"Source path does not exist: {source}", ""
+        
+        # Check if already mounted
+        was_mounted = MountManager.is_mounted(mount_point)
+        
+        if not was_mounted:
+            cls.current_progress['phase'] = 'mounting'
+            success, msg = MountManager.mount(remote_share)
+            if not success:
+                return False, 0, 0, f"Failed to mount remote share: {msg}", ""
+            
+            # Wait for mount to settle
+            time.sleep(Config.C.get('SMB_SETTLE_TIME', 10))
+            
+            # Verify mount
+            if not MountManager.is_mounted(mount_point):
+                return False, 0, 0, "Mount point not available after mount command", ""
+        
+        # Build final destination path
+        dest = os.path.join(mount_point, dest_subdir) if dest_subdir else mount_point
+        os.makedirs(dest, exist_ok=True)
+        
+        cls.current_progress['phase'] = 'transferring'
+        
+        try:
+            return cls._run_rsync(source, dest, job, dry_run)
+        finally:
+            # Only unmount if we mounted it
+            if not was_mounted:
+                cls.current_progress['phase'] = 'unmounting'
+                MountManager.unmount(remote_share)
+    
+    @classmethod
+    def _run_remote_smb_wol(cls, job, dry_run):
+        """Run remote SMB backup with Wake-on-LAN and optional shutdown"""
+        host = job.get('remote_host', '')
+        mac = job.get('mac_address', '')
+        
+        if not host:
+            return False, 0, 0, "Remote host not configured", ""
+        
+        # Check if host is online
+        cls.current_progress['phase'] = 'checking host'
+        host_was_online = WakeOnLan.ping(host)
+        logger.info(f"[BackupEngine] Host {host} online: {host_was_online}")
+        
+        if not host_was_online:
+            if not mac:
+                return False, 0, 0, "Host offline and no MAC address configured for WOL", ""
+            
+            # Send WOL
+            cls.current_progress['phase'] = 'sending WOL'
+            success, msg = WakeOnLan.send_magic_packet(mac)
+            if not success:
+                return False, 0, 0, f"Failed to send WOL packet: {msg}", ""
+            
+            # Wait for host to come online
+            cls.current_progress['phase'] = 'waiting for host'
+            timeout = Config.C.get("WOL_WAIT_TIMEOUT", 120)
+            interval = Config.C.get("WOL_PING_INTERVAL", 5)
+            online, elapsed = WakeOnLan.wait_for_host(host, timeout, interval)
+            
+            if not online:
+                return False, 0, 0, f"Host did not come online within {timeout}s", ""
+            
+            # Extra wait for SMB service to start
+            smb_wait = Config.C.get("SMB_SETTLE_TIME", 10)
+            logger.info(f"[BackupEngine] Waiting {smb_wait}s for SMB service...")
+            time.sleep(smb_wait)
+        
+        # Run the actual backup
+        success, bytes_transferred, files_transferred, error, log_output = cls._run_remote_smb(job, dry_run)
+        
+        # Shutdown if configured and host wasn't already on
+        if success and job.get('shutdown_after') and not host_was_online:
+            user = job.get('remote_user', '')
+            password = job.get('remote_pass', '')
+            
+            if user and password:
+                cls.current_progress['phase'] = 'shutting down remote'
+                logger.info(f"[BackupEngine] Sending shutdown to {host}")
+                shutdown_ok, shutdown_msg = RemoteShutdown.shutdown_windows(host, user, password)
+                if not shutdown_ok:
+                    logger.warning(f"[BackupEngine] Shutdown failed: {shutdown_msg}")
+            else:
+                logger.info(f"[BackupEngine] Skipping shutdown - credentials not configured")
+        
+        return success, bytes_transferred, files_transferred, error, log_output
+    
+    @classmethod
+    def _run_rsync(cls, source, dest, job, dry_run):
+        """Execute rsync with progress parsing"""
+        # Build rsync command
+        cmd = ['rsync']
+        
+        # Base options
+        options = Config.C.get("RSYNC_OPTIONS", "-avh --delete --stats")
+        cmd.extend(options.split())
+        
+        # Bandwidth limit (KB/s)
+        bw_limit = job.get('bandwidth_limit', 0) or Config.C.get("DEFAULT_BANDWIDTH_LIMIT", 0)
+        if bw_limit > 0:
+            cmd.append(f'--bwlimit={bw_limit}')
+        
+        # Exclude patterns
+        excludes = job.get('exclude_patterns', '') or ''
+        for pattern in excludes.split('\n'):
+            pattern = pattern.strip()
+            if pattern and not pattern.startswith('#'):
+                cmd.append(f'--exclude={pattern}')
+        
+        # Dry run
+        if dry_run:
+            cmd.append('--dry-run')
+        
+        # Source (ensure trailing slash for rsync behavior)
+        source = source.rstrip('/') + '/'
+        cmd.extend([source, dest])
+        
+        logger.info(f"[BackupEngine] Rsync command: {' '.join(cmd)}")
+        
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=86400  # 24 hour timeout
+            )
+            
+            output = result.stdout + '\n' + result.stderr
+            
+            # Parse rsync stats
+            bytes_transferred = 0
+            files_transferred = 0
+            
+            for line in output.split('\n'):
+                # "Total transferred file size: 1,234,567 bytes"
+                if 'Total transferred file size:' in line:
+                    try:
+                        match = re.search(r'([\d,]+)\s*bytes', line)
+                        if match:
+                            bytes_transferred = int(match.group(1).replace(',', ''))
+                    except:
+                        pass
+                # "Number of regular files transferred: 123"
+                elif 'Number of regular files transferred:' in line:
+                    try:
+                        match = re.search(r'(\d+)', line.split(':')[1])
+                        if match:
+                            files_transferred = int(match.group(1))
+                    except:
+                        pass
+            
+            if result.returncode == 0:
+                return True, bytes_transferred, files_transferred, None, output
+            else:
+                # rsync exit codes: 0 = success, 23/24 = partial transfer (often ok)
+                if result.returncode in [23, 24]:
+                    logger.warning(f"[BackupEngine] Rsync completed with warnings (exit {result.returncode})")
+                    return True, bytes_transferred, files_transferred, f"Completed with warnings (exit {result.returncode})", output
+                
+                error = f"Rsync failed with exit code {result.returncode}"
+                return False, bytes_transferred, files_transferred, error, output
+                
+        except subprocess.TimeoutExpired:
+            return False, 0, 0, "Rsync timed out after 24 hours", ""
+        except Exception as e:
+            return False, 0, 0, str(e), ""
+
+# ============================================
+# SCHEDULER
+# ============================================
+
+class Scheduler:
+    """Scheduler for automated backup jobs"""
+    
+    _thread = None
+    _running = False
+    _last_run = {}  # job_id -> datetime of last scheduled run
+    _summary_sent_today = False
+    
+    @classmethod
+    def start(cls):
+        """Start the scheduler thread"""
+        if cls._thread and cls._thread.is_alive():
+            logger.warning("[Scheduler] Already running")
+            return
+        
+        cls._running = True
+        cls._thread = threading.Thread(target=cls._run, daemon=True, name="Scheduler")
+        cls._thread.start()
+        logger.info("[Scheduler] Started")
+    
+    @classmethod
+    def stop(cls):
+        """Stop the scheduler"""
+        cls._running = False
+        if cls._thread:
+            cls._thread.join(timeout=5)
+        logger.info("[Scheduler] Stopped")
+    
+    @classmethod
+    def _run(cls):
+        """Main scheduler loop - runs every minute"""
+        while cls._running:
+            try:
+                now = datetime.now()
+                
+                # Check for daily summary
+                cls._check_daily_summary(now)
+                
+                # Check jobs
+                cls._check_jobs(now)
+                
+            except Exception as e:
+                logger.error(f"[Scheduler] Error in main loop: {e}")
+            
+            # Sleep until next minute
+            time.sleep(60)
+    
+    @classmethod
+    def _check_daily_summary(cls, now):
+        """Check if daily summary should be sent"""
+        summary_hour = Config.C.get("DISCORD_SUMMARY_HOUR", 20)
+        
+        if now.hour == summary_hour and now.minute == 0:
+            if not cls._summary_sent_today:
+                NotifyManager.send_daily_summary()
+                cls._summary_sent_today = True
+        elif now.hour != summary_hour:
+            cls._summary_sent_today = False
+    
+    @classmethod
+    def _check_jobs(cls, now):
+        """Check if any scheduled jobs should run"""
+        if BackupEngine.is_running():
+            return  # Don't start new jobs while one is running
+        
+        jobs = DB.get_enabled_jobs()
+        
+        for job in jobs:
+            job_id = job['id']
+            schedule_type = job.get('schedule_type', 'disabled')
+            
+            if schedule_type == 'disabled':
+                continue
+            
+            if cls._should_run(job, now):
+                # Prevent running same job twice in same minute
+                last = cls._last_run.get(job_id)
+                if last and (now - last).total_seconds() < 60:
+                    continue
+                
+                cls._last_run[job_id] = now
+                logger.info(f"[Scheduler] Starting scheduled job: {job['name']}")
+                
+                # Run in separate thread
+                thread = threading.Thread(
+                    target=BackupEngine.run_job,
+                    args=(job, False),
+                    name=f"Backup-{job['name']}"
+                )
+                thread.start()
+                
+                # Only run one job at a time
+                break
+    
+    @classmethod
+    def _should_run(cls, job, now):
+        """Determine if a job should run at the given time"""
+        schedule_type = job.get('schedule_type', 'disabled')
+        hour = job.get('schedule_hour', 0)
+        minute = job.get('schedule_minute', 0)
+        day = job.get('schedule_day', 0)  # 0=Monday for weekly
+        
+        if schedule_type == 'hourly':
+            return now.minute == minute
+        
+        elif schedule_type == 'daily':
+            return now.hour == hour and now.minute == minute
+        
+        elif schedule_type == 'weekly':
+            return now.weekday() == day and now.hour == hour and now.minute == minute
+        
+        elif schedule_type == 'custom':
+            cron = job.get('schedule_cron', '')
+            return cls._match_cron(cron, now)
+        
+        return False
+    
+    @classmethod
+    def _match_cron(cls, cron_expr, dt):
+        """Simple cron expression matching (minute hour day month weekday)"""
+        if not cron_expr:
+            return False
+        
+        try:
+            parts = cron_expr.split()
+            if len(parts) != 5:
+                return False
+            
+            minute, hour, day, month, weekday = parts
+            
+            checks = [
+                (minute, dt.minute),
+                (hour, dt.hour),
+                (day, dt.day),
+                (month, dt.month),
+                (weekday, dt.weekday())
+            ]
+            
+            for pattern, value in checks:
+                if not cls._cron_match(pattern, value):
+                    return False
+            
+            return True
+        except:
+            return False
+    
+    @classmethod
+    def _cron_match(cls, pattern, value):
+        """Match a single cron field"""
+        if pattern == '*':
+            return True
+        
+        # Handle */N
+        if pattern.startswith('*/'):
+            try:
+                step = int(pattern[2:])
+                return value % step == 0
+            except:
+                return False
+        
+        # Handle comma-separated values
+        if ',' in pattern:
+            values = [int(v) for v in pattern.split(',')]
+            return value in values
+        
+        # Handle ranges (N-M)
+        if '-' in pattern:
+            try:
+                start, end = pattern.split('-')
+                return int(start) <= value <= int(end)
+            except:
+                return False
+        
+        # Single value
+        try:
+            return value == int(pattern)
+        except:
+            return False
+
+# ============================================
+# HTTP API SERVER
+# ============================================
+
+class APIHandler(BaseHTTPRequestHandler):
+    """HTTP request handler for the REST API"""
+    
+    def log_message(self, format, *args):
+        """Suppress default logging, use our logger"""
+        logger.debug(f"[API] {args[0]}")
+    
+    def _send_json(self, data, status=200):
+        """Send JSON response"""
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+        self.wfile.write(json.dumps(data, default=str).encode())
+    
+    def _read_json(self):
+        """Read JSON from request body"""
+        content_length = int(self.headers.get('Content-Length', 0))
+        if content_length > 0:
+            body = self.rfile.read(content_length)
+            return json.loads(body.decode())
+        return {}
+    
+    def do_OPTIONS(self):
+        """Handle CORS preflight"""
+        self._send_json({'success': True})
+    
+    def do_GET(self):
+        """Handle GET requests"""
+        parsed = urlparse(self.path)
+        path = parsed.path
+        params = parse_qs(parsed.query)
+        
+        try:
+            # Status
+            if path == '/api/status':
+                uptime = int(time.time() - START_TIME)
+                status = BackupEngine.get_status()
+                self._send_json({
+                    'success': True,
+                    'version': Config.VERSION,
+                    'uptime': uptime,
+                    'ud_available': MountManager.is_ud_available(),
+                    'backup': status
+                })
+            
+            # Jobs list
+            elif path == '/api/jobs':
+                jobs = DB.get_jobs()
+                # Add last run info
+                for job in jobs:
+                    last = DB.get_last_run(job['id'])
+                    job['last_run'] = last
+                self._send_json({'success': True, 'jobs': jobs})
+            
+            # Single job
+            elif path.startswith('/api/jobs/') and path.count('/') == 3:
+                job_id = int(path.split('/')[-1])
+                job = DB.get_job(job_id)
+                if job:
+                    job['last_run'] = DB.get_last_run(job_id)
+                    self._send_json({'success': True, 'job': job})
+                else:
+                    self._send_json({'success': False, 'error': 'Job not found'}, 404)
+            
+            # History
+            elif path == '/api/history':
+                limit = int(params.get('limit', [100])[0])
+                job_id = params.get('job_id', [None])[0]
+                if job_id:
+                    job_id = int(job_id)
+                history = DB.get_history(limit, job_id)
+                self._send_json({'success': True, 'history': history})
+            
+            # Statistics
+            elif path == '/api/stats':
+                days = int(params.get('days', [30])[0])
+                stats = DB.get_stats(days)
+                totals = DB.get_totals()
+                self._send_json({'success': True, 'stats': stats, 'totals': totals})
+            
+            # Logs
+            elif path == '/api/logs':
+                lines = int(params.get('lines', [200])[0])
+                if os.path.exists(LOG_FILE):
+                    with open(LOG_FILE, 'r') as f:
+                        all_lines = f.readlines()
+                        log_content = ''.join(all_lines[-lines:])
+                else:
+                    log_content = "No log file found"
+                self._send_json({'success': True, 'logs': log_content})
+            
+            # Settings
+            elif path == '/api/settings':
+                self._send_json({'success': True, 'settings': Config.C})
+            
+            else:
+                self._send_json({'success': False, 'error': 'Not found'}, 404)
+                
+        except Exception as e:
+            logger.error(f"[API] GET error: {e}")
+            self._send_json({'success': False, 'error': str(e)}, 500)
+    
+    def do_POST(self):
+        """Handle POST requests"""
+        path = self.path
+        
+        try:
+            data = self._read_json()
+            
+            # Create job
+            if path == '/api/jobs':
+                job_id = DB.create_job(data)
+                self._send_json({'success': True, 'id': job_id})
+            
+            # Run job
+            elif path.startswith('/api/jobs/') and path.endswith('/run'):
+                job_id = int(path.split('/')[-2])
+                job = DB.get_job(job_id)
+                if job:
+                    dry_run = data.get('dry_run', False)
+                    
+                    if BackupEngine.is_running():
+                        self._send_json({'success': False, 'error': 'Another backup is running'}, 409)
+                    else:
+                        thread = threading.Thread(
+                            target=BackupEngine.run_job,
+                            args=(job, dry_run),
+                            name=f"Backup-{job['name']}"
+                        )
+                        thread.start()
+                        self._send_json({'success': True, 'message': 'Job started'})
+                else:
+                    self._send_json({'success': False, 'error': 'Job not found'}, 404)
+            
+            # Abort running job
+            elif path == '/api/abort':
+                BackupEngine.abort()
+                self._send_json({'success': True, 'message': 'Abort requested'})
+            
+            # Update settings
+            elif path == '/api/settings':
+                Config.C.update(data)
+                Config.save()
+                self._send_json({'success': True})
+            
+            # Test WOL
+            elif path == '/api/test/wol':
+                mac = data.get('mac_address')
+                if mac:
+                    success, msg = WakeOnLan.send_magic_packet(mac)
+                    self._send_json({'success': success, 'message': msg})
+                else:
+                    self._send_json({'success': False, 'error': 'MAC address required'})
+            
+            # Test ping
+            elif path == '/api/test/ping':
+                host = data.get('host')
+                if host:
+                    reachable = WakeOnLan.ping(host)
+                    self._send_json({'success': True, 'reachable': reachable})
+                else:
+                    self._send_json({'success': False, 'error': 'Host required'})
+            
+            # Test Discord
+            elif path == '/api/test/discord':
+                success = NotifyManager.discord_notify(
+                    "🧪 Test Notification",
+                    "This is a test message from Tegenett Backup",
+                    "blue"
+                )
+                self._send_json({'success': success})
+            
+            # Test mount
+            elif path == '/api/test/mount':
+                share = data.get('share')
+                if share:
+                    success, msg = MountManager.mount(share)
+                    if success:
+                        time.sleep(2)
+                        MountManager.unmount(share)
+                    self._send_json({'success': success, 'message': msg})
+                else:
+                    self._send_json({'success': False, 'error': 'Share required'})
+            
+            else:
+                self._send_json({'success': False, 'error': 'Not found'}, 404)
+                
+        except Exception as e:
+            logger.error(f"[API] POST error: {e}")
+            self._send_json({'success': False, 'error': str(e)}, 500)
+    
+    def do_PUT(self):
+        """Handle PUT requests"""
+        path = self.path
+        
+        try:
+            data = self._read_json()
+            
+            if path.startswith('/api/jobs/'):
+                job_id = int(path.split('/')[-1])
+                job = DB.get_job(job_id)
+                if job:
+                    # Merge existing data with updates
+                    updated = {**job, **data}
+                    DB.update_job(job_id, updated)
+                    self._send_json({'success': True})
+                else:
+                    self._send_json({'success': False, 'error': 'Job not found'}, 404)
+            else:
+                self._send_json({'success': False, 'error': 'Not found'}, 404)
+                
+        except Exception as e:
+            logger.error(f"[API] PUT error: {e}")
+            self._send_json({'success': False, 'error': str(e)}, 500)
+    
+    def do_DELETE(self):
+        """Handle DELETE requests"""
+        path = self.path
+        
+        try:
+            if path.startswith('/api/jobs/'):
+                job_id = int(path.split('/')[-1])
+                DB.delete_job(job_id)
+                self._send_json({'success': True})
+            else:
+                self._send_json({'success': False, 'error': 'Not found'}, 404)
+                
+        except Exception as e:
+            logger.error(f"[API] DELETE error: {e}")
+            self._send_json({'success': False, 'error': str(e)}, 500)
+
+# ============================================
+# MAIN
+# ============================================
+
+server = None
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully"""
+    logger.info(f"[Main] Received signal {signum}, shutting down...")
+    Scheduler.stop()
+    if server:
+        threading.Thread(target=server.shutdown).start()
+
+def main():
+    global server
+    
+    logger.info("=" * 60)
+    logger.info(f"Tegenett Backup v{Config.VERSION} starting...")
+    logger.info(f"Log level: {Config.C.get('LOG_LEVEL', 'INFO')}")
+    logger.info(f"Data directory: {Config.DATA_DIR}")
+    logger.info(f"Config directory: {Config.CONFIG_DIR}")
+    logger.info(f"API port: {Config.C['SERVER_PORT']}")
+    logger.info(f"Unassigned Devices: {'Available' if MountManager.is_ud_available() else 'Not found'}")
+    logger.info("=" * 60)
+    
+    # Write PID file
+    try:
+        with open(Config.PID_FILE, 'w') as f:
+            f.write(str(os.getpid()))
+    except Exception as e:
+        logger.warning(f"[Main] Could not write PID file: {e}")
+    
+    # Set up signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    # Start scheduler
+    Scheduler.start()
+    
+    # Start HTTP server
+    port = Config.C['SERVER_PORT']
+    try:
+        server = ThreadingHTTPServer(('0.0.0.0', port), APIHandler)
+        logger.info(f"[Main] API server listening on port {port}")
+        server.serve_forever()
+    except OSError as e:
+        if e.errno == 98:  # Address already in use
+            logger.error(f"[Main] Port {port} already in use!")
+        else:
+            raise
+    except KeyboardInterrupt:
+        pass
+    finally:
+        Scheduler.stop()
+        if os.path.exists(Config.PID_FILE):
+            try:
+                os.remove(Config.PID_FILE)
+            except:
+                pass
+        logger.info("[Main] Tegenett Backup stopped")
+
+if __name__ == "__main__":
+    main()
+]]>
+</INLINE>
+</FILE>
+
+<!--
+rc.tegenett_backup - Service control script
+-->
+<FILE Name="/usr/local/emhttp/plugins/&name;/rc.&name;" Mode="0755">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+# rc.tegenett_backup - Service control script for Tegenett Backup
+
+PLUGIN_NAME="tegenett_backup"
+DAEMON="/usr/local/emhttp/plugins/${PLUGIN_NAME}/${PLUGIN_NAME}.py"
+PID_FILE="/var/run/${PLUGIN_NAME}.pid"
+LOG_FILE="/mnt/user/appdata/${PLUGIN_NAME}/logs/${PLUGIN_NAME}.log"
+CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
+DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
+
+# Ensure directories exist
+mkdir -p "${DATA_DIR}/logs"
+mkdir -p "${CONFIG_DIR}"
+
+start() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo "${PLUGIN_NAME} is already running (PID $PID)"
+            return 1
+        else
+            rm -f "$PID_FILE"
+        fi
+    fi
+    
+    echo "Starting ${PLUGIN_NAME}..."
+    chmod +x "$DAEMON"
+    nohup python3 "$DAEMON" >> "$LOG_FILE" 2>&1 &
+    echo $! > "$PID_FILE"
+    sleep 1
+    
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat $PID_FILE)" 2>/dev/null; then
+        echo "${PLUGIN_NAME} started (PID $(cat $PID_FILE))"
+        return 0
+    else
+        echo "Failed to start ${PLUGIN_NAME}"
+        return 1
+    fi
+}
+
+stop() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        echo "Stopping ${PLUGIN_NAME} (PID $PID)..."
+        kill "$PID" 2>/dev/null
+        
+        # Wait for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 "$PID" 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        
+        # Force kill if still running
+        if kill -0 "$PID" 2>/dev/null; then
+            echo "Force killing ${PLUGIN_NAME}..."
+            kill -9 "$PID" 2>/dev/null
+        fi
+        
+        rm -f "$PID_FILE"
+        echo "${PLUGIN_NAME} stopped"
+    else
+        echo "${PLUGIN_NAME} is not running"
+    fi
+}
+
+restart() {
+    stop
+    sleep 2
+    start
+}
+
+status() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo "${PLUGIN_NAME} is running (PID $PID)"
+            return 0
+        else
+            echo "${PLUGIN_NAME} is not running (stale PID file)"
+            rm -f "$PID_FILE"
+            return 1
+        fi
+    else
+        echo "${PLUGIN_NAME} is not running"
+        return 1
+    fi
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
+]]>
+</INLINE>
+</FILE>
+
+<!--
+ajax.php - AJAX handler
+-->
+<FILE Name="/usr/local/emhttp/plugins/&name;/include/ajax.php">
+<INLINE>
+<![CDATA[
+<?php
+/**
+ * Tegenett Backup - AJAX Handler
+ * Proxies requests to Python daemon API
+ */
+
+// Configuration
+$API_PORT = 9998;
+$API_HOST = "127.0.0.1";
+
+// Helper function to make API requests
+function apiCall($endpoint, $method = 'GET', $data = null) {
+    global $API_PORT, $API_HOST;
+    
+    $url = "http://{$API_HOST}:{$API_PORT}{$endpoint}";
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+    
+    if ($method === 'POST') {
+        curl_setopt($ch, CURLOPT_POST, true);
+        if ($data) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        }
+    } elseif ($method === 'PUT') {
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+        if ($data) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        }
+    } elseif ($method === 'DELETE') {
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
+    }
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+    
+    if ($curlError) {
+        return ['success' => false, 'error' => "API unavailable: {$curlError}"];
+    }
+    
+    $decoded = json_decode($response, true);
+    if ($decoded === null) {
+        return ['success' => false, 'error' => 'Invalid API response'];
+    }
+    
+    return $decoded;
+}
+
+// Get action from request
+$action = $_REQUEST['action'] ?? '';
+
+header('Content-Type: application/json');
+
+switch ($action) {
+    
+    // ====== Status ======
+    case 'status':
+        echo json_encode(apiCall('/api/status'));
+        break;
+    
+    // ====== Jobs ======
+    case 'get_jobs':
+        echo json_encode(apiCall('/api/jobs'));
+        break;
+    
+    case 'get_job':
+        $id = intval($_REQUEST['id'] ?? 0);
+        echo json_encode(apiCall("/api/jobs/{$id}"));
+        break;
+    
+    case 'create_job':
+        $data = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+        echo json_encode(apiCall('/api/jobs', 'POST', $data));
+        break;
+    
+    case 'update_job':
+        $id = intval($_REQUEST['id'] ?? 0);
+        $data = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+        echo json_encode(apiCall("/api/jobs/{$id}", 'PUT', $data));
+        break;
+    
+    case 'delete_job':
+        $id = intval($_REQUEST['id'] ?? 0);
+        echo json_encode(apiCall("/api/jobs/{$id}", 'DELETE'));
+        break;
+    
+    case 'run_job':
+        $id = intval($_REQUEST['id'] ?? 0);
+        $dryRun = ($_REQUEST['dry_run'] ?? 'false') === 'true';
+        echo json_encode(apiCall("/api/jobs/{$id}/run", 'POST', ['dry_run' => $dryRun]));
+        break;
+    
+    // ====== History ======
+    case 'get_history':
+        $limit = intval($_REQUEST['limit'] ?? 100);
+        $jobId = $_REQUEST['job_id'] ?? '';
+        $query = "?limit={$limit}";
+        if ($jobId) $query .= "&job_id={$jobId}";
+        echo json_encode(apiCall("/api/history{$query}"));
+        break;
+    
+    // ====== Statistics ======
+    case 'get_stats':
+        $days = intval($_REQUEST['days'] ?? 30);
+        echo json_encode(apiCall("/api/stats?days={$days}"));
+        break;
+    
+    // ====== Logs ======
+    case 'get_logs':
+        $lines = intval($_REQUEST['lines'] ?? 200);
+        echo json_encode(apiCall("/api/logs?lines={$lines}"));
+        break;
+    
+    // ====== Settings ======
+    case 'get_settings':
+        echo json_encode(apiCall('/api/settings'));
+        break;
+    
+    case 'save_settings':
+        $data = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+        echo json_encode(apiCall('/api/settings', 'POST', $data));
+        break;
+    
+    // ====== Tests ======
+    case 'test_wol':
+        $mac = $_REQUEST['mac_address'] ?? '';
+        echo json_encode(apiCall('/api/test/wol', 'POST', ['mac_address' => $mac]));
+        break;
+    
+    case 'test_ping':
+        $host = $_REQUEST['host'] ?? '';
+        echo json_encode(apiCall('/api/test/ping', 'POST', ['host' => $host]));
+        break;
+    
+    case 'test_discord':
+        echo json_encode(apiCall('/api/test/discord', 'POST'));
+        break;
+    
+    case 'test_mount':
+        $share = $_REQUEST['share'] ?? '';
+        echo json_encode(apiCall('/api/test/mount', 'POST', ['share' => $share]));
+        break;
+    
+    // ====== Service Control ======
+    case 'service':
+        $cmd = $_REQUEST['cmd'] ?? '';
+        $validCmds = ['start', 'stop', 'restart', 'status'];
+        
+        if (!in_array($cmd, $validCmds)) {
+            echo json_encode(['success' => false, 'error' => 'Invalid command']);
+            break;
+        }
+        
+        $script = '/usr/local/emhttp/plugins/tegenett_backup/rc.tegenett_backup';
+        exec("{$script} {$cmd} 2>&1", $output, $returnCode);
+        
+        echo json_encode([
+            'success' => $returnCode === 0,
+            'output' => implode("\n", $output),
+            'code' => $returnCode
+        ]);
+        break;
+    
+    // ====== Abort ======
+    case 'abort':
+        echo json_encode(apiCall('/api/abort', 'POST'));
+        break;
+    
+    default:
+        echo json_encode(['success' => false, 'error' => 'Unknown action']);
+        break;
+}
+]]>
+</INLINE>
+</FILE>
+
+<!--
+Install script
+-->
+<FILE Run="/bin/bash" Method="install">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+
+PLUGIN_NAME="tegenett_backup"
+DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
+CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
+
+echo "Installing Tegenett Backup..."
+
+# Create directories
+mkdir -p "${DATA_DIR}/logs"
+mkdir -p "${CONFIG_DIR}"
+mkdir -p "/usr/local/emhttp/plugins/${PLUGIN_NAME}/include"
+
+# Set permissions
+chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/${PLUGIN_NAME}.py"
+chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
+
+# Start service
+echo "Starting ${PLUGIN_NAME} service..."
+/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME} start
+
+echo "Tegenett Backup installed successfully!"
+echo ""
+echo "Data directory: ${DATA_DIR}"
+echo "Config directory: ${CONFIG_DIR}"
+echo ""
+]]>
+</INLINE>
+</FILE>
+
+<!--
+Remove script
+-->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+
+PLUGIN_NAME="tegenett_backup"
+
+echo "Removing Tegenett Backup..."
+
+# Stop service
+/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME} stop 2>/dev/null
+
+# Remove plugin files
+rm -rf "/usr/local/emhttp/plugins/${PLUGIN_NAME}"
+
+# Note: We do NOT remove data or config directories
+# /mnt/user/appdata/tegenett_backup
+# /boot/config/plugins/tegenett_backup
+
+echo "Tegenett Backup removed."
+echo "Note: Data and config directories preserved."
+]]>
+</INLINE>
+</FILE>
+
+</PLUGIN>
