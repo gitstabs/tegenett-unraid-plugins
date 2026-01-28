@@ -33,6 +33,7 @@ https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett
 ### v2026.01.28
 - CRITICAL FIX: Added CSRF token support for Unraid 7 compatibility
 - CRITICAL FIX: Database migration - no more manual database deletion needed
+- CRITICAL FIX: Plugin files now properly update on upgrade
 - BUGFIX: Changed default port to 39982 to avoid conflicts
 - BUGFIX: Fixed settings save returning empty response
 - BUGFIX: Fixed Discord webhook SSL issues

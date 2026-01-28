@@ -13,6 +13,7 @@
 ##2026.01.28
 - CRITICAL FIX: Added CSRF token support for Unraid 7 compatibility
 - CRITICAL FIX: Database migration - no more manual database deletion needed
+- CRITICAL FIX: Plugin files now properly update on upgrade
 - BUGFIX: Changed default port to 39982 to avoid conflicts
 - BUGFIX: Fixed settings save returning empty response
 - BUGFIX: Fixed Discord webhook SSL issues
@@ -29,19 +30,34 @@
 
 ##2026.01.27
 - Initial release
-- Local backup (array to share)
-- Remote SMB backup with Unassigned Devices integration
-- Wake-on-LAN support for remote hosts
-- Remote Windows shutdown capability
-- Discord webhook notifications
-- Unraid native notifications
-- SQLite-backed job history and statistics
-- Flexible scheduling (hourly, daily, weekly, custom cron)
-- Dry-run mode for testing
-- Real-time progress in GUI
-- Bandwidth limiting
-- Exclude patterns support
 </CHANGES>
+
+<!-- CRITICAL: This cleanup script runs FIRST to ensure files are replaced on update -->
+<FILE Run="/bin/bash">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+# Pre-install cleanup - ensures plugin files are replaced on update
+PLUGIN_DIR="/usr/local/emhttp/plugins/tegenett_backup"
+
+# Stop service if running
+if [ -f "/var/run/tegenett_backup.pid" ]; then
+    PID=$(cat /var/run/tegenett_backup.pid)
+    kill "$PID" 2>/dev/null
+    sleep 2
+fi
+pkill -f "tegenett_backup.py" 2>/dev/null || true
+
+# Remove old plugin files (but keep config/data)
+rm -rf "${PLUGIN_DIR}"
+
+# Create fresh directory structure
+mkdir -p "${PLUGIN_DIR}/include"
+
+echo "Pre-install cleanup complete"
+]]>
+</INLINE>
+</FILE>
 
 <FILE Name="/usr/local/emhttp/plugins/&name;/TegenettBackup.page">
 <INLINE>
@@ -3407,7 +3423,6 @@ echo "Installing Tegenett Backup..."
 # Create directories
 mkdir -p "${DATA_DIR}/logs"
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "/usr/local/emhttp/plugins/${PLUGIN_NAME}/include"
 
 # Create default settings if not exists
 if [ ! -f "${CONFIG_DIR}/settings.json" ]; then
@@ -3418,20 +3433,14 @@ fi
 chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/${PLUGIN_NAME}.py"
 chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
 
-# Stop any existing process first
-pkill -f "${PLUGIN_NAME}.py" 2>/dev/null || true
-rm -f "/var/run/${PLUGIN_NAME}.pid"
-sleep 1
-
 # Start service
 echo "Starting ${PLUGIN_NAME} service..."
 /usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME} start
 
-echo "Tegenett Backup installed successfully!"
 echo ""
+echo "Tegenett Backup installed successfully!"
 echo "Data directory: ${DATA_DIR}"
 echo "Config directory: ${CONFIG_DIR}"
-echo ""
 ]]>
 </INLINE>
 </FILE>
@@ -3454,7 +3463,7 @@ rm -f "/var/run/${PLUGIN_NAME}.pid"
 rm -rf "/usr/local/emhttp/plugins/${PLUGIN_NAME}"
 
 echo "Tegenett Backup removed."
-echo "Note: Data and config directories preserved."
+echo "Note: Data in /mnt/user/appdata/${PLUGIN_NAME} and config in /boot/config/plugins/${PLUGIN_NAME} preserved."
 ]]>
 </INLINE>
 </FILE>
