@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "tegenett_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.28e">
+<!ENTITY version   "2026.01.28f">
 <!ENTITY launch    "Settings/TegenettBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett_backup/tegenett_backup.plg">
 ]>
@@ -10,24 +10,21 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.28f
+- FIX: Service now auto-starts after plugin update
+- NEW: Quick enable/disable toggle in Jobs list
+- FIX: Dashboard shows Active Jobs (enabled/total)
+
 ##2026.01.28e
-- FIX: TypeError when comparing bandwidth_limit (string vs int)
-- FIX: TypeError when comparing retry_count/max_retries
-- Note: Backup jobs with --delete create a mirror (no duplicate files)
+- FIX: TypeError in bandwidth_limit and retry comparisons
 
 ##2026.01.28d
-- FIX: Header Running badge and Stop button now identical size
-- FIX: PID now shows correctly after service start
-- NEW: Per-job backup retention (keep X copies OR X days) - UI only for now
-- NEW: Granular Discord notifications (start/success/failure toggles)
-
-##2026.01.28b
-- UI improvements, upcoming jobs on dashboard
-- FIX: Double-logging issue resolved
+- FIX: Header buttons same size
+- NEW: Per-job retention, granular Discord notifications
 
 ##2026.01.28
-- CRITICAL FIX: CSRF token support for Unraid 7
-- NEW: Retry on failure feature
+- CSRF token support for Unraid 7
+- Retry on failure feature
 
 ##2026.01.27
 - Initial release
@@ -37,6 +34,7 @@
 <INLINE>
 <![CDATA[
 #!/bin/bash
+echo "Tegenett Backup: Pre-install cleanup..."
 PLUGIN_DIR="/usr/local/emhttp/plugins/tegenett_backup"
 if [ -f "/var/run/tegenett_backup.pid" ]; then
     PID=$(cat /var/run/tegenett_backup.pid)
@@ -46,13 +44,13 @@ fi
 pkill -f "tegenett_backup.py" 2>/dev/null || true
 rm -rf "${PLUGIN_DIR}"
 mkdir -p "${PLUGIN_DIR}/include"
-echo "Pre-install cleanup complete"
 ]]>
 </INLINE>
 </FILE>
 
 <FILE Name="/usr/local/emhttp/plugins/&name;/TegenettBackup.page">
-<INLINE><![CDATA[
+<INLINE>
+<![CDATA[
 Menu="Utilities"
 Title="Tegenett Backup"
 Icon="shield"
@@ -547,6 +545,52 @@ if (file_exists($pidFile)) {
         grid-template-columns: 1fr;
     }
 }
+
+/* Toggle switch */
+.tb-toggle {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.tb-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.tb-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #555;
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.tb-toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+.tb-toggle input:checked + .tb-toggle-slider {
+    background-color: var(--tb-success);
+}
+
+.tb-toggle input:checked + .tb-toggle-slider:before {
+    transform: translateX(20px);
+}
 </style>
 
 <div class="tb-container">
@@ -556,7 +600,7 @@ if (file_exists($pidFile)) {
             <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
             <div>
                 <h1>Tegenett Backup</h1>
-                <small style="color: var(--tb-text-muted)">v2026.01.28e</small>
+                <small style="color: var(--tb-text-muted)">v2026.01.28f</small>
             </div>
         </div>
         <div class="tb-header-actions">
@@ -596,9 +640,9 @@ if (file_exists($pidFile)) {
     <div id="tab-dashboard" class="tb-tab-content active">
         <div class="tb-stats-grid">
             <div class="tb-stat-card">
-                <div class="tb-stat-icon"><i class="fas fa-play-circle"></i></div>
-                <div class="tb-stat-value" id="statTotalJobs">-</div>
-                <div class="tb-stat-label">Total Jobs</div>
+                <div class="tb-stat-icon"><i class="fas fa-tasks"></i></div>
+                <div class="tb-stat-value" id="statActiveJobs">-</div>
+                <div class="tb-stat-label">Active Jobs</div>
             </div>
             <div class="tb-stat-card">
                 <div class="tb-stat-icon"><i class="fas fa-check-circle" style="color: var(--tb-success)"></i></div>
@@ -1173,18 +1217,20 @@ async function refreshDashboard() {
     const stats = await apiCall('get_stats', { days: 30 });
     if (stats.success) {
         const totals = stats.totals || {};
-        document.getElementById('statTotalJobs').textContent = stats.jobs?.length || totals.total_runs || 0;
         document.getElementById('statSuccessful').textContent = totals.successful || 0;
         document.getElementById('statFailed').textContent = totals.failed || 0;
         document.getElementById('statTotalData').textContent = formatBytes(totals.total_bytes || 0);
     }
     
-    // Load upcoming jobs
+    // Load jobs for active count and upcoming
     const jobsResult = await apiCall('get_jobs');
     const upcomingDiv = document.getElementById('upcomingJobs');
     
-    if (jobsResult.success && jobsResult.jobs?.length > 0) {
-        const scheduledJobs = jobsResult.jobs.filter(j => j.enabled && j.schedule_type !== 'disabled');
+    if (jobsResult.success && jobsResult.jobs) {
+        const activeJobs = jobsResult.jobs.filter(j => j.enabled);
+        document.getElementById('statActiveJobs').textContent = `${activeJobs.length}/${jobsResult.jobs.length}`;
+        
+        const scheduledJobs = activeJobs.filter(j => j.schedule_type !== 'disabled');
         
         if (scheduledJobs.length > 0) {
             let html = '<table class="tb-table"><tbody>';
@@ -1279,7 +1325,7 @@ async function loadJobs() {
     historyFilter.innerHTML = '<option value="">All Jobs</option>';
     
     if (result.success && result.jobs?.length > 0) {
-        let html = '<table class="tb-table"><thead><tr><th>Name</th><th>Type</th><th>Schedule</th><th>Last Run</th><th>Actions</th></tr></thead><tbody>';
+        let html = '<table class="tb-table"><thead><tr><th>Enabled</th><th>Name</th><th>Type</th><th>Schedule</th><th>Last Run</th><th>Actions</th></tr></thead><tbody>';
         
         for (const job of result.jobs) {
             const typeBadge = job.job_type === 'local' ? 'tb-badge-info' : 
@@ -1288,26 +1334,29 @@ async function loadJobs() {
             const lastStatus = job.last_run ? 
                 (job.last_run.status === 'completed' ? '✅' : '❌') : '';
             
-            html += `<tr>
-                <td>
-                    ${job.enabled ? '' : '<i class="fas fa-pause-circle" style="color: var(--tb-text-muted)" title="Disabled"></i> '}
-                    ${job.name}
+            html += `<tr style="${job.enabled ? '' : 'opacity: 0.6;'}">
+                <td style="text-align: center;">
+                    <label class="tb-toggle">
+                        <input type="checkbox" ${job.enabled ? 'checked' : ''} onchange="toggleJobEnabled(${job.id}, this.checked)">
+                        <span class="tb-toggle-slider"></span>
+                    </label>
                 </td>
+                <td>${job.name}</td>
                 <td><span class="tb-badge ${typeBadge}">${job.job_type}</span></td>
                 <td>${job.schedule_type === 'disabled' ? '<span style="color: var(--tb-text-muted)">Manual</span>' : job.schedule_type}</td>
                 <td>${lastStatus} ${lastRun}</td>
                 <td class="tb-actions">
-                    <button class="tb-btn tb-btn-sm tb-btn-success" onclick="runJob(${job.id})" title="Run Now">
+                    <button class="tb-btn tb-btn-sm tb-btn-success" onclick="runJob(${job.id})" title="Run Now" ${job.enabled ? '' : 'disabled'}>
                         <i class="fas fa-play"></i> Run
                     </button>
                     <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="runJob(${job.id}, true)" title="Dry Run">
                         <i class="fas fa-vial"></i> Test
                     </button>
                     <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="editJob(${job.id})" title="Edit">
-                        <i class="fas fa-edit"></i> Edit
+                        <i class="fas fa-edit"></i>
                     </button>
                     <button class="tb-btn tb-btn-sm tb-btn-danger" onclick="deleteJob(${job.id})" title="Delete">
-                        <i class="fas fa-trash"></i> Delete
+                        <i class="fas fa-trash"></i>
                     </button>
                 </td>
             </tr>`;
@@ -1319,6 +1368,18 @@ async function loadJobs() {
         jobsDiv.innerHTML = html;
     } else {
         jobsDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No backup jobs configured. Click "Add Job" to create one.</p>';
+    }
+}
+
+async function toggleJobEnabled(jobId, enabled) {
+    const result = await apiPost('toggle_job', { id: jobId, enabled: enabled ? 1 : 0 });
+    
+    if (result.success) {
+        loadJobs(); // Refresh the list
+        refreshDashboard(); // Update stats
+    } else {
+        alert('Error: ' + (result.error || 'Failed to toggle job'));
+        loadJobs(); // Reload to show correct state
     }
 }
 
@@ -1724,9 +1785,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 30000);
 });
 </script>
-]]></INLINE></FILE>
+]]>
+</INLINE>
+</FILE>
+
 <FILE Name="/usr/local/emhttp/plugins/&name;/&name;.py" Mode="0755">
-<INLINE><![CDATA[
+<INLINE>
+<![CDATA[
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -1763,7 +1828,7 @@ class Config:
     DB_FILE = "tegenett_backup.db"
     SETTINGS_FILE = "settings.json"
     PID_FILE = f"/var/run/{PLUGIN_NAME}.pid"
-    VERSION = "2026.01.28e"
+    VERSION = "2026.01.28f"
     
     DEFAULTS = {
         "ENABLED": True,
@@ -2136,6 +2201,13 @@ class Database:
                 int(job_data.get('retry_on_failure', 1)),
                 job_id
             ))
+    
+    def toggle_job(self, job_id, enabled):
+        """Toggle job enabled/disabled status"""
+        logger.info(f"[Database] Toggling job ID {job_id} to enabled={enabled}")
+        with self._conn() as conn:
+            conn.execute("UPDATE backup_jobs SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", 
+                        (int(enabled), job_id))
     
     def reset_retry_count(self, job_id):
         """Reset retry count after successful backup"""
@@ -3175,6 +3247,12 @@ class APIHandler(BaseHTTPRequestHandler):
                 else:
                     self._send_json({'success': False, 'error': 'Job not found'}, 404)
             
+            elif path.startswith('/api/jobs/') and path.endswith('/toggle'):
+                job_id = int(path.split('/')[-2])
+                enabled = int(data.get('enabled', 0))
+                DB.toggle_job(job_id, enabled)
+                self._send_json({'success': True, 'enabled': enabled})
+            
             elif path == '/api/abort':
                 BackupEngine.abort()
                 self._send_json({'success': True, 'message': 'Abort requested'})
@@ -3326,9 +3404,13 @@ def main():
 
 if __name__ == "__main__":
     main()
-]]></INLINE></FILE>
+]]>
+</INLINE>
+</FILE>
+
 <FILE Name="/usr/local/emhttp/plugins/&name;/rc.&name;" Mode="0755">
-<INLINE><![CDATA[
+<INLINE>
+<![CDATA[
 #!/bin/bash
 # rc.tegenett_backup - Service control script for Tegenett Backup
 
@@ -3424,9 +3506,13 @@ case "$1" in
     status) status ;;
     *) echo "Usage: $0 {start|stop|restart|status}"; exit 1 ;;
 esac
-]]></INLINE></FILE>
+]]>
+</INLINE>
+</FILE>
+
 <FILE Name="/usr/local/emhttp/plugins/&name;/include/ajax.php">
-<INLINE><![CDATA[
+<INLINE>
+<![CDATA[
 <?php
 /**
  * Tegenett Backup - AJAX Handler v2026.01.28
@@ -3549,6 +3635,12 @@ switch ($action) {
         echo json_encode(apiCall("/api/jobs/{$id}", 'PUT', $data));
         break;
     
+    case 'toggle_job':
+        $id = intval($_REQUEST['id'] ?? 0);
+        $enabled = intval($_REQUEST['enabled'] ?? 0);
+        echo json_encode(apiCall("/api/jobs/{$id}/toggle", 'POST', ['enabled' => $enabled]));
+        break;
+    
     case 'delete_job':
         $id = intval($_REQUEST['id'] ?? 0);
         echo json_encode(apiCall("/api/jobs/{$id}", 'DELETE'));
@@ -3644,20 +3736,35 @@ switch ($action) {
         echo json_encode(['success' => false, 'error' => 'Unknown action']);
         break;
 }
-]]></INLINE></FILE>
-<FILE Run="/bin/bash" Method="install">
+]]>
+</INLINE>
+</FILE>
+
+<FILE Run="/bin/bash">
 <INLINE>
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="tegenett_backup"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
-mkdir -p "${DATA_DIR}/logs" "${CONFIG_DIR}"
-[ ! -f "${CONFIG_DIR}/settings.json" ] && echo '{"SERVER_PORT": 39982, "LOG_LEVEL": "INFO"}' > "${CONFIG_DIR}/settings.json"
+
+echo "Tegenett Backup: Post-install setup..."
+
+mkdir -p "${DATA_DIR}/logs"
+mkdir -p "${CONFIG_DIR}"
+
+if [ ! -f "${CONFIG_DIR}/settings.json" ]; then
+    echo '{"SERVER_PORT": 39982, "LOG_LEVEL": "INFO"}' > "${CONFIG_DIR}/settings.json"
+fi
+
 chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/${PLUGIN_NAME}.py"
 chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
+
+echo "Starting ${PLUGIN_NAME} service..."
+sleep 1
 /usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME} start
-echo "Tegenett Backup installed successfully!"
+
+echo "Tegenett Backup v2026.01.28f installed/updated successfully!"
 ]]>
 </INLINE>
 </FILE>
@@ -3667,6 +3774,7 @@ echo "Tegenett Backup installed successfully!"
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="tegenett_backup"
+echo "Removing Tegenett Backup..."
 /usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME} stop 2>/dev/null
 pkill -f "${PLUGIN_NAME}.py" 2>/dev/null || true
 rm -f "/var/run/${PLUGIN_NAME}.pid"
