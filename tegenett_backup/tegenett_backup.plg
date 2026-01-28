@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "tegenett_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.28d">
+<!ENTITY version   "2026.01.28e">
 <!ENTITY launch    "Settings/TegenettBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett_backup/tegenett_backup.plg">
 ]>
@@ -10,67 +10,49 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.28e
+- FIX: TypeError when comparing bandwidth_limit (string vs int)
+- FIX: TypeError when comparing retry_count/max_retries
+- Note: Backup jobs with --delete create a mirror (no duplicate files)
+
 ##2026.01.28d
 - FIX: Header Running badge and Stop button now identical size
-- FIX: PID now shows correctly after service start (page reload)
-- FIX: Edit and Delete buttons have text labels
-- NEW: Per-job backup retention (keep X copies OR X days)
+- FIX: PID now shows correctly after service start
+- NEW: Per-job backup retention (keep X copies OR X days) - UI only for now
 - NEW: Granular Discord notifications (start/success/failure toggles)
-- IMPROVED: Data Management section clarified
-
-##2026.01.28c
-- FIX: Header buttons now same size and style
-- NEW: Per-job backup retention settings (count and days)
-- NEW: Granular Discord notification settings
-- IMPROVED: Clearer Data Management section in Settings
 
 ##2026.01.28b
-- UI: Added upcoming jobs on dashboard
-- UI: Red Stop button, green Start button
-- UI: Job action buttons with text labels
-- UI: Reorganized settings into cards
-- FIX: Resolved double-logging issue
-- FIX: Plugin files now properly update on upgrade
+- UI improvements, upcoming jobs on dashboard
+- FIX: Double-logging issue resolved
 
 ##2026.01.28
-- CRITICAL FIX: Added CSRF token support for Unraid 7 compatibility
-- CRITICAL FIX: Database migration - no more manual database deletion needed
-- NEW: Retry on failure - automatically retries failed jobs
+- CRITICAL FIX: CSRF token support for Unraid 7
+- NEW: Retry on failure feature
 
 ##2026.01.27
 - Initial release
 </CHANGES>
 
-<!-- CRITICAL: This cleanup script runs FIRST to ensure files are replaced on update -->
 <FILE Run="/bin/bash">
 <INLINE>
 <![CDATA[
 #!/bin/bash
-# Pre-install cleanup - ensures plugin files are replaced on update
 PLUGIN_DIR="/usr/local/emhttp/plugins/tegenett_backup"
-
-# Stop service if running
 if [ -f "/var/run/tegenett_backup.pid" ]; then
     PID=$(cat /var/run/tegenett_backup.pid)
     kill "$PID" 2>/dev/null
     sleep 2
 fi
 pkill -f "tegenett_backup.py" 2>/dev/null || true
-
-# Remove old plugin files (but keep config/data)
 rm -rf "${PLUGIN_DIR}"
-
-# Create fresh directory structure
 mkdir -p "${PLUGIN_DIR}/include"
-
 echo "Pre-install cleanup complete"
 ]]>
 </INLINE>
 </FILE>
 
 <FILE Name="/usr/local/emhttp/plugins/&name;/TegenettBackup.page">
-<INLINE>
-<![CDATA[
+<INLINE><![CDATA[
 Menu="Utilities"
 Title="Tegenett Backup"
 Icon="shield"
@@ -574,7 +556,7 @@ if (file_exists($pidFile)) {
             <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
             <div>
                 <h1>Tegenett Backup</h1>
-                <small style="color: var(--tb-text-muted)">v2026.01.28d</small>
+                <small style="color: var(--tb-text-muted)">v2026.01.28e</small>
             </div>
         </div>
         <div class="tb-header-actions">
@@ -1742,13 +1724,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 30000);
 });
 </script>
-]]>
-</INLINE>
-</FILE>
-
+]]></INLINE></FILE>
 <FILE Name="/usr/local/emhttp/plugins/&name;/&name;.py" Mode="0755">
-<INLINE>
-<![CDATA[
+<INLINE><![CDATA[
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -1785,7 +1763,7 @@ class Config:
     DB_FILE = "tegenett_backup.db"
     SETTINGS_FILE = "settings.json"
     PID_FILE = f"/var/run/{PLUGIN_NAME}.pid"
-    VERSION = "2026.01.28d"
+    VERSION = "2026.01.28e"
     
     DEFAULTS = {
         "ENABLED": True,
@@ -2056,8 +2034,8 @@ class Database:
     def get_failed_jobs_for_retry(self):
         """Get jobs that failed and need retry"""
         with self._conn() as conn:
-            max_retries = Config.C.get("RETRY_MAX_ATTEMPTS", 3)
-            retry_interval = Config.C.get("RETRY_INTERVAL_MINUTES", 60)
+            max_retries = int(Config.C.get("RETRY_MAX_ATTEMPTS", 3) or 3)
+            retry_interval = int(Config.C.get("RETRY_INTERVAL_MINUTES", 60) or 60)
             
             rows = conn.execute('''
                 SELECT j.* FROM backup_jobs j
@@ -2690,10 +2668,11 @@ class BackupEngine:
             logger.error(f"[BackupEngine] Job failed: {error_message}")
             retry_info = ""
             if job.get('retry_on_failure', 1) and Config.C.get("RETRY_ON_FAILURE", True):
-                retry_count = job.get('retry_count', 0) + 1
-                max_retries = Config.C.get("RETRY_MAX_ATTEMPTS", 3)
+                retry_count = int(job.get('retry_count', 0) or 0) + 1
+                max_retries = int(Config.C.get("RETRY_MAX_ATTEMPTS", 3) or 3)
                 if retry_count < max_retries:
-                    retry_info = f"\n\n🔁 Will retry in {Config.C.get('RETRY_INTERVAL_MINUTES', 60)} minutes ({retry_count}/{max_retries})"
+                    retry_interval = int(Config.C.get('RETRY_INTERVAL_MINUTES', 60) or 60)
+                    retry_info = f"\n\n🔁 Will retry in {retry_interval} minutes ({retry_count}/{max_retries})"
             
             # Notify failure if enabled
             if Config.C.get("DISCORD_NOTIFY_FAILURE", True):
@@ -2834,7 +2813,7 @@ class BackupEngine:
         options = Config.C.get("RSYNC_OPTIONS", "-avh --delete --stats")
         cmd.extend(options.split())
         
-        bw_limit = job.get('bandwidth_limit', 0) or Config.C.get("DEFAULT_BANDWIDTH_LIMIT", 0)
+        bw_limit = int(job.get('bandwidth_limit', 0) or 0) or int(Config.C.get("DEFAULT_BANDWIDTH_LIMIT", 0) or 0)
         if bw_limit > 0:
             cmd.append(f'--bwlimit={bw_limit}')
         
@@ -3347,13 +3326,9 @@ def main():
 
 if __name__ == "__main__":
     main()
-]]>
-</INLINE>
-</FILE>
-
+]]></INLINE></FILE>
 <FILE Name="/usr/local/emhttp/plugins/&name;/rc.&name;" Mode="0755">
-<INLINE>
-<![CDATA[
+<INLINE><![CDATA[
 #!/bin/bash
 # rc.tegenett_backup - Service control script for Tegenett Backup
 
@@ -3449,13 +3424,9 @@ case "$1" in
     status) status ;;
     *) echo "Usage: $0 {start|stop|restart|status}"; exit 1 ;;
 esac
-]]>
-</INLINE>
-</FILE>
-
+]]></INLINE></FILE>
 <FILE Name="/usr/local/emhttp/plugins/&name;/include/ajax.php">
-<INLINE>
-<![CDATA[
+<INLINE><![CDATA[
 <?php
 /**
  * Tegenett Backup - AJAX Handler v2026.01.28
@@ -3673,42 +3644,20 @@ switch ($action) {
         echo json_encode(['success' => false, 'error' => 'Unknown action']);
         break;
 }
-]]>
-</INLINE>
-</FILE>
-
+]]></INLINE></FILE>
 <FILE Run="/bin/bash" Method="install">
 <INLINE>
 <![CDATA[
 #!/bin/bash
-
 PLUGIN_NAME="tegenett_backup"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
-
-echo "Installing Tegenett Backup..."
-
-# Create directories
-mkdir -p "${DATA_DIR}/logs"
-mkdir -p "${CONFIG_DIR}"
-
-# Create default settings if not exists
-if [ ! -f "${CONFIG_DIR}/settings.json" ]; then
-    echo '{"SERVER_PORT": 39982, "LOG_LEVEL": "INFO"}' > "${CONFIG_DIR}/settings.json"
-fi
-
-# Set permissions
+mkdir -p "${DATA_DIR}/logs" "${CONFIG_DIR}"
+[ ! -f "${CONFIG_DIR}/settings.json" ] && echo '{"SERVER_PORT": 39982, "LOG_LEVEL": "INFO"}' > "${CONFIG_DIR}/settings.json"
 chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/${PLUGIN_NAME}.py"
 chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
-
-# Start service
-echo "Starting ${PLUGIN_NAME} service..."
 /usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME} start
-
-echo ""
 echo "Tegenett Backup installed successfully!"
-echo "Data directory: ${DATA_DIR}"
-echo "Config directory: ${CONFIG_DIR}"
 ]]>
 </INLINE>
 </FILE>
@@ -3717,21 +3666,12 @@ echo "Config directory: ${CONFIG_DIR}"
 <INLINE>
 <![CDATA[
 #!/bin/bash
-
 PLUGIN_NAME="tegenett_backup"
-
-echo "Removing Tegenett Backup..."
-
-# Stop service
 /usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME} stop 2>/dev/null
 pkill -f "${PLUGIN_NAME}.py" 2>/dev/null || true
 rm -f "/var/run/${PLUGIN_NAME}.pid"
-
-# Remove plugin files
 rm -rf "/usr/local/emhttp/plugins/${PLUGIN_NAME}"
-
-echo "Tegenett Backup removed."
-echo "Note: Data in /mnt/user/appdata/${PLUGIN_NAME} and config in /boot/config/plugins/${PLUGIN_NAME} preserved."
+echo "Tegenett Backup removed. Data preserved in /mnt/user/appdata/${PLUGIN_NAME}"
 ]]>
 </INLINE>
 </FILE>
