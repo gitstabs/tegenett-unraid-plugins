@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "tegenett_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.28g">
+<!ENTITY version   "2026.01.28h">
 <!ENTITY launch    "Settings/TegenettBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett_backup/tegenett_backup.plg">
 ]>
@@ -10,19 +10,19 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.28h
+- FIX: Service auto-starts via /boot/config/go (proper Unraid method)
+- FIX: Statistics chart only shows whole numbers
+- NEW: Jobs table shows schedule TIME column (HH:MM)
+- NEW: Jobs sorted by schedule time
+
 ##2026.01.28g
-- FIX: Double-logging issue completely resolved (nohup now to /dev/null)
-- FIX: Edit/Delete button text restored
-- FIX: Service auto-starts after update
+- FIX: Double-logging issue
+- FIX: Edit/Delete button text
 - NEW: Enable/disable toggle in Jobs list
 
-##2026.01.28f
-- FIX: Service auto-start after plugin update
-- NEW: Quick enable/disable toggle in Jobs list
-- FIX: Dashboard shows Active Jobs (enabled/total)
-
 ##2026.01.28e
-- FIX: TypeError in bandwidth_limit and retry comparisons
+- FIX: TypeError in bandwidth/retry comparisons
 
 ##2026.01.28
 - CSRF token support for Unraid 7
@@ -32,18 +32,24 @@
 - Initial release
 </CHANGES>
 
+<!-- Pre-install: Stop service and clean up -->
 <FILE Run="/bin/bash">
 <INLINE>
 <![CDATA[
 #!/bin/bash
 echo "Tegenett Backup: Pre-install cleanup..."
-PLUGIN_DIR="/usr/local/emhttp/plugins/tegenett_backup"
-if [ -f "/var/run/tegenett_backup.pid" ]; then
-    PID=$(cat /var/run/tegenett_backup.pid)
+PLUGIN_NAME="tegenett_backup"
+PLUGIN_DIR="/usr/local/emhttp/plugins/${PLUGIN_NAME}"
+
+# Stop service if running
+if [ -f "/var/run/${PLUGIN_NAME}.pid" ]; then
+    PID=$(cat /var/run/${PLUGIN_NAME}.pid)
     kill "$PID" 2>/dev/null
     sleep 2
 fi
-pkill -f "tegenett_backup.py" 2>/dev/null || true
+pkill -f "${PLUGIN_NAME}.py" 2>/dev/null || true
+
+# Remove old plugin files
 rm -rf "${PLUGIN_DIR}"
 mkdir -p "${PLUGIN_DIR}/include"
 ]]>
@@ -602,7 +608,7 @@ if (file_exists($pidFile)) {
             <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
             <div>
                 <h1>Tegenett Backup</h1>
-                <small style="color: var(--tb-text-muted)">v2026.01.28g</small>
+                <small style="color: var(--tb-text-muted)">v2026.01.28h</small>
             </div>
         </div>
         <div class="tb-header-actions">
@@ -1327,14 +1333,33 @@ async function loadJobs() {
     historyFilter.innerHTML = '<option value="">All Jobs</option>';
     
     if (result.success && result.jobs?.length > 0) {
-        let html = '<table class="tb-table"><thead><tr><th>Enabled</th><th>Name</th><th>Type</th><th>Schedule</th><th>Last Run</th><th>Actions</th></tr></thead><tbody>';
+        // Sort jobs by schedule time
+        const sortedJobs = [...result.jobs].sort((a, b) => {
+            if (a.schedule_type === 'disabled') return 1;
+            if (b.schedule_type === 'disabled') return -1;
+            const timeA = (a.schedule_hour || 0) * 60 + (a.schedule_minute || 0);
+            const timeB = (b.schedule_hour || 0) * 60 + (b.schedule_minute || 0);
+            return timeA - timeB;
+        });
         
-        for (const job of result.jobs) {
+        let html = '<table class="tb-table"><thead><tr><th>Enabled</th><th>Name</th><th>Type</th><th>Schedule</th><th>Time</th><th>Last Run</th><th>Actions</th></tr></thead><tbody>';
+        
+        for (const job of sortedJobs) {
             const typeBadge = job.job_type === 'local' ? 'tb-badge-info' : 
                              job.job_type.includes('wol') ? 'tb-badge-warning' : 'tb-badge-secondary';
             const lastRun = job.last_run ? formatDate(job.last_run.started_at) : 'Never';
             const lastStatus = job.last_run ? 
                 (job.last_run.status === 'completed' ? '✅' : '❌') : '';
+            
+            // Format schedule time
+            let scheduleTime = '-';
+            if (job.schedule_type !== 'disabled' && job.schedule_type !== 'cron') {
+                const hour = String(job.schedule_hour || 0).padStart(2, '0');
+                const minute = String(job.schedule_minute || 0).padStart(2, '0');
+                scheduleTime = `${hour}:${minute}`;
+            } else if (job.schedule_type === 'cron') {
+                scheduleTime = job.schedule_cron || 'custom';
+            }
             
             html += `<tr style="${job.enabled ? '' : 'opacity: 0.6;'}">
                 <td style="text-align: center;">
@@ -1346,6 +1371,7 @@ async function loadJobs() {
                 <td>${job.name}</td>
                 <td><span class="tb-badge ${typeBadge}">${job.job_type}</span></td>
                 <td>${job.schedule_type === 'disabled' ? '<span style="color: var(--tb-text-muted)">Manual</span>' : job.schedule_type}</td>
+                <td>${scheduleTime}</td>
                 <td>${lastStatus} ${lastRun}</td>
                 <td class="tb-actions">
                     <button class="tb-btn tb-btn-sm tb-btn-success" onclick="runJob(${job.id})" title="Run Now" ${job.enabled ? '' : 'disabled'}>
@@ -1611,7 +1637,18 @@ async function loadStats() {
                 responsive: true,
                 scales: {
                     x: { stacked: true },
-                    y: { stacked: true, beginAtZero: true }
+                    y: { 
+                        stacked: true, 
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1,
+                            callback: function(value) {
+                                if (Math.floor(value) === value) {
+                                    return value;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -1830,7 +1867,7 @@ class Config:
     DB_FILE = "tegenett_backup.db"
     SETTINGS_FILE = "settings.json"
     PID_FILE = f"/var/run/{PLUGIN_NAME}.pid"
-    VERSION = "2026.01.28g"
+    VERSION = "2026.01.28h"
     
     DEFAULTS = {
         "ENABLED": True,
@@ -3749,6 +3786,7 @@ switch ($action) {
 </INLINE>
 </FILE>
 
+<!-- Post-install: Setup and start service -->
 <FILE Run="/bin/bash">
 <INLINE>
 <![CDATA[
@@ -3756,39 +3794,76 @@ switch ($action) {
 PLUGIN_NAME="tegenett_backup"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
+RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
+GO_FILE="/boot/config/go"
+STARTUP_LINE="# Start Tegenett Backup\n${RC_SCRIPT} start"
 
 echo "Tegenett Backup: Post-install setup..."
 
+# Create directories
 mkdir -p "${DATA_DIR}/logs"
 mkdir -p "${CONFIG_DIR}"
 
+# Create default settings if not exists
 if [ ! -f "${CONFIG_DIR}/settings.json" ]; then
     echo '{"SERVER_PORT": 39982, "LOG_LEVEL": "INFO"}' > "${CONFIG_DIR}/settings.json"
 fi
 
+# Set permissions
 chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/${PLUGIN_NAME}.py"
-chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
+chmod +x "${RC_SCRIPT}"
 
+# Add to /boot/config/go for autostart on boot (if not already there)
+if ! grep -q "rc.${PLUGIN_NAME}" "${GO_FILE}" 2>/dev/null; then
+    echo "" >> "${GO_FILE}"
+    echo "# Start Tegenett Backup" >> "${GO_FILE}"
+    echo "${RC_SCRIPT} start" >> "${GO_FILE}"
+    echo "Added ${PLUGIN_NAME} to startup"
+fi
+
+# Start service now
 echo "Starting ${PLUGIN_NAME} service..."
-sleep 2
-/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME} start
+sleep 1
+${RC_SCRIPT} start
 
-echo "Tegenett Backup v2026.01.28g installed/updated successfully!"
+echo ""
+echo "====================================="
+echo "Tegenett Backup v2026.01.28h installed!"
+echo "====================================="
 ]]>
 </INLINE>
 </FILE>
 
+<!-- Remove script -->
 <FILE Run="/bin/bash" Method="remove">
 <INLINE>
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="tegenett_backup"
+RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
+GO_FILE="/boot/config/go"
+
 echo "Removing Tegenett Backup..."
-/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME} stop 2>/dev/null
+
+# Stop service
+${RC_SCRIPT} stop 2>/dev/null
 pkill -f "${PLUGIN_NAME}.py" 2>/dev/null || true
 rm -f "/var/run/${PLUGIN_NAME}.pid"
+
+# Remove from /boot/config/go
+if [ -f "${GO_FILE}" ]; then
+    sed -i "/# Start Tegenett Backup/d" "${GO_FILE}"
+    sed -i "/rc.${PLUGIN_NAME}/d" "${GO_FILE}"
+    # Clean up empty lines at end
+    sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "${GO_FILE}"
+fi
+
+# Remove plugin files
 rm -rf "/usr/local/emhttp/plugins/${PLUGIN_NAME}"
-echo "Tegenett Backup removed. Data preserved in /mnt/user/appdata/${PLUGIN_NAME}"
+
+echo "Tegenett Backup removed."
+echo "Data preserved in /mnt/user/appdata/${PLUGIN_NAME}"
+echo "Config preserved in /boot/config/plugins/${PLUGIN_NAME}"
 ]]>
 </INLINE>
 </FILE>
