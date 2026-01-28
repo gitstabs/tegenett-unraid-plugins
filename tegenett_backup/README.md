@@ -8,7 +8,7 @@ Smart backup solution for Unraid with local, remote SMB, Wake-on-LAN, and cloud 
 - **Remote SMB Backup**: Backup to Windows/NAS shares via Unassigned Devices
 - **Wake-on-LAN**: Automatically wake remote hosts before backup
 - **Remote Shutdown**: Shutdown Windows machines after backup (via Samba RPC)
-- **Retry on Failure**: Automatically retry failed jobs
+- **Retry on Failure**: Automatically retry failed jobs with configurable intervals
 - **Discord Notifications**: Rich embeds with status and statistics
 - **Unraid Notifications**: Native Unraid notification support
 - **Scheduling**: Hourly, daily, weekly, or custom cron schedules
@@ -30,13 +30,16 @@ https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett
 
 ## Changelog
 
-### v2026.01.27a
+### v2026.01.28
+- CRITICAL FIX: Added CSRF token support for Unraid 7 compatibility
+- CRITICAL FIX: Database migration - no more manual database deletion needed
 - BUGFIX: Changed default port to 39982 to avoid conflicts
-- BUGFIX: Fixed double-logging issue
 - BUGFIX: Fixed settings save returning empty response
 - BUGFIX: Fixed Discord webhook SSL issues
+- BUGFIX: Fixed double-logging issue
 - NEW: Retry on failure - automatically retries failed jobs
 - NEW: Configurable retry interval and max attempts
+- NEW: Per-job retry settings
 
 ### v2026.01.27
 - Initial release

@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "tegenett_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.27a">
+<!ENTITY version   "2026.01.28">
 <!ENTITY launch    "Settings/TegenettBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett_backup/tegenett_backup.plg">
 ]>
@@ -10,15 +10,22 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
-##2026.01.27a
+##2026.01.28
+- CRITICAL FIX: Added CSRF token support for Unraid 7 compatibility
+- CRITICAL FIX: Database migration - no more manual database deletion needed
 - BUGFIX: Changed default port to 39982 to avoid conflicts
-- BUGFIX: Fixed double-logging issue
 - BUGFIX: Fixed settings save returning empty response
 - BUGFIX: Fixed Discord webhook SSL issues
+- BUGFIX: Fixed double-logging issue
 - NEW: Retry on failure - automatically retries failed jobs
 - NEW: Configurable retry interval and max attempts
-- IMPROVED: Better error messages in API responses
-- IMPROVED: Ajax handler reads port from settings file
+- NEW: Per-job retry settings
+- IMPROVED: Better error handling in API responses
+- IMPROVED: Ajax handler properly parses form data
+
+##2026.01.27a
+- Port changed to 39982
+- Initial bugfixes
 
 ##2026.01.27
 - Initial release
@@ -59,12 +66,13 @@ if (file_exists($pidFile)) {
 }
 ?>
 
+<script>var csrf_token = "<?=$var['csrf_token']?>";</script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
 <style>
 /* ============================================
-   TEGENETT BACKUP - CSS
+   TEGENETT BACKUP - CSS v2026.01.28
    ============================================ */
 
 :root {
@@ -467,7 +475,7 @@ if (file_exists($pidFile)) {
             <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
             <div>
                 <h1>Tegenett Backup</h1>
-                <small style="color: var(--tb-text-muted)">v2026.01.27a</small>
+                <small style="color: var(--tb-text-muted)">v2026.01.28</small>
             </div>
         </div>
         <div class="tb-header-actions">
@@ -657,6 +665,26 @@ if (file_exists($pidFile)) {
                         <input type="checkbox" name="UNRAID_NOTIFICATIONS" id="setUnraidNotify" checked>
                         Enable Unraid Notifications
                     </label>
+                </div>
+                
+                <h4 style="color: var(--tb-primary); margin-top: 20px;">
+                    <i class="fas fa-redo"></i> Retry Settings
+                </h4>
+                <div class="tb-form-row">
+                    <div class="tb-form-group">
+                        <label>
+                            <input type="checkbox" name="RETRY_ON_FAILURE" id="setRetryOnFailure" checked>
+                            Retry failed jobs automatically
+                        </label>
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Retry Interval (minutes)</label>
+                        <input type="number" name="RETRY_INTERVAL_MINUTES" id="setRetryInterval" min="5" max="1440" value="60">
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Max Retry Attempts</label>
+                        <input type="number" name="RETRY_MAX_ATTEMPTS" id="setRetryMax" min="1" max="10" value="3">
+                    </div>
                 </div>
                 
                 <h4 style="color: var(--tb-primary); margin-top: 20px;">
@@ -850,6 +878,14 @@ if (file_exists($pidFile)) {
                 </div>
                 
                 <div class="tb-form-group">
+                    <label>
+                        <input type="checkbox" id="jobRetryOnFailure" name="retry_on_failure" checked>
+                        Retry on failure
+                    </label>
+                    <div class="tb-form-hint">Automatically retry if backup fails (uses global retry settings)</div>
+                </div>
+                
+                <div class="tb-form-group">
                     <label>Exclude Patterns (one per line)</label>
                     <textarea id="jobExcludes" name="exclude_patterns" rows="3" placeholder="*.tmp&#10;*.log&#10;cache/"></textarea>
                 </div>
@@ -866,7 +902,7 @@ if (file_exists($pidFile)) {
 
 <script>
 // ============================================
-// TEGENETT BACKUP - JavaScript
+// TEGENETT BACKUP - JavaScript v2026.01.28
 // ============================================
 
 const TB = {
@@ -920,11 +956,14 @@ async function apiPost(action, data = {}) {
     const url = new URL(TB.ajaxUrl, window.location.origin);
     url.searchParams.set('action', action);
     
+    // Add csrf_token to data for Unraid security
+    data.csrf_token = csrf_token;
+    
     try {
         const response = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(data).toString()
         });
         return await response.json();
     } catch (e) {
@@ -984,7 +1023,7 @@ async function refreshDashboard() {
             const statusBadge = h.status === 'completed' ? 'tb-badge-success' : 
                                h.status === 'running' ? 'tb-badge-info' : 'tb-badge-danger';
             html += `<tr>
-                <td>${h.job_name}</td>
+                <td>${h.job_name}${h.is_retry ? ' <span class="tb-badge tb-badge-warning">retry</span>' : ''}</td>
                 <td><span class="tb-badge ${statusBadge}">${h.status}</span></td>
                 <td>${formatDate(h.started_at)}</td>
                 <td>${formatBytes(h.bytes_transferred)}</td>
@@ -1084,6 +1123,7 @@ function showJobModal(jobId = null) {
     document.getElementById('jobForm').reset();
     document.getElementById('jobId').value = jobId || '';
     document.getElementById('jobEnabled').checked = true;
+    document.getElementById('jobRetryOnFailure').checked = true;
     
     toggleJobFields();
     toggleScheduleFields();
@@ -1123,6 +1163,7 @@ async function loadJobForEdit(jobId) {
         document.getElementById('jobScheduleCron').value = job.schedule_cron || '';
         document.getElementById('jobBandwidth').value = job.bandwidth_limit || 0;
         document.getElementById('jobEnabled').checked = !!job.enabled;
+        document.getElementById('jobRetryOnFailure').checked = job.retry_on_failure !== 0;
         document.getElementById('jobExcludes').value = job.exclude_patterns || '';
         
         toggleJobFields();
@@ -1170,6 +1211,7 @@ async function saveJob() {
     data.enabled = document.getElementById('jobEnabled').checked ? 1 : 0;
     data.shutdown_after = document.getElementById('jobShutdown').checked ? 1 : 0;
     data.use_wol = data.job_type.includes('wol') ? 1 : 0;
+    data.retry_on_failure = document.getElementById('jobRetryOnFailure').checked ? 1 : 0;
     
     const jobId = data.id;
     delete data.id;
@@ -1208,7 +1250,7 @@ async function loadHistory() {
                                h.status === 'running' ? 'tb-badge-info' : 'tb-badge-danger';
             
             html += `<tr>
-                <td>${h.job_name}${h.dry_run ? ' <span class="tb-badge tb-badge-secondary">dry run</span>' : ''}</td>
+                <td>${h.job_name}${h.dry_run ? ' <span class="tb-badge tb-badge-secondary">dry run</span>' : ''}${h.is_retry ? ' <span class="tb-badge tb-badge-warning">retry</span>' : ''}</td>
                 <td><span class="tb-badge ${statusBadge}">${h.status}</span></td>
                 <td>${formatDate(h.started_at)}</td>
                 <td>${formatDuration(h.duration_seconds)}</td>
@@ -1295,6 +1337,9 @@ async function loadSettings() {
         document.getElementById('setDailySummary').checked = !!s.DISCORD_DAILY_SUMMARY;
         document.getElementById('setSummaryHour').value = s.DISCORD_SUMMARY_HOUR || 20;
         document.getElementById('setUnraidNotify').checked = s.UNRAID_NOTIFICATIONS !== false;
+        document.getElementById('setRetryOnFailure').checked = s.RETRY_ON_FAILURE !== false;
+        document.getElementById('setRetryInterval').value = s.RETRY_INTERVAL_MINUTES || 60;
+        document.getElementById('setRetryMax').value = s.RETRY_MAX_ATTEMPTS || 3;
         document.getElementById('setWolTimeout').value = s.WOL_WAIT_TIMEOUT || 120;
         document.getElementById('setWolInterval').value = s.WOL_PING_INTERVAL || 5;
     }
@@ -1310,6 +1355,9 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
         DISCORD_DAILY_SUMMARY: document.getElementById('setDailySummary').checked,
         DISCORD_SUMMARY_HOUR: parseInt(document.getElementById('setSummaryHour').value) || 20,
         UNRAID_NOTIFICATIONS: document.getElementById('setUnraidNotify').checked,
+        RETRY_ON_FAILURE: document.getElementById('setRetryOnFailure').checked,
+        RETRY_INTERVAL_MINUTES: parseInt(document.getElementById('setRetryInterval').value) || 60,
+        RETRY_MAX_ATTEMPTS: parseInt(document.getElementById('setRetryMax').value) || 3,
         WOL_WAIT_TIMEOUT: parseInt(document.getElementById('setWolTimeout').value) || 120,
         WOL_PING_INTERVAL: parseInt(document.getElementById('setWolInterval').value) || 5
     };
@@ -1424,7 +1472,7 @@ document.addEventListener('DOMContentLoaded', () => {
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Tegenett Backup - Python Daemon v2026.01.27a
+Tegenett Backup - Python Daemon v2026.01.28
 Smart backup solution for Unraid with local, remote SMB, WOL, and cloud support
 Author: Tegenett
 """
@@ -1457,7 +1505,7 @@ class Config:
     DB_FILE = "tegenett_backup.db"
     SETTINGS_FILE = "settings.json"
     PID_FILE = f"/var/run/{PLUGIN_NAME}.pid"
-    VERSION = "2026.01.27a"
+    VERSION = "2026.01.28"
     
     DEFAULTS = {
         "ENABLED": True,
@@ -1527,27 +1575,19 @@ class Config:
             return True, "Settings saved"
         except Exception as e:
             return False, str(e)
-    
-    @classmethod
-    def update_and_save(cls, data):
-        """Update config with new data and save"""
-        try:
-            cls.C.update(data)
-            return cls.save()
-        except Exception as e:
-            return False, str(e)
 
 Config.load()
 
 # ============================================
-# LOGGING (fixed double-logging)
+# LOGGING
 # ============================================
 
 LOG_FILE = os.path.join(Config.DATA_DIR, "logs", f"{Config.PLUGIN_NAME}.log")
 os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 
 # Clear existing handlers to prevent duplicates
-logging.getLogger().handlers = []
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
 
 _log_level_str = Config.C.get('LOG_LEVEL', 'INFO').upper()
 _log_level = getattr(logging, _log_level_str, logging.INFO)
@@ -1555,7 +1595,8 @@ _log_level = getattr(logging, _log_level_str, logging.INFO)
 # Create logger
 logger = logging.getLogger(Config.PLUGIN_NAME)
 logger.setLevel(_log_level)
-logger.handlers = []  # Clear any existing handlers
+logger.handlers = []
+logger.propagate = False
 
 # File handler
 file_handler = logging.FileHandler(LOG_FILE)
@@ -1569,20 +1610,21 @@ console_handler.setLevel(_log_level)
 console_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', '%Y-%m-%d %H:%M:%S'))
 logger.addHandler(console_handler)
 
-# Prevent propagation to root logger
-logger.propagate = False
-
 START_TIME = time.time()
 
 # ============================================
-# DATABASE
+# DATABASE WITH MIGRATION
 # ============================================
 
 class Database:
+    # Schema version for migrations
+    SCHEMA_VERSION = 2
+    
     def __init__(self):
         self.db_path = os.path.join(Config.DATA_DIR, Config.DB_FILE)
         self.lock = threading.RLock()
         self._init_db()
+        self._migrate_db()
     
     def _init_db(self):
         """Initialize database tables"""
@@ -1613,9 +1655,6 @@ class Database:
                     exclude_patterns TEXT,
                     retention_count INTEGER DEFAULT 0,
                     retention_days INTEGER DEFAULT 0,
-                    retry_on_failure INTEGER DEFAULT 1,
-                    retry_count INTEGER DEFAULT 0,
-                    last_retry_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -1633,7 +1672,6 @@ class Database:
                     transfer_speed_mbps REAL DEFAULT 0,
                     error_message TEXT,
                     dry_run INTEGER DEFAULT 0,
-                    is_retry INTEGER DEFAULT 0,
                     log_output TEXT,
                     FOREIGN KEY (job_id) REFERENCES backup_jobs(id) ON DELETE CASCADE
                 );
@@ -1649,12 +1687,58 @@ class Database:
                     total_duration INTEGER DEFAULT 0
                 );
                 
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version INTEGER PRIMARY KEY
+                );
+                
                 CREATE INDEX IF NOT EXISTS idx_history_job ON backup_history(job_id);
                 CREATE INDEX IF NOT EXISTS idx_history_status ON backup_history(status);
                 CREATE INDEX IF NOT EXISTS idx_history_started ON backup_history(started_at);
                 CREATE INDEX IF NOT EXISTS idx_stats_date ON daily_stats(date);
             ''')
         logger.info("[Database] Initialization complete")
+    
+    def _migrate_db(self):
+        """Run database migrations"""
+        with self._conn() as conn:
+            # Get current schema version
+            try:
+                row = conn.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1").fetchone()
+                current_version = row['version'] if row else 0
+            except:
+                current_version = 0
+            
+            logger.info(f"[Database] Current schema version: {current_version}, target: {self.SCHEMA_VERSION}")
+            
+            if current_version < 2:
+                # Migration to v2: Add retry columns
+                logger.info("[Database] Migrating to schema v2...")
+                
+                # Check if columns exist before adding
+                columns = [row['name'] for row in conn.execute("PRAGMA table_info(backup_jobs)").fetchall()]
+                
+                if 'retry_on_failure' not in columns:
+                    conn.execute("ALTER TABLE backup_jobs ADD COLUMN retry_on_failure INTEGER DEFAULT 1")
+                    logger.info("[Database] Added retry_on_failure column")
+                
+                if 'retry_count' not in columns:
+                    conn.execute("ALTER TABLE backup_jobs ADD COLUMN retry_count INTEGER DEFAULT 0")
+                    logger.info("[Database] Added retry_count column")
+                
+                if 'last_retry_at' not in columns:
+                    conn.execute("ALTER TABLE backup_jobs ADD COLUMN last_retry_at TIMESTAMP")
+                    logger.info("[Database] Added last_retry_at column")
+                
+                # Check history table
+                history_columns = [row['name'] for row in conn.execute("PRAGMA table_info(backup_history)").fetchall()]
+                
+                if 'is_retry' not in history_columns:
+                    conn.execute("ALTER TABLE backup_history ADD COLUMN is_retry INTEGER DEFAULT 0")
+                    logger.info("[Database] Added is_retry column to history")
+                
+                # Update schema version
+                conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", (2,))
+                logger.info("[Database] Migration to v2 complete")
     
     @contextmanager
     def _conn(self):
@@ -1697,6 +1781,8 @@ class Database:
         """Get jobs that failed and need retry"""
         with self._conn() as conn:
             max_retries = Config.C.get("RETRY_MAX_ATTEMPTS", 3)
+            retry_interval = Config.C.get("RETRY_INTERVAL_MINUTES", 60)
+            
             rows = conn.execute('''
                 SELECT j.* FROM backup_jobs j
                 INNER JOIN (
@@ -1711,7 +1797,7 @@ class Database:
                 AND j.retry_count < ?
                 AND (j.last_retry_at IS NULL OR 
                      datetime(j.last_retry_at, '+' || ? || ' minutes') <= datetime('now'))
-            ''', (max_retries, Config.C.get("RETRY_INTERVAL_MINUTES", 60))).fetchall()
+            ''', (max_retries, retry_interval)).fetchall()
             return [dict(row) for row in rows]
     
     def get_job(self, job_id):
@@ -2154,7 +2240,6 @@ class NotifyManager:
                 }
             )
             
-            # Create SSL context that doesn't verify (for compatibility)
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
@@ -2613,18 +2698,21 @@ class Scheduler:
         if BackupEngine.is_running():
             return
         
-        jobs = DB.get_failed_jobs_for_retry()
-        
-        for job in jobs:
-            logger.info(f"[Scheduler] Retrying failed job: {job['name']} (attempt {job.get('retry_count', 0) + 1})")
+        try:
+            jobs = DB.get_failed_jobs_for_retry()
             
-            thread = threading.Thread(
-                target=BackupEngine.run_job,
-                args=(job, False, True),
-                name=f"Retry-{job['name']}"
-            )
-            thread.start()
-            break
+            for job in jobs:
+                logger.info(f"[Scheduler] Retrying failed job: {job['name']} (attempt {job.get('retry_count', 0) + 1})")
+                
+                thread = threading.Thread(
+                    target=BackupEngine.run_job,
+                    args=(job, False, True),
+                    name=f"Retry-{job['name']}"
+                )
+                thread.start()
+                break
+        except Exception as e:
+            logger.error(f"[Scheduler] Error checking retries: {e}")
     
     @classmethod
     def _should_run(cls, job, now):
@@ -2829,7 +2917,8 @@ class APIHandler(BaseHTTPRequestHandler):
                 self._send_json({'success': True, 'message': 'Abort requested'})
             
             elif path == '/api/settings':
-                success, msg = Config.update_and_save(data)
+                Config.C.update(data)
+                success, msg = Config.save()
                 self._send_json({'success': success, 'message': msg})
             
             elif path == '/api/test/wol':
@@ -3085,13 +3174,13 @@ esac
 <![CDATA[
 <?php
 /**
- * Tegenett Backup - AJAX Handler
+ * Tegenett Backup - AJAX Handler v2026.01.28
  * Proxies requests to Python daemon API
  */
 
 // Read port from settings
 $CONFIG_FILE = "/boot/config/plugins/tegenett_backup/settings.json";
-$API_PORT = 39982; // New default port
+$API_PORT = 39982; // Default port
 $API_HOST = "127.0.0.1";
 
 if (file_exists($CONFIG_FILE)) {
@@ -3150,6 +3239,29 @@ function apiCall($endpoint, $method = 'GET', $data = null) {
     return $decoded;
 }
 
+// Get POST data - handles both JSON and form-urlencoded
+function getPostData() {
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    
+    if (strpos($contentType, 'application/json') !== false) {
+        return json_decode(file_get_contents('php://input'), true) ?: [];
+    }
+    
+    // Form-urlencoded data (from URLSearchParams)
+    $data = $_POST;
+    
+    // Remove csrf_token from data sent to API
+    unset($data['csrf_token']);
+    
+    // Convert string booleans
+    foreach ($data as $key => $value) {
+        if ($value === 'true') $data[$key] = true;
+        if ($value === 'false') $data[$key] = false;
+    }
+    
+    return $data;
+}
+
 // Get action from request
 $action = $_REQUEST['action'] ?? '';
 
@@ -3171,13 +3283,14 @@ switch ($action) {
         break;
     
     case 'create_job':
-        $data = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+        $data = getPostData();
         echo json_encode(apiCall('/api/jobs', 'POST', $data));
         break;
     
     case 'update_job':
         $id = intval($_REQUEST['id'] ?? 0);
-        $data = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+        $data = getPostData();
+        unset($data['id']); // Remove id from data, it's in URL
         echo json_encode(apiCall("/api/jobs/{$id}", 'PUT', $data));
         break;
     
@@ -3226,7 +3339,7 @@ switch ($action) {
         break;
     
     case 'save_settings':
-        $data = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+        $data = getPostData();
         echo json_encode(apiCall('/api/settings', 'POST', $data));
         break;
     
