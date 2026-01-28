@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "tegenett_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.28f">
+<!ENTITY version   "2026.01.28g">
 <!ENTITY launch    "Settings/TegenettBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett_backup/tegenett_backup.plg">
 ]>
@@ -10,17 +10,19 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.28g
+- FIX: Double-logging issue completely resolved (nohup now to /dev/null)
+- FIX: Edit/Delete button text restored
+- FIX: Service auto-starts after update
+- NEW: Enable/disable toggle in Jobs list
+
 ##2026.01.28f
-- FIX: Service now auto-starts after plugin update
+- FIX: Service auto-start after plugin update
 - NEW: Quick enable/disable toggle in Jobs list
 - FIX: Dashboard shows Active Jobs (enabled/total)
 
 ##2026.01.28e
 - FIX: TypeError in bandwidth_limit and retry comparisons
-
-##2026.01.28d
-- FIX: Header buttons same size
-- NEW: Per-job retention, granular Discord notifications
 
 ##2026.01.28
 - CSRF token support for Unraid 7
@@ -600,7 +602,7 @@ if (file_exists($pidFile)) {
             <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
             <div>
                 <h1>Tegenett Backup</h1>
-                <small style="color: var(--tb-text-muted)">v2026.01.28f</small>
+                <small style="color: var(--tb-text-muted)">v2026.01.28g</small>
             </div>
         </div>
         <div class="tb-header-actions">
@@ -1353,10 +1355,10 @@ async function loadJobs() {
                         <i class="fas fa-vial"></i> Test
                     </button>
                     <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="editJob(${job.id})" title="Edit">
-                        <i class="fas fa-edit"></i>
+                        <i class="fas fa-edit"></i> Edit
                     </button>
                     <button class="tb-btn tb-btn-sm tb-btn-danger" onclick="deleteJob(${job.id})" title="Delete">
-                        <i class="fas fa-trash"></i>
+                        <i class="fas fa-trash"></i> Delete
                     </button>
                 </td>
             </tr>`;
@@ -1828,7 +1830,7 @@ class Config:
     DB_FILE = "tegenett_backup.db"
     SETTINGS_FILE = "settings.json"
     PID_FILE = f"/var/run/{PLUGIN_NAME}.pid"
-    VERSION = "2026.01.28f"
+    VERSION = "2026.01.28g"
     
     DEFAULTS = {
         "ENABLED": True,
@@ -3417,7 +3419,6 @@ if __name__ == "__main__":
 PLUGIN_NAME="tegenett_backup"
 DAEMON="/usr/local/emhttp/plugins/${PLUGIN_NAME}/${PLUGIN_NAME}.py"
 PID_FILE="/var/run/${PLUGIN_NAME}.pid"
-LOG_FILE="/mnt/user/appdata/${PLUGIN_NAME}/logs/${PLUGIN_NAME}.log"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 
@@ -3438,15 +3439,20 @@ start() {
     
     echo "Starting ${PLUGIN_NAME}..."
     chmod +x "$DAEMON"
-    nohup python3 "$DAEMON" >> "$LOG_FILE" 2>&1 &
+    
+    # Start daemon - Python handles its own logging, redirect nohup output to /dev/null
+    nohup python3 "$DAEMON" >/dev/null 2>&1 &
     echo $! > "$PID_FILE"
-    sleep 1
+    
+    # Wait for service to be ready
+    sleep 2
     
     if [ -f "$PID_FILE" ] && kill -0 "$(cat $PID_FILE)" 2>/dev/null; then
         echo "${PLUGIN_NAME} started (PID $(cat $PID_FILE))"
         return 0
     else
         echo "Failed to start ${PLUGIN_NAME}"
+        rm -f "$PID_FILE"
         return 1
     fi
 }
@@ -3474,6 +3480,9 @@ stop() {
     else
         echo "${PLUGIN_NAME} is not running"
     fi
+    
+    # Also kill any orphaned processes
+    pkill -f "${PLUGIN_NAME}.py" 2>/dev/null || true
 }
 
 restart() {
@@ -3761,10 +3770,10 @@ chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/${PLUGIN_NAME}.py"
 chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
 
 echo "Starting ${PLUGIN_NAME} service..."
-sleep 1
+sleep 2
 /usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME} start
 
-echo "Tegenett Backup v2026.01.28f installed/updated successfully!"
+echo "Tegenett Backup v2026.01.28g installed/updated successfully!"
 ]]>
 </INLINE>
 </FILE>
