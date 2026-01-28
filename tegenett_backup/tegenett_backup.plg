@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "tegenett_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.28j">
+<!ENTITY version   "2026.01.28k">
 <!ENTITY launch    "Settings/TegenettBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett_backup/tegenett_backup.plg">
 ]>
@@ -10,11 +10,18 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.28k
+- NEW: Reset Database - clear history, reset statistics, or full reset
+- NEW: Exclude Patterns UI - quick-add presets (temp, logs, cache, OS junk, docker)
+- NEW: Pre/Post Backup Scripts - run custom scripts before and after backups
+- NEW: Backup Health Dashboard - visual overview of job health status
+- NEW: Log Rotation - automatic rotation with configurable size and count
+- FIX: Database schema v3 for pre/post scripts
+
 ##2026.01.28j
 - FIX: Speed now shows in appropriate units (B/s, KB/s, MB/s)
 - FIX: Size and speed formatting in Discord notifications
 - FIX: Improved auto-start with delayed background start
-- FIX: Install logging for debugging
 
 ##2026.01.28i
 - FIX: Rsync stats parsing
@@ -533,6 +540,13 @@ if (file_exists($pidFile)) {
     font-size: 1em;
 }
 
+/* Extra small button for inline use */
+.tb-btn-xs {
+    padding: 2px 8px;
+    font-size: 0.75em;
+    border-radius: 3px;
+}
+
 /* Actions column */
 .tb-actions {
     white-space: nowrap;
@@ -607,7 +621,7 @@ if (file_exists($pidFile)) {
             <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
             <div>
                 <h1>Tegenett Backup</h1>
-                <small style="color: var(--tb-text-muted)">v2026.01.28j</small>
+                <small style="color: var(--tb-text-muted)">v2026.01.28k</small>
             </div>
         </div>
         <div class="tb-header-actions">
@@ -697,6 +711,16 @@ if (file_exists($pidFile)) {
                 <div id="recentActivity">
                     <p style="color: var(--tb-text-muted)">Loading...</p>
                 </div>
+            </div>
+        </div>
+        
+        <!-- Backup Health -->
+        <div class="tb-card" style="margin-top: 20px;">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-heartbeat"></i> Backup Health</h3>
+            </div>
+            <div id="backupHealth">
+                <p style="color: var(--tb-text-muted)">Loading...</p>
             </div>
         </div>
     </div>
@@ -899,9 +923,30 @@ if (file_exists($pidFile)) {
                         <div class="tb-form-hint">Days to keep backup run records in database (0 = forever). This is NOT backup file retention - configure that per job.</div>
                     </div>
                     <div class="tb-form-group">
-                        <label>Log File Max Size</label>
-                        <input type="number" name="LOG_MAX_LINES" id="setLogMaxLines" min="1000" max="100000" value="10000">
-                        <div class="tb-form-hint">Maximum lines before log rotation</div>
+                        <label>Log File Max Size (KB)</label>
+                        <input type="number" name="LOG_MAX_SIZE_KB" id="setLogMaxSize" min="100" max="100000" value="5000">
+                        <div class="tb-form-hint">Maximum log file size before rotation (default 5MB)</div>
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Keep Rotated Logs</label>
+                        <input type="number" name="LOG_KEEP_COUNT" id="setLogKeepCount" min="1" max="30" value="5">
+                        <div class="tb-form-hint">Number of old log files to keep</div>
+                    </div>
+                    
+                    <div style="border-top: 1px solid var(--tb-border); margin-top: 15px; padding-top: 15px;">
+                        <label style="margin-bottom: 10px; display: block;">Database Actions</label>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button type="button" class="tb-btn tb-btn-secondary" onclick="clearHistory()">
+                                <i class="fas fa-history"></i> Clear History
+                            </button>
+                            <button type="button" class="tb-btn tb-btn-secondary" onclick="resetStatistics()">
+                                <i class="fas fa-chart-bar"></i> Reset Stats
+                            </button>
+                            <button type="button" class="tb-btn tb-btn-danger" onclick="resetDatabase()">
+                                <i class="fas fa-trash-alt"></i> Full Reset
+                            </button>
+                        </div>
+                        <div class="tb-form-hint" style="margin-top: 8px;">Clear History removes backup logs. Reset Stats clears statistics. Full Reset deletes all data (jobs kept).</div>
                     </div>
                 </div>
             </div>
@@ -1092,8 +1137,33 @@ if (file_exists($pidFile)) {
                 </div>
                 
                 <div class="tb-form-group">
-                    <label>Exclude Patterns (one per line)</label>
-                    <textarea id="jobExcludes" name="exclude_patterns" rows="3" placeholder="*.tmp&#10;*.log&#10;cache/"></textarea>
+                    <label>Exclude Patterns</label>
+                    <div style="margin-bottom: 8px;">
+                        <span style="font-size: 0.85em; color: var(--tb-text-muted);">Quick add:</span>
+                        <button type="button" class="tb-btn tb-btn-xs" onclick="addExcludePreset('temp')" title="*.tmp, *.temp, *.swp, ~*">Temp files</button>
+                        <button type="button" class="tb-btn tb-btn-xs" onclick="addExcludePreset('logs')" title="*.log, logs/">Logs</button>
+                        <button type="button" class="tb-btn tb-btn-xs" onclick="addExcludePreset('cache')" title="cache/, .cache/, *cache*/">Cache</button>
+                        <button type="button" class="tb-btn tb-btn-xs" onclick="addExcludePreset('os')" title="Thumbs.db, .DS_Store, desktop.ini">OS junk</button>
+                        <button type="button" class="tb-btn tb-btn-xs" onclick="addExcludePreset('docker')" title="*.sock, docker.pid">Docker</button>
+                    </div>
+                    <textarea id="jobExcludes" name="exclude_patterns" rows="4" placeholder="*.tmp&#10;*.log&#10;cache/&#10;Thumbs.db"></textarea>
+                    <div class="tb-form-hint">One pattern per line. Use * for wildcards, / suffix for directories.</div>
+                </div>
+                
+                <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
+                    <i class="fas fa-terminal"></i> Pre/Post Scripts
+                </h4>
+                
+                <div class="tb-form-group">
+                    <label>Pre-Backup Script</label>
+                    <input type="text" id="jobPreScript" name="pre_script" placeholder="/mnt/user/scripts/pre_backup.sh">
+                    <div class="tb-form-hint">Script to run BEFORE backup starts (e.g., stop containers, dump DB)</div>
+                </div>
+                
+                <div class="tb-form-group">
+                    <label>Post-Backup Script</label>
+                    <input type="text" id="jobPostScript" name="post_script" placeholder="/mnt/user/scripts/post_backup.sh">
+                    <div class="tb-form-hint">Script to run AFTER backup completes (e.g., start containers)</div>
                 </div>
                 
                 <div class="tb-checkbox-group">
@@ -1277,6 +1347,9 @@ async function refreshDashboard() {
     } else {
         activityDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No recent activity</p>';
     }
+    
+    // Load backup health
+    loadBackupHealth();
 }
 
 function calculateNextRun(job) {
@@ -1487,6 +1560,8 @@ async function loadJobForEdit(jobId) {
         document.getElementById('jobEnabled').checked = !!job.enabled;
         document.getElementById('jobRetryOnFailure').checked = job.retry_on_failure !== 0;
         document.getElementById('jobExcludes').value = job.exclude_patterns || '';
+        document.getElementById('jobPreScript').value = job.pre_script || '';
+        document.getElementById('jobPostScript').value = job.post_script || '';
         
         toggleJobFields();
         toggleScheduleFields();
@@ -1693,7 +1768,8 @@ async function loadSettings() {
         document.getElementById('setWolTimeout').value = s.WOL_WAIT_TIMEOUT || 120;
         document.getElementById('setWolInterval').value = s.WOL_PING_INTERVAL || 5;
         document.getElementById('setHistoryDays').value = s.HISTORY_RETENTION_DAYS || 90;
-        document.getElementById('setLogMaxLines').value = s.LOG_MAX_LINES || 10000;
+        document.getElementById('setLogMaxSize').value = s.LOG_MAX_SIZE_KB || 5000;
+        document.getElementById('setLogKeepCount').value = s.LOG_KEEP_COUNT || 5;
     }
 }
 
@@ -1716,7 +1792,8 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
         WOL_WAIT_TIMEOUT: parseInt(document.getElementById('setWolTimeout').value) || 120,
         WOL_PING_INTERVAL: parseInt(document.getElementById('setWolInterval').value) || 5,
         HISTORY_RETENTION_DAYS: parseInt(document.getElementById('setHistoryDays').value) || 90,
-        LOG_MAX_LINES: parseInt(document.getElementById('setLogMaxLines').value) || 10000
+        LOG_MAX_SIZE_KB: parseInt(document.getElementById('setLogMaxSize').value) || 5000,
+        LOG_KEEP_COUNT: parseInt(document.getElementById('setLogKeepCount').value) || 5
     };
     
     const result = await apiPost('save_settings', data);
@@ -1752,6 +1829,138 @@ async function testWol() {
     } else {
         alert('Error: ' + (result.error || 'Failed to send'));
     }
+}
+
+// ====== Database Management ======
+
+async function clearHistory() {
+    if (!confirm('This will delete all backup history records.\n\nYour jobs and settings will be kept.\n\nContinue?')) return;
+    
+    const result = await apiPost('clear_history');
+    if (result.success) {
+        alert('History cleared successfully!');
+        refreshDashboard();
+        loadHistory();
+    } else {
+        alert('Error: ' + (result.error || 'Failed to clear history'));
+    }
+}
+
+async function resetStatistics() {
+    if (!confirm('This will reset all backup statistics.\n\nHistory and jobs will be kept.\n\nContinue?')) return;
+    
+    const result = await apiPost('reset_statistics');
+    if (result.success) {
+        alert('Statistics reset successfully!');
+        refreshDashboard();
+        loadStats();
+    } else {
+        alert('Error: ' + (result.error || 'Failed to reset statistics'));
+    }
+}
+
+async function resetDatabase() {
+    if (!confirm('⚠️ FULL DATABASE RESET ⚠️\n\nThis will delete:\n• All backup history\n• All statistics\n\nYour jobs and settings will be kept.\n\nAre you sure?')) return;
+    if (!confirm('This cannot be undone. Type "RESET" in the next prompt to confirm.')) return;
+    
+    const confirmation = prompt('Type RESET to confirm:');
+    if (confirmation !== 'RESET') {
+        alert('Reset cancelled.');
+        return;
+    }
+    
+    const result = await apiPost('reset_database');
+    if (result.success) {
+        alert('Database reset complete!');
+        refreshDashboard();
+        loadHistory();
+        loadStats();
+    } else {
+        alert('Error: ' + (result.error || 'Failed to reset database'));
+    }
+}
+
+// ====== Exclude Pattern Presets ======
+
+const excludePresets = {
+    temp: ['*.tmp', '*.temp', '*.swp', '~*', '*.bak'],
+    logs: ['*.log', 'logs/', '*.log.*'],
+    cache: ['cache/', '.cache/', '*cache*/', 'Cache/'],
+    os: ['Thumbs.db', '.DS_Store', 'desktop.ini', '._*', '.Spotlight-V100', '.Trashes'],
+    docker: ['*.sock', 'docker.pid', '*.pid']
+};
+
+function addExcludePreset(preset) {
+    const textarea = document.getElementById('jobExcludes');
+    const currentPatterns = textarea.value.split('\n').filter(p => p.trim());
+    const newPatterns = excludePresets[preset] || [];
+    
+    // Add only patterns that don't already exist
+    for (const pattern of newPatterns) {
+        if (!currentPatterns.includes(pattern)) {
+            currentPatterns.push(pattern);
+        }
+    }
+    
+    textarea.value = currentPatterns.join('\n');
+}
+
+// ====== Backup Health ======
+
+async function loadBackupHealth() {
+    const healthDiv = document.getElementById('backupHealth');
+    const jobsResult = await apiCall('get_jobs');
+    
+    if (!jobsResult.success || !jobsResult.jobs?.length) {
+        healthDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No jobs configured</p>';
+        return;
+    }
+    
+    let html = '<table class="tb-table"><thead><tr><th>Job</th><th>Last Backup</th><th>Status</th><th>Health</th></tr></thead><tbody>';
+    
+    const now = new Date();
+    
+    for (const job of jobsResult.jobs) {
+        if (!job.enabled) continue;
+        
+        let lastBackup = 'Never';
+        let status = '-';
+        let health = '<span style="color: var(--tb-text-muted);">No data</span>';
+        let healthIcon = '⚪';
+        
+        if (job.last_run) {
+            const lastDate = new Date(job.last_run.started_at);
+            const hoursSince = (now - lastDate) / (1000 * 60 * 60);
+            lastBackup = formatDate(job.last_run.started_at);
+            status = job.last_run.status === 'completed' ? '✅' : '❌';
+            
+            if (job.last_run.status === 'completed') {
+                if (hoursSince < 24) {
+                    health = '<span style="color: var(--tb-success);">Healthy</span>';
+                    healthIcon = '🟢';
+                } else if (hoursSince < 48) {
+                    health = '<span style="color: var(--tb-warning);">Check Soon</span>';
+                    healthIcon = '🟡';
+                } else {
+                    health = '<span style="color: var(--tb-danger);">Overdue</span>';
+                    healthIcon = '🔴';
+                }
+            } else {
+                health = '<span style="color: var(--tb-danger);">Failed</span>';
+                healthIcon = '🔴';
+            }
+        }
+        
+        html += `<tr>
+            <td>${healthIcon} ${job.name}</td>
+            <td>${lastBackup}</td>
+            <td>${status}</td>
+            <td>${health}</td>
+        </tr>`;
+    }
+    
+    html += '</tbody></table>';
+    healthDiv.innerHTML = html;
 }
 
 // ====== Service Control ======
@@ -1875,7 +2084,7 @@ class Config:
     DB_FILE = "tegenett_backup.db"
     SETTINGS_FILE = "settings.json"
     PID_FILE = f"/var/run/{PLUGIN_NAME}.pid"
-    VERSION = "2026.01.28j"
+    VERSION = "2026.01.28k"
     
     DEFAULTS = {
         "ENABLED": True,
@@ -1956,11 +2165,17 @@ Config.load()
 # LOGGING
 # ============================================
 
+from logging.handlers import RotatingFileHandler
+
 LOG_FILE = os.path.join(Config.DATA_DIR, "logs", f"{Config.PLUGIN_NAME}.log")
 os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 
 _log_level_str = Config.C.get('LOG_LEVEL', 'INFO').upper()
 _log_level = getattr(logging, _log_level_str, logging.INFO)
+
+# Log rotation settings from config
+_log_max_size = int(Config.C.get('LOG_MAX_SIZE_KB', 5000)) * 1024  # Default 5MB
+_log_keep_count = int(Config.C.get('LOG_KEEP_COUNT', 5))
 
 # Create logger - use unique name and prevent propagation to root
 logger = logging.getLogger(f"{Config.PLUGIN_NAME}_daemon")
@@ -1970,11 +2185,69 @@ if not logger.handlers:
     logger.setLevel(_log_level)
     logger.propagate = False  # Critical: prevents duplicate logs from root logger
     
-    # File handler only (console goes to nohup output which also logs to file)
-    file_handler = logging.FileHandler(LOG_FILE)
+    # Rotating file handler - automatically rotates when file exceeds max size
+    file_handler = RotatingFileHandler(
+        LOG_FILE, 
+        maxBytes=_log_max_size, 
+        backupCount=_log_keep_count
+    )
     file_handler.setLevel(_log_level)
     file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', '%Y-%m-%d %H:%M:%S'))
     logger.addHandler(file_handler)
+
+# ============================================
+# LOG MANAGER
+# ============================================
+
+class LogManager:
+    """Manage log files and rotation"""
+    
+    @staticmethod
+    def get_log_files():
+        """Get list of all log files with sizes"""
+        log_dir = os.path.dirname(LOG_FILE)
+        log_files = []
+        
+        if os.path.exists(log_dir):
+            for f in os.listdir(log_dir):
+                if f.startswith(Config.PLUGIN_NAME):
+                    path = os.path.join(log_dir, f)
+                    size = os.path.getsize(path)
+                    log_files.append({'name': f, 'size': size, 'path': path})
+        
+        return sorted(log_files, key=lambda x: x['name'])
+    
+    @staticmethod
+    def get_total_log_size():
+        """Get total size of all log files"""
+        return sum(f['size'] for f in LogManager.get_log_files())
+    
+    @staticmethod
+    def rotate_now():
+        """Force immediate log rotation"""
+        for handler in logger.handlers:
+            if isinstance(handler, RotatingFileHandler):
+                handler.doRollover()
+                logger.info("[LogManager] Log rotated manually")
+                return True
+        return False
+    
+    @staticmethod
+    def clear_old_logs():
+        """Delete all rotated log files (keep only current)"""
+        log_dir = os.path.dirname(LOG_FILE)
+        deleted = 0
+        
+        for f in os.listdir(log_dir):
+            if f.startswith(Config.PLUGIN_NAME) and f != os.path.basename(LOG_FILE):
+                try:
+                    os.remove(os.path.join(log_dir, f))
+                    deleted += 1
+                except Exception as e:
+                    logger.warning(f"[LogManager] Failed to delete {f}: {e}")
+        
+        logger.info(f"[LogManager] Cleared {deleted} old log files")
+        return deleted
 
 START_TIME = time.time()
 
@@ -1984,7 +2257,7 @@ START_TIME = time.time()
 
 class Database:
     # Schema version for migrations
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
     
     def __init__(self):
         self.db_path = os.path.join(Config.DATA_DIR, Config.DB_FILE)
@@ -2105,6 +2378,23 @@ class Database:
                 # Update schema version
                 conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", (2,))
                 logger.info("[Database] Migration to v2 complete")
+            
+            if current_version < 3:
+                # Migration to v3: Add pre/post script columns
+                logger.info("[Database] Migrating to schema v3...")
+                
+                columns = [row['name'] for row in conn.execute("PRAGMA table_info(backup_jobs)").fetchall()]
+                
+                if 'pre_script' not in columns:
+                    conn.execute("ALTER TABLE backup_jobs ADD COLUMN pre_script TEXT")
+                    logger.info("[Database] Added pre_script column")
+                
+                if 'post_script' not in columns:
+                    conn.execute("ALTER TABLE backup_jobs ADD COLUMN post_script TEXT")
+                    logger.info("[Database] Added post_script column")
+                
+                conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", (3,))
+                logger.info("[Database] Migration to v3 complete")
     
     @contextmanager
     def _conn(self):
@@ -2180,8 +2470,8 @@ class Database:
                     mac_address, use_wol, shutdown_after, schedule_type, 
                     schedule_hour, schedule_minute, schedule_day, schedule_cron,
                     bandwidth_limit, exclude_patterns, retention_count, retention_days, 
-                    enabled, retry_on_failure)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    enabled, retry_on_failure, pre_script, post_script)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 job_data.get('name'),
                 job_data.get('job_type', 'local'),
@@ -2205,7 +2495,9 @@ class Database:
                 int(job_data.get('retention_count', 0)),
                 int(job_data.get('retention_days', 0)),
                 int(job_data.get('enabled', 1)),
-                int(job_data.get('retry_on_failure', 1))
+                int(job_data.get('retry_on_failure', 1)),
+                job_data.get('pre_script'),
+                job_data.get('post_script')
             ))
             return cursor.lastrowid
     
@@ -2220,7 +2512,8 @@ class Database:
                     mac_address = ?, use_wol = ?, shutdown_after = ?, schedule_type = ?,
                     schedule_hour = ?, schedule_minute = ?, schedule_day = ?, schedule_cron = ?,
                     bandwidth_limit = ?, exclude_patterns = ?, retention_count = ?, retention_days = ?,
-                    enabled = ?, retry_on_failure = ?, updated_at = CURRENT_TIMESTAMP
+                    enabled = ?, retry_on_failure = ?, pre_script = ?, post_script = ?,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             ''', (
                 job_data.get('name'),
@@ -2246,6 +2539,8 @@ class Database:
                 int(job_data.get('retention_days', 0)),
                 int(job_data.get('enabled', 1)),
                 int(job_data.get('retry_on_failure', 1)),
+                job_data.get('pre_script'),
+                job_data.get('post_script'),
                 job_id
             ))
     
@@ -2369,6 +2664,32 @@ class Database:
                 FROM backup_history
             ''').fetchone()
             return dict(row) if row else {}
+    
+    # ---- Database Management ----
+    
+    def clear_history(self):
+        """Delete all backup history records"""
+        logger.info("[Database] Clearing all backup history")
+        with self._conn() as conn:
+            conn.execute("DELETE FROM backup_history")
+            logger.info("[Database] History cleared")
+    
+    def reset_statistics(self):
+        """Reset all daily statistics"""
+        logger.info("[Database] Resetting all statistics")
+        with self._conn() as conn:
+            conn.execute("DELETE FROM daily_stats")
+            logger.info("[Database] Statistics reset")
+    
+    def reset_database(self):
+        """Full database reset - clears history and statistics, keeps jobs"""
+        logger.info("[Database] Full database reset starting")
+        with self._conn() as conn:
+            conn.execute("DELETE FROM backup_history")
+            conn.execute("DELETE FROM daily_stats")
+            # Reset retry counts on all jobs
+            conn.execute("UPDATE backup_jobs SET retry_count = 0, last_retry_at = NULL")
+            logger.info("[Database] Full database reset complete")
 
 DB = Database()
 
@@ -2717,6 +3038,46 @@ class BackupEngine:
             return f"{bytes_per_sec / (1024 * 1024):.1f} MB/s"
     
     @classmethod
+    def _run_script(cls, script_path, script_type):
+        """Run a pre/post backup script"""
+        if not script_path:
+            return True, None
+        
+        if not os.path.exists(script_path):
+            return False, f"Script not found: {script_path}"
+        
+        if not os.access(script_path, os.X_OK):
+            # Try to make it executable
+            try:
+                os.chmod(script_path, 0o755)
+            except:
+                return False, f"Script not executable: {script_path}"
+        
+        logger.info(f"[BackupEngine] Running {script_type} script: {script_path}")
+        
+        try:
+            result = subprocess.run(
+                [script_path],
+                capture_output=True,
+                text=True,
+                timeout=3600,  # 1 hour timeout
+                cwd=os.path.dirname(script_path)
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"[BackupEngine] {script_type} script completed successfully")
+                return True, None
+            else:
+                error = result.stderr or result.stdout or f"Exit code {result.returncode}"
+                logger.error(f"[BackupEngine] {script_type} script failed: {error}")
+                return False, error
+                
+        except subprocess.TimeoutExpired:
+            return False, "Script timed out after 1 hour"
+        except Exception as e:
+            return False, str(e)
+    
+    @classmethod
     def run_job(cls, job, dry_run=False, is_retry=False):
         with cls._lock:
             if cls.current_job:
@@ -2756,6 +3117,16 @@ class BackupEngine:
         success = False
         
         try:
+            # Run pre-backup script if configured
+            pre_script = job.get('pre_script')
+            if pre_script and not dry_run:
+                cls.current_progress['phase'] = 'pre-script'
+                script_ok, script_error = cls._run_script(pre_script, 'pre-backup')
+                if not script_ok:
+                    error_message = f"Pre-backup script failed: {script_error}"
+                    logger.error(f"[BackupEngine] {error_message}")
+                    raise Exception(error_message)
+            
             cls.current_progress['phase'] = 'running'
             
             if job_type == 'local':
@@ -2767,6 +3138,16 @@ class BackupEngine:
             else:
                 error_message = f"Unknown job type: {job_type}"
                 logger.error(f"[BackupEngine] {error_message}")
+            
+            # Run post-backup script if configured and backup succeeded
+            post_script = job.get('post_script')
+            if post_script and not dry_run and success:
+                cls.current_progress['phase'] = 'post-script'
+                script_ok, script_error = cls._run_script(post_script, 'post-backup')
+                if not script_ok:
+                    logger.warning(f"[BackupEngine] Post-backup script failed: {script_error}")
+                    # Don't fail the whole job for post-script failure
+                    
         except Exception as e:
             error_message = str(e)
             logger.exception(f"[BackupEngine] Exception in job '{job_name}'")
@@ -3411,6 +3792,19 @@ class APIHandler(BaseHTTPRequestHandler):
                 else:
                     self._send_json({'success': False, 'error': 'Share required'})
             
+            # Database management endpoints
+            elif path == '/api/database/clear_history':
+                DB.clear_history()
+                self._send_json({'success': True, 'message': 'History cleared'})
+            
+            elif path == '/api/database/reset_statistics':
+                DB.reset_statistics()
+                self._send_json({'success': True, 'message': 'Statistics reset'})
+            
+            elif path == '/api/database/reset':
+                DB.reset_database()
+                self._send_json({'success': True, 'message': 'Database reset complete'})
+            
             else:
                 self._send_json({'success': False, 'error': 'Not found'}, 404)
                 
@@ -3854,6 +4248,18 @@ switch ($action) {
         echo json_encode(apiCall('/api/abort', 'POST'));
         break;
     
+    case 'clear_history':
+        echo json_encode(apiCall('/api/database/clear_history', 'POST'));
+        break;
+    
+    case 'reset_statistics':
+        echo json_encode(apiCall('/api/database/reset_statistics', 'POST'));
+        break;
+    
+    case 'reset_database':
+        echo json_encode(apiCall('/api/database/reset', 'POST'));
+        break;
+    
     default:
         echo json_encode(['success' => false, 'error' => 'Unknown action']);
         break;
@@ -3894,7 +4300,6 @@ if ! grep -q "rc.${PLUGIN_NAME}" "${GO_FILE}" 2>/dev/null; then
 fi
 
 # Start service in background after a delay
-# This helps avoid conflicts during plugin installation
 echo "$(date): Scheduling delayed start" >> "$LOG"
 (
     sleep 5
@@ -3905,7 +4310,7 @@ echo "$(date): Scheduling delayed start" >> "$LOG"
 
 echo ""
 echo "====================================="
-echo "Tegenett Backup v2026.01.28j installed!"
+echo "Tegenett Backup v2026.01.28k installed!"
 echo "Service will start in 5 seconds..."
 echo "====================================="
 
