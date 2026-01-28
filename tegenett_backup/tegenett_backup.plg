@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "tegenett_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.28b">
+<!ENTITY version   "2026.01.28d">
 <!ENTITY launch    "Settings/TegenettBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett_backup/tegenett_backup.plg">
 ]>
@@ -10,27 +10,32 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.28d
+- FIX: Header Running badge and Stop button now identical size
+- FIX: PID now shows correctly after service start (page reload)
+- FIX: Edit and Delete buttons have text labels
+- NEW: Per-job backup retention (keep X copies OR X days)
+- NEW: Granular Discord notifications (start/success/failure toggles)
+- IMPROVED: Data Management section clarified
+
+##2026.01.28c
+- FIX: Header buttons now same size and style
+- NEW: Per-job backup retention settings (count and days)
+- NEW: Granular Discord notification settings
+- IMPROVED: Clearer Data Management section in Settings
+
 ##2026.01.28b
 - UI: Added upcoming jobs on dashboard
-- UI: Improved service status with PID display
 - UI: Red Stop button, green Start button
 - UI: Job action buttons with text labels
-- UI: Empty state for statistics chart
 - UI: Reorganized settings into cards
-- UI: Better checkbox styling in Add Job form
-- UI: History retention settings
 - FIX: Resolved double-logging issue
 - FIX: Plugin files now properly update on upgrade
 
 ##2026.01.28
 - CRITICAL FIX: Added CSRF token support for Unraid 7 compatibility
 - CRITICAL FIX: Database migration - no more manual database deletion needed
-- BUGFIX: Changed default port to 39982 to avoid conflicts
-- BUGFIX: Fixed settings save returning empty response
-- BUGFIX: Fixed Discord webhook SSL issues
 - NEW: Retry on failure - automatically retries failed jobs
-- NEW: Configurable retry interval and max attempts
-- NEW: Per-job retry settings
 
 ##2026.01.27
 - Initial release
@@ -141,10 +146,19 @@ if (file_exists($pidFile)) {
 }
 
 .tb-status-badge {
-    padding: 6px 14px;
-    border-radius: 20px;
+    padding: 0 16px;
+    border-radius: 4px;
     font-size: 0.85em;
     font-weight: 600;
+    white-space: nowrap;
+    height: 36px;
+    line-height: 36px;
+    display: inline-block;
+}
+
+.tb-status-badge i {
+    font-size: 0.6em;
+    margin-right: 6px;
 }
 
 .tb-status-running { background: var(--tb-success); color: white; }
@@ -153,6 +167,14 @@ if (file_exists($pidFile)) {
 .tb-header-actions {
     display: flex;
     gap: 10px;
+    align-items: center;
+}
+
+.tb-header-actions .tb-btn {
+    height: 36px;
+    line-height: 20px;
+    padding: 8px 16px;
+    border-radius: 4px;
 }
 
 /* Tabs */
@@ -552,19 +574,15 @@ if (file_exists($pidFile)) {
             <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
             <div>
                 <h1>Tegenett Backup</h1>
-                <small style="color: var(--tb-text-muted)">v2026.01.28b</small>
+                <small style="color: var(--tb-text-muted)">v2026.01.28d</small>
             </div>
         </div>
         <div class="tb-header-actions">
             <span id="serviceStatus" class="tb-status-badge <?=$isRunning ? 'tb-status-running' : 'tb-status-stopped'?>">
-                <i class="fas fa-circle"></i>
-                <span id="serviceStatusText"><?=$isRunning ? 'Running' : 'Stopped'?></span>
-                <?php if ($isRunning && $pid): ?>
-                <small style="opacity: 0.8; margin-left: 5px;">(PID <?=$pid?>)</small>
-                <?php endif; ?>
+                <i class="fas fa-circle"></i><?=$isRunning ? 'Running' : 'Stopped'?><?php if ($isRunning && $pid): ?> (PID <?=$pid?>)<?php endif; ?>
             </span>
             <button class="tb-btn <?=$isRunning ? 'tb-btn-danger' : 'tb-btn-success'?>" onclick="toggleService()" id="serviceToggleBtn">
-                <i class="fas fa-<?=$isRunning ? 'stop' : 'play'?>"></i>
+                <i class="fas fa-<?=$isRunning ? 'stop' : 'play'?>" id="serviceToggleIcon"></i>
                 <span id="serviceToggleText"><?=$isRunning ? 'Stop' : 'Start'?></span>
             </button>
         </div>
@@ -725,15 +743,16 @@ if (file_exists($pidFile)) {
                         <div class="tb-form-group">
                             <label>Log Level</label>
                             <select name="LOG_LEVEL" id="setLogLevel">
-                                <option value="DEBUG">DEBUG</option>
-                                <option value="INFO">INFO</option>
-                                <option value="WARNING">WARNING</option>
-                                <option value="ERROR">ERROR</option>
+                                <option value="DEBUG">DEBUG - All details</option>
+                                <option value="INFO">INFO - Normal</option>
+                                <option value="WARNING">WARNING - Issues only</option>
+                                <option value="ERROR">ERROR - Errors only</option>
                             </select>
                         </div>
                         <div class="tb-form-group">
                             <label>Default Bandwidth Limit (KB/s)</label>
                             <input type="number" name="DEFAULT_BANDWIDTH_LIMIT" id="setBandwidth" min="0" placeholder="0 = unlimited">
+                            <div class="tb-form-hint">Applied to new jobs. 0 = no limit.</div>
                         </div>
                 </div>
                 
@@ -749,8 +768,9 @@ if (file_exists($pidFile)) {
                     </div>
                     <div class="tb-form-row">
                         <div class="tb-form-group">
-                            <label>Retry Interval (minutes)</label>
+                            <label>Retry Interval</label>
                             <input type="number" name="RETRY_INTERVAL_MINUTES" id="setRetryInterval" min="5" max="1440" value="60">
+                            <div class="tb-form-hint">Minutes between retries</div>
                         </div>
                         <div class="tb-form-group">
                             <label>Max Attempts</label>
@@ -765,12 +785,14 @@ if (file_exists($pidFile)) {
                     </div>
                     <div class="tb-form-row">
                         <div class="tb-form-group">
-                            <label>Wait Timeout (seconds)</label>
+                            <label>Wait Timeout</label>
                             <input type="number" name="WOL_WAIT_TIMEOUT" id="setWolTimeout" min="30" max="600" value="120">
+                            <div class="tb-form-hint">Seconds to wait for host</div>
                         </div>
                         <div class="tb-form-group">
-                            <label>Ping Interval (seconds)</label>
+                            <label>Ping Interval</label>
                             <input type="number" name="WOL_PING_INTERVAL" id="setWolInterval" min="1" max="30" value="5">
+                            <div class="tb-form-hint">Seconds between pings</div>
                         </div>
                     </div>
                 </div>
@@ -787,14 +809,34 @@ if (file_exists($pidFile)) {
                         <input type="text" name="DISCORD_WEBHOOK_URL" id="setDiscordUrl" placeholder="https://discord.com/api/webhooks/...">
                     </div>
                     <div class="tb-form-group">
-                        <label class="tb-checkbox-label">
+                        <label>Notify When</label>
+                        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 5px;">
+                            <label class="tb-checkbox-label" style="padding: 0;">
+                                <input type="checkbox" name="DISCORD_NOTIFY_START" id="setDiscordStart" checked>
+                                <span>Backup started</span>
+                            </label>
+                            <label class="tb-checkbox-label" style="padding: 0;">
+                                <input type="checkbox" name="DISCORD_NOTIFY_SUCCESS" id="setDiscordSuccess" checked>
+                                <span>Backup completed successfully</span>
+                            </label>
+                            <label class="tb-checkbox-label" style="padding: 0;">
+                                <input type="checkbox" name="DISCORD_NOTIFY_FAILURE" id="setDiscordFailure" checked>
+                                <span>Backup failed</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="tb-form-group" style="border-top: 1px solid var(--tb-border); padding-top: 15px; margin-top: 10px;">
+                        <label class="tb-checkbox-label" style="padding: 0;">
                             <input type="checkbox" name="DISCORD_DAILY_SUMMARY" id="setDailySummary">
                             <span>Send daily summary</span>
                         </label>
-                    </div>
-                    <div class="tb-form-group">
-                        <label>Summary Hour (0-23)</label>
-                        <input type="number" name="DISCORD_SUMMARY_HOUR" id="setSummaryHour" min="0" max="23" value="20">
+                        <div class="tb-form-row" style="margin-top: 10px;">
+                            <div class="tb-form-group" style="margin-bottom: 0;">
+                                <label>Summary Time</label>
+                                <input type="number" name="DISCORD_SUMMARY_HOUR" id="setSummaryHour" min="0" max="23" value="20">
+                                <div class="tb-form-hint">Hour (0-23)</div>
+                            </div>
+                        </div>
                     </div>
                     <button type="button" class="tb-btn tb-btn-secondary" onclick="testDiscord()" style="margin-top: 10px;">
                         <i class="fab fa-discord"></i> Send Test
@@ -810,24 +852,23 @@ if (file_exists($pidFile)) {
                             <input type="checkbox" name="UNRAID_NOTIFICATIONS" id="setUnraidNotify" checked>
                             <span>Enable Unraid notifications</span>
                         </label>
+                        <div class="tb-form-hint">Shows in Unraid notification panel</div>
                     </div>
                 </div>
                 
                 <div class="tb-card">
                     <div class="tb-card-header">
-                        <h3 class="tb-card-title"><i class="fas fa-history"></i> History Retention</h3>
+                        <h3 class="tb-card-title"><i class="fas fa-database"></i> Data Management</h3>
                     </div>
-                    <div class="tb-form-row">
-                        <div class="tb-form-group">
-                            <label>Keep History (days)</label>
-                            <input type="number" name="HISTORY_RETENTION_DAYS" id="setHistoryDays" min="0" max="365" value="90" placeholder="0 = forever">
-                            <div class="tb-form-hint">0 = keep forever</div>
-                        </div>
-                        <div class="tb-form-group">
-                            <label>Max History Entries</label>
-                            <input type="number" name="HISTORY_MAX_ENTRIES" id="setHistoryMax" min="0" max="10000" value="1000" placeholder="0 = unlimited">
-                            <div class="tb-form-hint">0 = unlimited</div>
-                        </div>
+                    <div class="tb-form-group">
+                        <label>Job History Retention</label>
+                        <input type="number" name="HISTORY_RETENTION_DAYS" id="setHistoryDays" min="0" max="365" value="90">
+                        <div class="tb-form-hint">Days to keep backup run records in database (0 = forever). This is NOT backup file retention - configure that per job.</div>
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Log File Max Size</label>
+                        <input type="number" name="LOG_MAX_LINES" id="setLogMaxLines" min="1000" max="100000" value="10000">
+                        <div class="tb-form-hint">Maximum lines before log rotation</div>
                     </div>
                 </div>
             </div>
@@ -992,10 +1033,29 @@ if (file_exists($pidFile)) {
                     <i class="fas fa-sliders-h"></i> Options
                 </h4>
                 
-                <div class="tb-form-group">
-                    <label>Bandwidth Limit (KB/s)</label>
-                    <input type="number" id="jobBandwidth" name="bandwidth_limit" min="0" value="0" placeholder="0 = unlimited">
-                    <div class="tb-form-hint">0 = use default from settings</div>
+                <div class="tb-form-row">
+                    <div class="tb-form-group">
+                        <label>Bandwidth Limit (KB/s)</label>
+                        <input type="number" id="jobBandwidth" name="bandwidth_limit" min="0" value="0" placeholder="0 = unlimited">
+                        <div class="tb-form-hint">0 = use default from settings</div>
+                    </div>
+                </div>
+                
+                <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
+                    <i class="fas fa-archive"></i> Backup Retention
+                </h4>
+                
+                <div class="tb-form-row">
+                    <div class="tb-form-group">
+                        <label>Keep Backups (count)</label>
+                        <input type="number" id="jobRetentionCount" name="retention_count" min="0" value="0">
+                        <div class="tb-form-hint">Number of backups to keep (0 = unlimited)</div>
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Keep Backups (days)</label>
+                        <input type="number" id="jobRetentionDays" name="retention_days" min="0" value="0">
+                        <div class="tb-form-hint">Delete backups older than X days (0 = forever)</div>
+                    </div>
                 </div>
                 
                 <div class="tb-form-group">
@@ -1262,10 +1322,10 @@ async function loadJobs() {
                         <i class="fas fa-vial"></i> Test
                     </button>
                     <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="editJob(${job.id})" title="Edit">
-                        <i class="fas fa-edit"></i>
+                        <i class="fas fa-edit"></i> Edit
                     </button>
                     <button class="tb-btn tb-btn-sm tb-btn-danger" onclick="deleteJob(${job.id})" title="Delete">
-                        <i class="fas fa-trash"></i>
+                        <i class="fas fa-trash"></i> Delete
                     </button>
                 </td>
             </tr>`;
@@ -1352,6 +1412,8 @@ async function loadJobForEdit(jobId) {
         document.getElementById('jobScheduleDay').value = job.schedule_day || 0;
         document.getElementById('jobScheduleCron').value = job.schedule_cron || '';
         document.getElementById('jobBandwidth').value = job.bandwidth_limit || 0;
+        document.getElementById('jobRetentionCount').value = job.retention_count || 0;
+        document.getElementById('jobRetentionDays').value = job.retention_days || 0;
         document.getElementById('jobEnabled').checked = !!job.enabled;
         document.getElementById('jobRetryOnFailure').checked = job.retry_on_failure !== 0;
         document.getElementById('jobExcludes').value = job.exclude_patterns || '';
@@ -1402,6 +1464,11 @@ async function saveJob() {
     data.shutdown_after = document.getElementById('jobShutdown').checked ? 1 : 0;
     data.use_wol = data.job_type.includes('wol') ? 1 : 0;
     data.retry_on_failure = document.getElementById('jobRetryOnFailure').checked ? 1 : 0;
+    
+    // Convert numeric fields
+    data.retention_count = parseInt(data.retention_count) || 0;
+    data.retention_days = parseInt(data.retention_days) || 0;
+    data.bandwidth_limit = parseInt(data.bandwidth_limit) || 0;
     
     const jobId = data.id;
     delete data.id;
@@ -1533,6 +1600,9 @@ async function loadSettings() {
         document.getElementById('setLogLevel').value = s.LOG_LEVEL || 'INFO';
         document.getElementById('setBandwidth').value = s.DEFAULT_BANDWIDTH_LIMIT || 0;
         document.getElementById('setDiscordUrl').value = s.DISCORD_WEBHOOK_URL || '';
+        document.getElementById('setDiscordStart').checked = s.DISCORD_NOTIFY_START !== false;
+        document.getElementById('setDiscordSuccess').checked = s.DISCORD_NOTIFY_SUCCESS !== false;
+        document.getElementById('setDiscordFailure').checked = s.DISCORD_NOTIFY_FAILURE !== false;
         document.getElementById('setDailySummary').checked = !!s.DISCORD_DAILY_SUMMARY;
         document.getElementById('setSummaryHour').value = s.DISCORD_SUMMARY_HOUR || 20;
         document.getElementById('setUnraidNotify').checked = s.UNRAID_NOTIFICATIONS !== false;
@@ -1542,7 +1612,7 @@ async function loadSettings() {
         document.getElementById('setWolTimeout').value = s.WOL_WAIT_TIMEOUT || 120;
         document.getElementById('setWolInterval').value = s.WOL_PING_INTERVAL || 5;
         document.getElementById('setHistoryDays').value = s.HISTORY_RETENTION_DAYS || 90;
-        document.getElementById('setHistoryMax').value = s.HISTORY_MAX_ENTRIES || 1000;
+        document.getElementById('setLogMaxLines').value = s.LOG_MAX_LINES || 10000;
     }
 }
 
@@ -1553,6 +1623,9 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
         LOG_LEVEL: document.getElementById('setLogLevel').value,
         DEFAULT_BANDWIDTH_LIMIT: parseInt(document.getElementById('setBandwidth').value) || 0,
         DISCORD_WEBHOOK_URL: document.getElementById('setDiscordUrl').value,
+        DISCORD_NOTIFY_START: document.getElementById('setDiscordStart').checked,
+        DISCORD_NOTIFY_SUCCESS: document.getElementById('setDiscordSuccess').checked,
+        DISCORD_NOTIFY_FAILURE: document.getElementById('setDiscordFailure').checked,
         DISCORD_DAILY_SUMMARY: document.getElementById('setDailySummary').checked,
         DISCORD_SUMMARY_HOUR: parseInt(document.getElementById('setSummaryHour').value) || 20,
         UNRAID_NOTIFICATIONS: document.getElementById('setUnraidNotify').checked,
@@ -1562,7 +1635,7 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
         WOL_WAIT_TIMEOUT: parseInt(document.getElementById('setWolTimeout').value) || 120,
         WOL_PING_INTERVAL: parseInt(document.getElementById('setWolInterval').value) || 5,
         HISTORY_RETENTION_DAYS: parseInt(document.getElementById('setHistoryDays').value) || 90,
-        HISTORY_MAX_ENTRIES: parseInt(document.getElementById('setHistoryMax').value) || 1000
+        LOG_MAX_LINES: parseInt(document.getElementById('setLogMaxLines').value) || 10000
     };
     
     const result = await apiPost('save_settings', data);
@@ -1603,40 +1676,31 @@ async function testWol() {
 // ====== Service Control ======
 
 async function toggleService() {
-    const status = document.getElementById('serviceStatus');
+    const statusEl = document.getElementById('serviceStatus');
     const btn = document.getElementById('serviceToggleBtn');
-    const isRunning = status.classList.contains('tb-status-running');
+    const btnText = document.getElementById('serviceToggleText');
+    const btnIcon = document.getElementById('serviceToggleIcon');
+    const isRunning = statusEl.classList.contains('tb-status-running');
     const cmd = isRunning ? 'stop' : 'start';
     
+    // Show loading state
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner tb-spin"></i> ' + (cmd === 'start' ? 'Starting...' : 'Stopping...');
+    btnIcon.className = 'fas fa-spinner tb-spin';
+    btnText.textContent = cmd === 'start' ? 'Starting...' : 'Stopping...';
     
     const result = await apiCall('service', { cmd: cmd });
     
-    btn.disabled = false;
-    
     if (result.success) {
-        if (cmd === 'start') {
-            status.classList.remove('tb-status-stopped');
-            status.classList.add('tb-status-running');
-            status.innerHTML = '<i class="fas fa-circle"></i> <span id="serviceStatusText">Running</span>';
-            btn.classList.remove('tb-btn-success');
-            btn.classList.add('tb-btn-danger');
-            btn.innerHTML = '<i class="fas fa-stop"></i> <span id="serviceToggleText">Stop</span>';
-        } else {
-            status.classList.remove('tb-status-running');
-            status.classList.add('tb-status-stopped');
-            status.innerHTML = '<i class="fas fa-circle"></i> <span id="serviceStatusText">Stopped</span>';
-            btn.classList.remove('tb-btn-danger');
-            btn.classList.add('tb-btn-success');
-            btn.innerHTML = '<i class="fas fa-play"></i> <span id="serviceToggleText">Start</span>';
-        }
+        // Wait a moment for service to fully start/stop
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Reload page to get fresh state including PID
+        window.location.reload();
     } else {
+        btn.disabled = false;
         alert('Error: ' + (result.output || result.error || 'Unknown'));
-        // Restore button
-        btn.innerHTML = isRunning ? 
-            '<i class="fas fa-stop"></i> <span id="serviceToggleText">Stop</span>' :
-            '<i class="fas fa-play"></i> <span id="serviceToggleText">Start</span>';
+        // Restore button state
+        btnIcon.className = isRunning ? 'fas fa-stop' : 'fas fa-play';
+        btnText.textContent = isRunning ? 'Stop' : 'Start';
     }
 }
 
@@ -1721,7 +1785,7 @@ class Config:
     DB_FILE = "tegenett_backup.db"
     SETTINGS_FILE = "settings.json"
     PID_FILE = f"/var/run/{PLUGIN_NAME}.pid"
-    VERSION = "2026.01.28b"
+    VERSION = "2026.01.28d"
     
     DEFAULTS = {
         "ENABLED": True,
@@ -1729,6 +1793,9 @@ class Config:
         "LOG_LEVEL": "INFO",
         "LOG_MAX_LINES": 10000,
         "DISCORD_WEBHOOK_URL": "",
+        "DISCORD_NOTIFY_START": True,
+        "DISCORD_NOTIFY_SUCCESS": True,
+        "DISCORD_NOTIFY_FAILURE": True,
         "DISCORD_DAILY_SUMMARY": False,
         "DISCORD_SUMMARY_HOUR": 20,
         "UNRAID_NOTIFICATIONS": True,
@@ -1741,8 +1808,7 @@ class Config:
         "RETRY_ON_FAILURE": True,
         "RETRY_INTERVAL_MINUTES": 60,
         "RETRY_MAX_ATTEMPTS": 3,
-        "HISTORY_RETENTION_DAYS": 90,
-        "HISTORY_MAX_ENTRIES": 1000
+        "HISTORY_RETENTION_DAYS": 90
     }
     
     C = DEFAULTS.copy()
@@ -2554,11 +2620,14 @@ class BackupEngine:
         cls.current_history_id = history_id
         
         retry_text = " (Retry)" if is_retry else ""
-        NotifyManager.discord_notify(
-            f"🔄 Backup Started{retry_text}: {job_name}",
-            f"Type: {job_type}\nDry run: {'Yes' if dry_run else 'No'}",
-            "blue"
-        )
+        
+        # Notify start if enabled
+        if Config.C.get("DISCORD_NOTIFY_START", True):
+            NotifyManager.discord_notify(
+                f"🔄 Backup Started{retry_text}: {job_name}",
+                f"Type: {job_type}\nDry run: {'Yes' if dry_run else 'No'}",
+                "blue"
+            )
         
         start_time = time.time()
         bytes_transferred = 0
@@ -2604,15 +2673,18 @@ class BackupEngine:
         gb = bytes_transferred / (1024**3) if bytes_transferred else 0
         if success:
             logger.info(f"[BackupEngine] Job completed: {gb:.2f} GB in {duration}s ({speed:.1f} MB/s)")
-            NotifyManager.discord_notify(
-                f"✅ Backup Completed{retry_text}: {job_name}",
-                f"Duration: {duration}s\nTransferred: {gb:.2f} GB" + (" (dry run)" if dry_run else ""),
-                "green",
-                [
-                    {"name": "Files", "value": str(files_transferred), "inline": True},
-                    {"name": "Speed", "value": f"{speed:.1f} MB/s", "inline": True}
-                ]
-            )
+            
+            # Notify success if enabled
+            if Config.C.get("DISCORD_NOTIFY_SUCCESS", True):
+                NotifyManager.discord_notify(
+                    f"✅ Backup Completed{retry_text}: {job_name}",
+                    f"Duration: {duration}s\nTransferred: {gb:.2f} GB" + (" (dry run)" if dry_run else ""),
+                    "green",
+                    [
+                        {"name": "Files", "value": str(files_transferred), "inline": True},
+                        {"name": "Speed", "value": f"{speed:.1f} MB/s", "inline": True}
+                    ]
+                )
             NotifyManager.unraid_notify(f"Backup OK: {job_name}", f"Transferred {gb:.2f} GB in {duration}s")
         else:
             logger.error(f"[BackupEngine] Job failed: {error_message}")
@@ -2623,11 +2695,13 @@ class BackupEngine:
                 if retry_count < max_retries:
                     retry_info = f"\n\n🔁 Will retry in {Config.C.get('RETRY_INTERVAL_MINUTES', 60)} minutes ({retry_count}/{max_retries})"
             
-            NotifyManager.discord_notify(
-                f"❌ Backup Failed{retry_text}: {job_name}",
-                f"Error: {error_message or 'Unknown error'}{retry_info}",
-                "red"
-            )
+            # Notify failure if enabled
+            if Config.C.get("DISCORD_NOTIFY_FAILURE", True):
+                NotifyManager.discord_notify(
+                    f"❌ Backup Failed{retry_text}: {job_name}",
+                    f"Error: {error_message or 'Unknown error'}{retry_info}",
+                    "red"
+                )
             NotifyManager.unraid_notify(f"Backup FAILED: {job_name}", error_message or "Unknown error", "alert")
         
         with cls._lock:
