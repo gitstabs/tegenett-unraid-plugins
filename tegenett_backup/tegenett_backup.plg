@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "tegenett_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.28">
+<!ENTITY version   "2026.01.28b">
 <!ENTITY launch    "Settings/TegenettBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett_backup/tegenett_backup.plg">
 ]>
@@ -10,23 +10,27 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.28b
+- UI: Added upcoming jobs on dashboard
+- UI: Improved service status with PID display
+- UI: Red Stop button, green Start button
+- UI: Job action buttons with text labels
+- UI: Empty state for statistics chart
+- UI: Reorganized settings into cards
+- UI: Better checkbox styling in Add Job form
+- UI: History retention settings
+- FIX: Resolved double-logging issue
+- FIX: Plugin files now properly update on upgrade
+
 ##2026.01.28
 - CRITICAL FIX: Added CSRF token support for Unraid 7 compatibility
 - CRITICAL FIX: Database migration - no more manual database deletion needed
-- CRITICAL FIX: Plugin files now properly update on upgrade
 - BUGFIX: Changed default port to 39982 to avoid conflicts
 - BUGFIX: Fixed settings save returning empty response
 - BUGFIX: Fixed Discord webhook SSL issues
-- BUGFIX: Fixed double-logging issue
 - NEW: Retry on failure - automatically retries failed jobs
 - NEW: Configurable retry interval and max attempts
 - NEW: Per-job retry settings
-- IMPROVED: Better error handling in API responses
-- IMPROVED: Ajax handler properly parses form data
-
-##2026.01.27a
-- Port changed to 39982
-- Initial bugfixes
 
 ##2026.01.27
 - Initial release
@@ -74,10 +78,13 @@ $pluginDir = "{$docroot}/plugins/{$plugin}";
 // Check if service is running
 $pidFile = "/var/run/{$plugin}.pid";
 $isRunning = false;
+$pid = null;
 if (file_exists($pidFile)) {
     $pid = trim(file_get_contents($pidFile));
     if ($pid && file_exists("/proc/{$pid}")) {
         $isRunning = true;
+    } else {
+        $pid = null;
     }
 }
 ?>
@@ -482,6 +489,60 @@ if (file_exists($pidFile)) {
         grid-template-columns: 1fr;
     }
 }
+
+/* Checkbox styling */
+.tb-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 8px 0;
+}
+
+.tb-checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--tb-primary);
+}
+
+.tb-checkbox-label span {
+    color: var(--tb-text);
+}
+
+.tb-checkbox-group {
+    display: flex;
+    gap: 30px;
+    padding: 10px 0;
+    border-top: 1px solid var(--tb-border);
+    margin-top: 15px;
+}
+
+/* Large button */
+.tb-btn-lg {
+    padding: 12px 30px;
+    font-size: 1em;
+}
+
+/* Actions column */
+.tb-actions {
+    white-space: nowrap;
+}
+
+.tb-actions .tb-btn {
+    margin-right: 5px;
+}
+
+.tb-actions .tb-btn:last-child {
+    margin-right: 0;
+}
+
+/* Grid layouts for settings */
+@media (max-width: 900px) {
+    #tab-settings > div:first-child {
+        grid-template-columns: 1fr;
+    }
+}
 </style>
 
 <div class="tb-container">
@@ -491,16 +552,19 @@ if (file_exists($pidFile)) {
             <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
             <div>
                 <h1>Tegenett Backup</h1>
-                <small style="color: var(--tb-text-muted)">v2026.01.28</small>
+                <small style="color: var(--tb-text-muted)">v2026.01.28b</small>
             </div>
         </div>
         <div class="tb-header-actions">
             <span id="serviceStatus" class="tb-status-badge <?=$isRunning ? 'tb-status-running' : 'tb-status-stopped'?>">
                 <i class="fas fa-circle"></i>
-                <?=$isRunning ? 'Running' : 'Stopped'?>
+                <span id="serviceStatusText"><?=$isRunning ? 'Running' : 'Stopped'?></span>
+                <?php if ($isRunning && $pid): ?>
+                <small style="opacity: 0.8; margin-left: 5px;">(PID <?=$pid?>)</small>
+                <?php endif; ?>
             </span>
-            <button class="tb-btn tb-btn-secondary" onclick="toggleService()">
-                <i class="fas fa-power-off"></i>
+            <button class="tb-btn <?=$isRunning ? 'tb-btn-danger' : 'tb-btn-success'?>" onclick="toggleService()" id="serviceToggleBtn">
+                <i class="fas fa-<?=$isRunning ? 'stop' : 'play'?>"></i>
                 <span id="serviceToggleText"><?=$isRunning ? 'Stop' : 'Start'?></span>
             </button>
         </div>
@@ -565,12 +629,23 @@ if (file_exists($pidFile)) {
             </div>
         </div>
         
-        <div class="tb-card">
-            <div class="tb-card-header">
-                <h3 class="tb-card-title"><i class="fas fa-clock"></i> Recent Activity</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div class="tb-card">
+                <div class="tb-card-header">
+                    <h3 class="tb-card-title"><i class="fas fa-calendar-alt"></i> Upcoming Jobs</h3>
+                </div>
+                <div id="upcomingJobs">
+                    <p style="color: var(--tb-text-muted)">Loading...</p>
+                </div>
             </div>
-            <div id="recentActivity">
-                <p style="color: var(--tb-text-muted)">Loading...</p>
+            
+            <div class="tb-card">
+                <div class="tb-card-header">
+                    <h3 class="tb-card-title"><i class="fas fa-clock"></i> Recent Activity</h3>
+                </div>
+                <div id="recentActivity">
+                    <p style="color: var(--tb-text-muted)">Loading...</p>
+                </div>
             </div>
         </div>
     </div>
@@ -611,7 +686,14 @@ if (file_exists($pidFile)) {
             <div class="tb-card-header">
                 <h3 class="tb-card-title"><i class="fas fa-chart-bar"></i> Backup Statistics (30 Days)</h3>
             </div>
-            <canvas id="statsChart" height="100"></canvas>
+            <div id="statsContainer">
+                <canvas id="statsChart" height="100"></canvas>
+                <div id="statsEmpty" style="display: none; text-align: center; padding: 40px; color: var(--tb-text-muted);">
+                    <i class="fas fa-chart-line" style="font-size: 3em; margin-bottom: 15px; opacity: 0.5;"></i>
+                    <p>No backup data yet</p>
+                    <p style="font-size: 0.9em;">Run some backups to see statistics here</p>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -632,101 +714,131 @@ if (file_exists($pidFile)) {
     
     <!-- Settings Tab -->
     <div id="tab-settings" class="tb-tab-content">
-        <div class="tb-card">
-            <div class="tb-card-header">
-                <h3 class="tb-card-title"><i class="fas fa-cog"></i> General Settings</h3>
-            </div>
-            <form id="settingsForm">
-                <div class="tb-form-row">
-                    <div class="tb-form-group">
-                        <label>Log Level</label>
-                        <select name="LOG_LEVEL" id="setLogLevel">
-                            <option value="DEBUG">DEBUG</option>
-                            <option value="INFO">INFO</option>
-                            <option value="WARNING">WARNING</option>
-                            <option value="ERROR">ERROR</option>
-                        </select>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <!-- Left Column -->
+            <div>
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-cog"></i> General</h3>
+                    </div>
+                    <form id="settingsForm">
+                        <div class="tb-form-group">
+                            <label>Log Level</label>
+                            <select name="LOG_LEVEL" id="setLogLevel">
+                                <option value="DEBUG">DEBUG</option>
+                                <option value="INFO">INFO</option>
+                                <option value="WARNING">WARNING</option>
+                                <option value="ERROR">ERROR</option>
+                            </select>
+                        </div>
+                        <div class="tb-form-group">
+                            <label>Default Bandwidth Limit (KB/s)</label>
+                            <input type="number" name="DEFAULT_BANDWIDTH_LIMIT" id="setBandwidth" min="0" placeholder="0 = unlimited">
+                        </div>
+                </div>
+                
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-redo"></i> Auto-Retry</h3>
                     </div>
                     <div class="tb-form-group">
-                        <label>Default Bandwidth Limit (KB/s, 0=unlimited)</label>
-                        <input type="number" name="DEFAULT_BANDWIDTH_LIMIT" id="setBandwidth" min="0">
+                        <label class="tb-checkbox-label">
+                            <input type="checkbox" name="RETRY_ON_FAILURE" id="setRetryOnFailure">
+                            <span>Automatically retry failed jobs</span>
+                        </label>
+                    </div>
+                    <div class="tb-form-row">
+                        <div class="tb-form-group">
+                            <label>Retry Interval (minutes)</label>
+                            <input type="number" name="RETRY_INTERVAL_MINUTES" id="setRetryInterval" min="5" max="1440" value="60">
+                        </div>
+                        <div class="tb-form-group">
+                            <label>Max Attempts</label>
+                            <input type="number" name="RETRY_MAX_ATTEMPTS" id="setRetryMax" min="1" max="10" value="3">
+                        </div>
                     </div>
                 </div>
                 
-                <h4 style="color: var(--tb-primary); margin-top: 20px;">
-                    <i class="fab fa-discord"></i> Discord Notifications
-                </h4>
-                <div class="tb-form-group">
-                    <label>Webhook URL</label>
-                    <input type="text" name="DISCORD_WEBHOOK_URL" id="setDiscordUrl" placeholder="https://discord.com/api/webhooks/...">
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-network-wired"></i> Wake-on-LAN</h3>
+                    </div>
+                    <div class="tb-form-row">
+                        <div class="tb-form-group">
+                            <label>Wait Timeout (seconds)</label>
+                            <input type="number" name="WOL_WAIT_TIMEOUT" id="setWolTimeout" min="30" max="600" value="120">
+                        </div>
+                        <div class="tb-form-group">
+                            <label>Ping Interval (seconds)</label>
+                            <input type="number" name="WOL_PING_INTERVAL" id="setWolInterval" min="1" max="30" value="5">
+                        </div>
+                    </div>
                 </div>
-                <div class="tb-form-row">
+            </div>
+            
+            <!-- Right Column -->
+            <div>
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fab fa-discord"></i> Discord Notifications</h3>
+                    </div>
                     <div class="tb-form-group">
-                        <label>
+                        <label>Webhook URL</label>
+                        <input type="text" name="DISCORD_WEBHOOK_URL" id="setDiscordUrl" placeholder="https://discord.com/api/webhooks/...">
+                    </div>
+                    <div class="tb-form-group">
+                        <label class="tb-checkbox-label">
                             <input type="checkbox" name="DISCORD_DAILY_SUMMARY" id="setDailySummary">
-                            Enable Daily Summary
+                            <span>Send daily summary</span>
                         </label>
                     </div>
                     <div class="tb-form-group">
                         <label>Summary Hour (0-23)</label>
-                        <input type="number" name="DISCORD_SUMMARY_HOUR" id="setSummaryHour" min="0" max="23">
+                        <input type="number" name="DISCORD_SUMMARY_HOUR" id="setSummaryHour" min="0" max="23" value="20">
                     </div>
+                    <button type="button" class="tb-btn tb-btn-secondary" onclick="testDiscord()" style="margin-top: 10px;">
+                        <i class="fab fa-discord"></i> Send Test
+                    </button>
                 </div>
                 
-                <h4 style="color: var(--tb-primary); margin-top: 20px;">
-                    <i class="fas fa-bell"></i> Unraid Notifications
-                </h4>
-                <div class="tb-form-group">
-                    <label>
-                        <input type="checkbox" name="UNRAID_NOTIFICATIONS" id="setUnraidNotify" checked>
-                        Enable Unraid Notifications
-                    </label>
-                </div>
-                
-                <h4 style="color: var(--tb-primary); margin-top: 20px;">
-                    <i class="fas fa-redo"></i> Retry Settings
-                </h4>
-                <div class="tb-form-row">
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-bell"></i> Unraid Notifications</h3>
+                    </div>
                     <div class="tb-form-group">
-                        <label>
-                            <input type="checkbox" name="RETRY_ON_FAILURE" id="setRetryOnFailure" checked>
-                            Retry failed jobs automatically
+                        <label class="tb-checkbox-label">
+                            <input type="checkbox" name="UNRAID_NOTIFICATIONS" id="setUnraidNotify" checked>
+                            <span>Enable Unraid notifications</span>
                         </label>
                     </div>
-                    <div class="tb-form-group">
-                        <label>Retry Interval (minutes)</label>
-                        <input type="number" name="RETRY_INTERVAL_MINUTES" id="setRetryInterval" min="5" max="1440" value="60">
-                    </div>
-                    <div class="tb-form-group">
-                        <label>Max Retry Attempts</label>
-                        <input type="number" name="RETRY_MAX_ATTEMPTS" id="setRetryMax" min="1" max="10" value="3">
-                    </div>
                 </div>
                 
-                <h4 style="color: var(--tb-primary); margin-top: 20px;">
-                    <i class="fas fa-network-wired"></i> Wake-on-LAN Settings
-                </h4>
-                <div class="tb-form-row">
-                    <div class="tb-form-group">
-                        <label>WOL Wait Timeout (seconds)</label>
-                        <input type="number" name="WOL_WAIT_TIMEOUT" id="setWolTimeout" min="30" max="600">
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-history"></i> History Retention</h3>
                     </div>
-                    <div class="tb-form-group">
-                        <label>Ping Interval (seconds)</label>
-                        <input type="number" name="WOL_PING_INTERVAL" id="setWolInterval" min="1" max="30">
+                    <div class="tb-form-row">
+                        <div class="tb-form-group">
+                            <label>Keep History (days)</label>
+                            <input type="number" name="HISTORY_RETENTION_DAYS" id="setHistoryDays" min="0" max="365" value="90" placeholder="0 = forever">
+                            <div class="tb-form-hint">0 = keep forever</div>
+                        </div>
+                        <div class="tb-form-group">
+                            <label>Max History Entries</label>
+                            <input type="number" name="HISTORY_MAX_ENTRIES" id="setHistoryMax" min="0" max="10000" value="1000" placeholder="0 = unlimited">
+                            <div class="tb-form-hint">0 = unlimited</div>
+                        </div>
                     </div>
                 </div>
-                
-                <div style="margin-top: 20px;">
-                    <button type="submit" class="tb-btn tb-btn-primary">
-                        <i class="fas fa-save"></i> Save Settings
-                    </button>
-                    <button type="button" class="tb-btn tb-btn-secondary" onclick="testDiscord()">
-                        <i class="fab fa-discord"></i> Test Discord
-                    </button>
-                </div>
-            </form>
+            </div>
         </div>
+        
+        <div style="margin-top: 20px; text-align: center;">
+            <button type="submit" class="tb-btn tb-btn-primary tb-btn-lg">
+                <i class="fas fa-save"></i> Save All Settings
+            </button>
+        </div>
+        </form>
     </div>
 </div>
 
@@ -877,33 +989,29 @@ if (file_exists($pidFile)) {
                 </div>
                 
                 <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
-                    <i class="fas fa-sliders-h"></i> Advanced
+                    <i class="fas fa-sliders-h"></i> Options
                 </h4>
                 
-                <div class="tb-form-row">
-                    <div class="tb-form-group">
-                        <label>Bandwidth Limit (KB/s, 0=unlimited)</label>
-                        <input type="number" id="jobBandwidth" name="bandwidth_limit" min="0" value="0">
-                    </div>
-                    <div class="tb-form-group">
-                        <label>
-                            <input type="checkbox" id="jobEnabled" name="enabled" checked>
-                            Enabled
-                        </label>
-                    </div>
-                </div>
-                
                 <div class="tb-form-group">
-                    <label>
-                        <input type="checkbox" id="jobRetryOnFailure" name="retry_on_failure" checked>
-                        Retry on failure
-                    </label>
-                    <div class="tb-form-hint">Automatically retry if backup fails (uses global retry settings)</div>
+                    <label>Bandwidth Limit (KB/s)</label>
+                    <input type="number" id="jobBandwidth" name="bandwidth_limit" min="0" value="0" placeholder="0 = unlimited">
+                    <div class="tb-form-hint">0 = use default from settings</div>
                 </div>
                 
                 <div class="tb-form-group">
                     <label>Exclude Patterns (one per line)</label>
                     <textarea id="jobExcludes" name="exclude_patterns" rows="3" placeholder="*.tmp&#10;*.log&#10;cache/"></textarea>
+                </div>
+                
+                <div class="tb-checkbox-group">
+                    <label class="tb-checkbox-label">
+                        <input type="checkbox" id="jobEnabled" name="enabled" checked>
+                        <span>Job Enabled</span>
+                    </label>
+                    <label class="tb-checkbox-label">
+                        <input type="checkbox" id="jobRetryOnFailure" name="retry_on_failure" checked>
+                        <span>Retry on Failure</span>
+                    </label>
                 </div>
             </form>
         </div>
@@ -1029,26 +1137,92 @@ async function refreshDashboard() {
         document.getElementById('statTotalData').textContent = formatBytes(totals.total_bytes || 0);
     }
     
+    // Load upcoming jobs
+    const jobsResult = await apiCall('get_jobs');
+    const upcomingDiv = document.getElementById('upcomingJobs');
+    
+    if (jobsResult.success && jobsResult.jobs?.length > 0) {
+        const scheduledJobs = jobsResult.jobs.filter(j => j.enabled && j.schedule_type !== 'disabled');
+        
+        if (scheduledJobs.length > 0) {
+            let html = '<table class="tb-table"><tbody>';
+            for (const job of scheduledJobs.slice(0, 5)) {
+                const nextRun = calculateNextRun(job);
+                html += `<tr>
+                    <td>${job.name}</td>
+                    <td style="text-align: right; color: var(--tb-text-muted);">${nextRun}</td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            upcomingDiv.innerHTML = html;
+        } else {
+            upcomingDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No scheduled jobs</p>';
+        }
+    } else {
+        upcomingDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No jobs configured</p>';
+    }
+    
     // Load recent activity
     const history = await apiCall('get_history', { limit: 5 });
     const activityDiv = document.getElementById('recentActivity');
     
     if (history.success && history.history?.length > 0) {
-        let html = '<table class="tb-table"><thead><tr><th>Job</th><th>Status</th><th>Time</th><th>Size</th></tr></thead><tbody>';
+        let html = '<table class="tb-table"><tbody>';
         for (const h of history.history) {
             const statusBadge = h.status === 'completed' ? 'tb-badge-success' : 
                                h.status === 'running' ? 'tb-badge-info' : 'tb-badge-danger';
             html += `<tr>
                 <td>${h.job_name}${h.is_retry ? ' <span class="tb-badge tb-badge-warning">retry</span>' : ''}</td>
                 <td><span class="tb-badge ${statusBadge}">${h.status}</span></td>
-                <td>${formatDate(h.started_at)}</td>
-                <td>${formatBytes(h.bytes_transferred)}</td>
+                <td style="text-align: right; color: var(--tb-text-muted);">${formatDate(h.started_at)}</td>
             </tr>`;
         }
         html += '</tbody></table>';
         activityDiv.innerHTML = html;
     } else {
         activityDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No recent activity</p>';
+    }
+}
+
+function calculateNextRun(job) {
+    const now = new Date();
+    const hour = job.schedule_hour || 0;
+    const minute = job.schedule_minute || 0;
+    
+    let next = new Date();
+    next.setSeconds(0);
+    next.setMilliseconds(0);
+    
+    switch (job.schedule_type) {
+        case 'hourly':
+            next.setMinutes(minute);
+            if (next <= now) next.setHours(next.getHours() + 1);
+            break;
+        case 'daily':
+            next.setHours(hour, minute);
+            if (next <= now) next.setDate(next.getDate() + 1);
+            break;
+        case 'weekly':
+            next.setHours(hour, minute);
+            const targetDay = job.schedule_day || 0;
+            const daysUntil = (targetDay - now.getDay() + 7) % 7;
+            next.setDate(next.getDate() + (daysUntil === 0 && next <= now ? 7 : daysUntil));
+            break;
+        default:
+            return job.schedule_cron || 'Custom';
+    }
+    
+    const diff = next - now;
+    const hours = Math.floor(diff / 3600000);
+    const mins = Math.floor((diff % 3600000) / 60000);
+    
+    if (hours > 24) {
+        const days = Math.floor(hours / 24);
+        return `in ${days}d ${hours % 24}h`;
+    } else if (hours > 0) {
+        return `in ${hours}h ${mins}m`;
+    } else {
+        return `in ${mins}m`;
     }
 }
 
@@ -1080,12 +1254,12 @@ async function loadJobs() {
                 <td><span class="tb-badge ${typeBadge}">${job.job_type}</span></td>
                 <td>${job.schedule_type === 'disabled' ? '<span style="color: var(--tb-text-muted)">Manual</span>' : job.schedule_type}</td>
                 <td>${lastStatus} ${lastRun}</td>
-                <td>
+                <td class="tb-actions">
                     <button class="tb-btn tb-btn-sm tb-btn-success" onclick="runJob(${job.id})" title="Run Now">
-                        <i class="fas fa-play"></i>
+                        <i class="fas fa-play"></i> Run
                     </button>
                     <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="runJob(${job.id}, true)" title="Dry Run">
-                        <i class="fas fa-vial"></i>
+                        <i class="fas fa-vial"></i> Test
                     </button>
                     <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="editJob(${job.id})" title="Edit">
                         <i class="fas fa-edit"></i>
@@ -1287,12 +1461,18 @@ async function loadHistory() {
 async function loadStats() {
     const result = await apiCall('get_stats', { days: 30 });
     
+    const chartCanvas = document.getElementById('statsChart');
+    const emptyDiv = document.getElementById('statsEmpty');
+    
     if (result.success && result.stats?.length > 0) {
+        chartCanvas.style.display = 'block';
+        emptyDiv.style.display = 'none';
+        
         const labels = result.stats.map(s => s.date).reverse();
         const successful = result.stats.map(s => s.successful_jobs).reverse();
         const failed = result.stats.map(s => s.failed_jobs).reverse();
         
-        const ctx = document.getElementById('statsChart').getContext('2d');
+        const ctx = chartCanvas.getContext('2d');
         
         if (TB.statsChart) {
             TB.statsChart.destroy();
@@ -1323,6 +1503,9 @@ async function loadStats() {
                 }
             }
         });
+    } else {
+        chartCanvas.style.display = 'none';
+        emptyDiv.style.display = 'block';
     }
 }
 
@@ -1358,6 +1541,8 @@ async function loadSettings() {
         document.getElementById('setRetryMax').value = s.RETRY_MAX_ATTEMPTS || 3;
         document.getElementById('setWolTimeout').value = s.WOL_WAIT_TIMEOUT || 120;
         document.getElementById('setWolInterval').value = s.WOL_PING_INTERVAL || 5;
+        document.getElementById('setHistoryDays').value = s.HISTORY_RETENTION_DAYS || 90;
+        document.getElementById('setHistoryMax').value = s.HISTORY_MAX_ENTRIES || 1000;
     }
 }
 
@@ -1375,13 +1560,15 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
         RETRY_INTERVAL_MINUTES: parseInt(document.getElementById('setRetryInterval').value) || 60,
         RETRY_MAX_ATTEMPTS: parseInt(document.getElementById('setRetryMax').value) || 3,
         WOL_WAIT_TIMEOUT: parseInt(document.getElementById('setWolTimeout').value) || 120,
-        WOL_PING_INTERVAL: parseInt(document.getElementById('setWolInterval').value) || 5
+        WOL_PING_INTERVAL: parseInt(document.getElementById('setWolInterval').value) || 5,
+        HISTORY_RETENTION_DAYS: parseInt(document.getElementById('setHistoryDays').value) || 90,
+        HISTORY_MAX_ENTRIES: parseInt(document.getElementById('setHistoryMax').value) || 1000
     };
     
     const result = await apiPost('save_settings', data);
     
     if (result.success) {
-        alert('Settings saved! Restart the service for some changes to take effect.');
+        alert('Settings saved successfully!');
     } else {
         alert('Error: ' + (result.error || 'Unknown error'));
     }
@@ -1417,26 +1604,39 @@ async function testWol() {
 
 async function toggleService() {
     const status = document.getElementById('serviceStatus');
+    const btn = document.getElementById('serviceToggleBtn');
     const isRunning = status.classList.contains('tb-status-running');
     const cmd = isRunning ? 'stop' : 'start';
     
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner tb-spin"></i> ' + (cmd === 'start' ? 'Starting...' : 'Stopping...');
+    
     const result = await apiCall('service', { cmd: cmd });
     
+    btn.disabled = false;
+    
     if (result.success) {
-        // Update UI
         if (cmd === 'start') {
             status.classList.remove('tb-status-stopped');
             status.classList.add('tb-status-running');
-            status.innerHTML = '<i class="fas fa-circle"></i> Running';
-            document.getElementById('serviceToggleText').textContent = 'Stop';
+            status.innerHTML = '<i class="fas fa-circle"></i> <span id="serviceStatusText">Running</span>';
+            btn.classList.remove('tb-btn-success');
+            btn.classList.add('tb-btn-danger');
+            btn.innerHTML = '<i class="fas fa-stop"></i> <span id="serviceToggleText">Stop</span>';
         } else {
             status.classList.remove('tb-status-running');
             status.classList.add('tb-status-stopped');
-            status.innerHTML = '<i class="fas fa-circle"></i> Stopped';
-            document.getElementById('serviceToggleText').textContent = 'Start';
+            status.innerHTML = '<i class="fas fa-circle"></i> <span id="serviceStatusText">Stopped</span>';
+            btn.classList.remove('tb-btn-danger');
+            btn.classList.add('tb-btn-success');
+            btn.innerHTML = '<i class="fas fa-play"></i> <span id="serviceToggleText">Start</span>';
         }
     } else {
         alert('Error: ' + (result.output || result.error || 'Unknown'));
+        // Restore button
+        btn.innerHTML = isRunning ? 
+            '<i class="fas fa-stop"></i> <span id="serviceToggleText">Stop</span>' :
+            '<i class="fas fa-play"></i> <span id="serviceToggleText">Start</span>';
     }
 }
 
@@ -1521,7 +1721,7 @@ class Config:
     DB_FILE = "tegenett_backup.db"
     SETTINGS_FILE = "settings.json"
     PID_FILE = f"/var/run/{PLUGIN_NAME}.pid"
-    VERSION = "2026.01.28"
+    VERSION = "2026.01.28b"
     
     DEFAULTS = {
         "ENABLED": True,
@@ -1540,7 +1740,9 @@ class Config:
         "SMB_SETTLE_TIME": 10,
         "RETRY_ON_FAILURE": True,
         "RETRY_INTERVAL_MINUTES": 60,
-        "RETRY_MAX_ATTEMPTS": 3
+        "RETRY_MAX_ATTEMPTS": 3,
+        "HISTORY_RETENTION_DAYS": 90,
+        "HISTORY_MAX_ENTRIES": 1000
     }
     
     C = DEFAULTS.copy()
@@ -1601,30 +1803,22 @@ Config.load()
 LOG_FILE = os.path.join(Config.DATA_DIR, "logs", f"{Config.PLUGIN_NAME}.log")
 os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 
-# Clear existing handlers to prevent duplicates
-for handler in logging.root.handlers[:]:
-    logging.root.removeHandler(handler)
-
 _log_level_str = Config.C.get('LOG_LEVEL', 'INFO').upper()
 _log_level = getattr(logging, _log_level_str, logging.INFO)
 
-# Create logger
-logger = logging.getLogger(Config.PLUGIN_NAME)
-logger.setLevel(_log_level)
-logger.handlers = []
-logger.propagate = False
+# Create logger - use unique name and prevent propagation to root
+logger = logging.getLogger(f"{Config.PLUGIN_NAME}_daemon")
 
-# File handler
-file_handler = logging.FileHandler(LOG_FILE)
-file_handler.setLevel(_log_level)
-file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', '%Y-%m-%d %H:%M:%S'))
-logger.addHandler(file_handler)
-
-# Console handler
-console_handler = logging.StreamHandler()
-console_handler.setLevel(_log_level)
-console_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', '%Y-%m-%d %H:%M:%S'))
-logger.addHandler(console_handler)
+# Only add handlers if not already added (prevents duplicates on reload)
+if not logger.handlers:
+    logger.setLevel(_log_level)
+    logger.propagate = False  # Critical: prevents duplicate logs from root logger
+    
+    # File handler only (console goes to nohup output which also logs to file)
+    file_handler = logging.FileHandler(LOG_FILE)
+    file_handler.setLevel(_log_level)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', '%Y-%m-%d %H:%M:%S'))
+    logger.addHandler(file_handler)
 
 START_TIME = time.time()
 

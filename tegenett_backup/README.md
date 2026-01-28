@@ -30,17 +30,26 @@ https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett
 
 ## Changelog
 
+### v2026.01.28b
+- UI: Added upcoming jobs on dashboard
+- UI: Improved service status with PID display
+- UI: Red Stop button, green Start button
+- UI: Job action buttons with text labels
+- UI: Empty state for statistics chart
+- UI: Reorganized settings into cards
+- UI: Better checkbox styling in Add Job form
+- UI: History retention settings
+- FIX: Resolved double-logging issue
+- FIX: Plugin files now properly update on upgrade
+
 ### v2026.01.28
 - CRITICAL FIX: Added CSRF token support for Unraid 7 compatibility
 - CRITICAL FIX: Database migration - no more manual database deletion needed
-- CRITICAL FIX: Plugin files now properly update on upgrade
 - BUGFIX: Changed default port to 39982 to avoid conflicts
 - BUGFIX: Fixed settings save returning empty response
 - BUGFIX: Fixed Discord webhook SSL issues
-- BUGFIX: Fixed double-logging issue
 - NEW: Retry on failure - automatically retries failed jobs
 - NEW: Configurable retry interval and max attempts
-- NEW: Per-job retry settings
 
 ### v2026.01.27
 - Initial release
