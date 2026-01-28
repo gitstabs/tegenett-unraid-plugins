@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "tegenett_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.28i">
+<!ENTITY version   "2026.01.28j">
 <!ENTITY launch    "Settings/TegenettBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/tegenett_backup/tegenett_backup.plg">
 ]>
@@ -10,22 +10,17 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.28j
+- FIX: Speed now shows in appropriate units (B/s, KB/s, MB/s)
+- FIX: Size and speed formatting in Discord notifications
+- FIX: Improved auto-start with delayed background start
+- FIX: Install logging for debugging
+
 ##2026.01.28i
-- FIX: Rsync stats parsing - now tries multiple patterns (Literal data, Total bytes sent)
-- FIX: Double-logging completely resolved (signal handler re-entry prevention)
-- FIX: Scheduler stop called only once
-- NEW: Jobs table shows schedule TIME column (HH:MM), sorted by time
-- NEW: Statistics chart only shows whole numbers
+- FIX: Rsync stats parsing
 
 ##2026.01.28h
 - FIX: Service auto-starts via /boot/config/go
-
-##2026.01.28g
-- FIX: Edit/Delete button text
-- NEW: Enable/disable toggle in Jobs list
-
-##2026.01.28e
-- FIX: TypeError in bandwidth/retry comparisons
 
 ##2026.01.28
 - CSRF token support for Unraid 7
@@ -38,19 +33,24 @@
 <INLINE>
 <![CDATA[
 #!/bin/bash
-echo "Tegenett Backup: Pre-install cleanup..."
 PLUGIN_NAME="tegenett_backup"
 PLUGIN_DIR="/usr/local/emhttp/plugins/${PLUGIN_NAME}"
+LOG="/var/log/${PLUGIN_NAME}_install.log"
+
+echo "$(date): Pre-install starting" >> "$LOG"
 
 if [ -f "/var/run/${PLUGIN_NAME}.pid" ]; then
     PID=$(cat /var/run/${PLUGIN_NAME}.pid)
+    echo "$(date): Stopping service PID $PID" >> "$LOG"
     kill "$PID" 2>/dev/null
-    sleep 2
+    sleep 3
 fi
 pkill -f "${PLUGIN_NAME}.py" 2>/dev/null || true
 
 rm -rf "${PLUGIN_DIR}"
 mkdir -p "${PLUGIN_DIR}/include"
+
+echo "$(date): Pre-install complete" >> "$LOG"
 ]]>
 </INLINE>
 </FILE>
@@ -607,7 +607,7 @@ if (file_exists($pidFile)) {
             <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
             <div>
                 <h1>Tegenett Backup</h1>
-                <small style="color: var(--tb-text-muted)">v2026.01.28i</small>
+                <small style="color: var(--tb-text-muted)">v2026.01.28j</small>
             </div>
         </div>
         <div class="tb-header-actions">
@@ -1582,7 +1582,7 @@ async function loadHistory() {
                 <td>${formatDate(h.started_at)}</td>
                 <td>${formatDuration(h.duration_seconds)}</td>
                 <td>${formatBytes(h.bytes_transferred)}</td>
-                <td>${h.transfer_speed_mbps?.toFixed(1) || '-'} MB/s</td>
+                <td>${formatSpeed(h.transfer_speed_mbps)}</td>
             </tr>`;
         }
         
@@ -1795,6 +1795,15 @@ function formatBytes(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+function formatSpeed(bytesPerSec) {
+    // Speed is stored as bytes/sec in database
+    if (!bytesPerSec || bytesPerSec === 0) return '0 B/s';
+    const k = 1024;
+    const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    const i = Math.min(Math.floor(Math.log(bytesPerSec) / Math.log(k)), sizes.length - 1);
+    return parseFloat((bytesPerSec / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
 function formatDuration(seconds) {
     if (!seconds || seconds === 0) return '-';
     if (seconds < 60) return seconds + 's';
@@ -1866,7 +1875,7 @@ class Config:
     DB_FILE = "tegenett_backup.db"
     SETTINGS_FILE = "settings.json"
     PID_FILE = f"/var/run/{PLUGIN_NAME}.pid"
-    VERSION = "2026.01.28i"
+    VERSION = "2026.01.28j"
     
     DEFAULTS = {
         "ENABLED": True,
@@ -2685,6 +2694,28 @@ class BackupEngine:
         cls.abort_flag = True
         logger.warning("[BackupEngine] Abort requested")
     
+    @staticmethod
+    def _format_size(bytes_val):
+        """Format bytes to human readable string"""
+        if bytes_val < 1024:
+            return f"{bytes_val} B"
+        elif bytes_val < 1024 * 1024:
+            return f"{bytes_val / 1024:.1f} KB"
+        elif bytes_val < 1024 * 1024 * 1024:
+            return f"{bytes_val / (1024 * 1024):.2f} MB"
+        else:
+            return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB"
+    
+    @staticmethod
+    def _format_speed(bytes_per_sec):
+        """Format speed to human readable string"""
+        if bytes_per_sec < 1024:
+            return f"{bytes_per_sec:.0f} B/s"
+        elif bytes_per_sec < 1024 * 1024:
+            return f"{bytes_per_sec / 1024:.1f} KB/s"
+        else:
+            return f"{bytes_per_sec / (1024 * 1024):.1f} MB/s"
+    
     @classmethod
     def run_job(cls, job, dry_run=False, is_retry=False):
         with cls._lock:
@@ -2741,12 +2772,14 @@ class BackupEngine:
             logger.exception(f"[BackupEngine] Exception in job '{job_name}'")
         
         duration = int(time.time() - start_time)
-        speed = (bytes_transferred / (1024*1024)) / max(duration, 1)
+        
+        # Calculate speed in bytes/second, store as float for flexibility
+        speed_bytes_per_sec = bytes_transferred / max(duration, 1)
         
         status = 'completed' if success else 'failed'
         DB.update_history(
             history_id, status, bytes_transferred, files_transferred,
-            duration, speed, error_message, log_output
+            duration, speed_bytes_per_sec, error_message, log_output
         )
         
         if not dry_run:
@@ -2758,22 +2791,25 @@ class BackupEngine:
         elif not dry_run and job.get('retry_on_failure', 1):
             DB.increment_retry_count(job_id)
         
-        gb = bytes_transferred / (1024**3) if bytes_transferred else 0
+        # Format size and speed for logging and notifications
+        size_str = cls._format_size(bytes_transferred)
+        speed_str = cls._format_speed(speed_bytes_per_sec)
+        
         if success:
-            logger.info(f"[BackupEngine] Job completed: {gb:.2f} GB in {duration}s ({speed:.1f} MB/s)")
+            logger.info(f"[BackupEngine] Job completed: {size_str} in {duration}s ({speed_str})")
             
             # Notify success if enabled
             if Config.C.get("DISCORD_NOTIFY_SUCCESS", True):
                 NotifyManager.discord_notify(
                     f"✅ Backup Completed{retry_text}: {job_name}",
-                    f"Duration: {duration}s\nTransferred: {gb:.2f} GB" + (" (dry run)" if dry_run else ""),
+                    f"Duration: {duration}s\nTransferred: {size_str}" + (" (dry run)" if dry_run else ""),
                     "green",
                     [
                         {"name": "Files", "value": str(files_transferred), "inline": True},
-                        {"name": "Speed", "value": f"{speed:.1f} MB/s", "inline": True}
+                        {"name": "Speed", "value": speed_str, "inline": True}
                     ]
                 )
-            NotifyManager.unraid_notify(f"Backup OK: {job_name}", f"Transferred {gb:.2f} GB in {duration}s")
+            NotifyManager.unraid_notify(f"Backup OK: {job_name}", f"Transferred {size_str} in {duration}s")
         else:
             logger.error(f"[BackupEngine] Job failed: {error_message}")
             retry_info = ""
@@ -3835,8 +3871,9 @@ DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
 GO_FILE="/boot/config/go"
+LOG="/var/log/${PLUGIN_NAME}_install.log"
 
-echo "Tegenett Backup: Post-install setup..."
+echo "$(date): Post-install starting" >> "$LOG"
 
 mkdir -p "${DATA_DIR}/logs"
 mkdir -p "${CONFIG_DIR}"
@@ -3853,14 +3890,26 @@ if ! grep -q "rc.${PLUGIN_NAME}" "${GO_FILE}" 2>/dev/null; then
     echo "" >> "${GO_FILE}"
     echo "# Start Tegenett Backup" >> "${GO_FILE}"
     echo "${RC_SCRIPT} start &" >> "${GO_FILE}"
-    echo "Added ${PLUGIN_NAME} to startup"
+    echo "$(date): Added to go file" >> "$LOG"
 fi
 
-echo "Starting ${PLUGIN_NAME} service..."
-sleep 1
-${RC_SCRIPT} start
+# Start service in background after a delay
+# This helps avoid conflicts during plugin installation
+echo "$(date): Scheduling delayed start" >> "$LOG"
+(
+    sleep 5
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Starting service after delay" >> "$LOG"
+    ${RC_SCRIPT} start >> "$LOG" 2>&1
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Start command completed with exit code $?" >> "$LOG"
+) &
 
-echo "Tegenett Backup v2026.01.28i installed!"
+echo ""
+echo "====================================="
+echo "Tegenett Backup v2026.01.28j installed!"
+echo "Service will start in 5 seconds..."
+echo "====================================="
+
+echo "$(date): Post-install complete" >> "$LOG"
 ]]>
 </INLINE>
 </FILE>
@@ -3885,6 +3934,7 @@ if [ -f "${GO_FILE}" ]; then
 fi
 
 rm -rf "/usr/local/emhttp/plugins/${PLUGIN_NAME}"
+rm -f "/var/log/${PLUGIN_NAME}_install.log"
 
 echo "Tegenett Backup removed."
 ]]>
