@@ -1,8 +1,8 @@
 <?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
-<!ENTITY name      "atp_backup">
+<!ENTITY name      "ATP Backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.30">
+<!ENTITY version   "2026.01.30a">
 <!ENTITY launch    "Settings/AtpBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>

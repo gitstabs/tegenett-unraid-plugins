@@ -199,7 +199,7 @@ def build_atp_emby_smart_cache() -> bool:
 
     plg = f'''<?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
-<!ENTITY name      "atp_emby_smart_cache">
+<!ENTITY name      "ATP Emby Smart Cache">
 <!ENTITY author    "Tegenett">
 <!ENTITY version   "{version}">
 <!ENTITY launch    "Settings/AtpEmbySmartCache">

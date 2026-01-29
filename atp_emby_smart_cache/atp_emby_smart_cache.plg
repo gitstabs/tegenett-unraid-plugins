@@ -1,6 +1,6 @@
 <?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
-<!ENTITY name      "atp_emby_smart_cache">
+<!ENTITY name      "ATP Emby Smart Cache">
 <!ENTITY author    "Tegenett">
 <!ENTITY version   "2026.01.30a">
 <!ENTITY launch    "Settings/AtpEmbySmartCache">
