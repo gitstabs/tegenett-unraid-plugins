@@ -40,32 +40,16 @@ All plugins skal hete **"ATP [Name]"** (A Tegenett Plugin) for konsistent sorter
 3. Install new plugin from GitHub
 4. Restore data (see data migration section)
 
-### 1.2 Emby Smart Cache → ATP Emby Smart Cache
+### 1.2 Emby Smart Cache → ATP Emby Smart Cache ✅ DONE
 
-**Current state:** Copied as-is, has hardcoded values, manual install
-
-**Conversion tasks:**
-- [ ] Audit all hardcoded values and list them
-- [ ] Create settings schema (what needs to be configurable)
-- [ ] Implement settings UI for all configurable options
-- [ ] Add CSRF token support (Unraid 7 requirement)
-- [ ] Update to responsive design (match ATP Backup style)
-- [ ] Update pluginURL to point to GitHub raw URL
-- [ ] Add proper version checking
-- [ ] Plugin was built to be manually installed, so it needs to be converted to a proper plugin like ATP Backup. It might be fine as is, but I'm not sure.
-
-**Data preservation:**
-- [ ] Document all data locations (config files, databases, cache)
-- [ ] Create data export function (or document manual backup)
-- [ ] Create data import/restore instructions
-- [ ] Test upgrade path: old manual install → new GitHub install
-
-**Hardcoded values to make configurable:**
-```
-(Claude skal fylle inn denne listen etter audit av koden)
-- [ ] ...
-- [ ] ...
-```
+**Completed 2026.01.29:**
+- [x] Renamed to atp_emby_smart_cache
+- [x] Removed all personal data from defaults (API keys, IPs, paths)
+- [x] Added CSRF token support (Unraid 7)
+- [x] Updated colors to match ATP Backup (#e67e22)
+- [x] Converted to single PLG file
+- [x] Updated pluginURL to GitHub
+- [x] Tested fresh install on Unraid
 
 ### 1.3 Visual Consistency (ATP Backup = Template)
 
@@ -182,6 +166,13 @@ All plugins must match ATP Backup's visual design:
 ---
 
 ## Completed ✅
+
+### atp_emby_smart_cache (ATP Emby Smart Cache)
+- [x] Rename from emby_smart_cache to atp_emby_smart_cache (2026.01.29)
+- [x] Removed personal data from defaults
+- [x] Added CSRF token support
+- [x] Updated colors to ATP theme
+- [x] Tested on Unraid (2026.01.29)
 
 ### atp_backup (ATP Backup)
 - [x] Rename from tegenett_backup to atp_backup (2026.01.29)
