@@ -32,7 +32,7 @@ All plugins skal hete **"ATP [Name]"** (A Tegenett Plugin) for konsistent sorter
 - [x] Update data directory path (`/mnt/user/appdata/...`) ✅
 - [x] Update Page file `Menu=` and `Title=` ✅
 - [x] Update database path references ✅
-- [ ] Test fresh install on Unraid (USER TODO)
+- [x] Test fresh install on Unraid ✅ Bekreftet 2026.01.29
 
 **Post-rename instructions for user:**
 1. Uninstall old plugin via Unraid GUI

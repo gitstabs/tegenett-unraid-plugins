@@ -7,7 +7,7 @@ Personal Unraid 7.x plugins by Tegenett. **ATP** = A Tegenett Plugin.
 | Plugin | Description | Status |
 |--------|-------------|--------|
 | [ATP Backup](atp_backup/) | Smart backup with local/remote SMB, WOL, Discord notifications | ✅ Active |
-| [ATP Emby Smart Cache](emby_smart_cache/) | Intelligent media caching for Emby | 🔧 In development |
+| [ATP Emby Smart Cache](atp_emby_smart_cache/) | Intelligent media caching for Emby | ✅ Active |
 
 ## Installation
 
@@ -26,10 +26,23 @@ https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_back
 - Pre/post backup scripts
 - Backup health dashboard
 
+### ATP Emby Smart Cache
+```
+https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg
+```
+
+**Features:**
+- Automatic caching of actively watched media to SSD/NVMe
+- Pre-cache next episodes for seamless binge-watching
+- Bandwidth limiting and space management
+- Discord notifications
+- SQLite state tracking
+
 ## Requirements
 
 - Unraid 7.0.0 or newer
-- For remote SMB: Unassigned Devices plugin
+- For remote SMB backups: Unassigned Devices plugin
+- For Emby Smart Cache: Emby Media Server with API access
 
 ## Support
 
