@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "ATP Backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.30c">
+<!ENTITY version   "2026.01.30d">
 <!ENTITY launch    "Settings/AtpBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>
@@ -10,6 +10,9 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30d
+- BUILD: Rebuild with fixed build system
+
 ##2026.01.30c
 - FIX: Removed HTML tags from shared CSS/JS comments that broke page rendering
 
@@ -107,7 +110,7 @@ Icon="shield"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.01.30c";
+$version = "v2026.01.30d";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 
@@ -5688,7 +5691,7 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Backup v2026.01.30c installed!"
+echo "ATP Backup v2026.01.30d installed!"
 echo "Service will start in 5 seconds..."
 ]]>
 </INLINE>

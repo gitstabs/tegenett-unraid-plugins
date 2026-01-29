@@ -4,7 +4,7 @@ Icon="shield"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.01.30c";
+$version = "v2026.01.30d";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 

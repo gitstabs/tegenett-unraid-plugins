@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "ATP Emby Smart Cache">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.30b">
+<!ENTITY version   "2026.01.30c">
 <!ENTITY launch    "Settings/AtpEmbySmartCache">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
@@ -10,6 +10,9 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30c
+- FIX: FILE paths now use hardcoded snake_case (atp_emby_smart_cache) instead of ENTITY name
+
 ##2026.01.30b
 - FIX: Removed HTML tags from shared CSS/JS comments that broke page rendering
 
@@ -93,7 +96,7 @@ echo "$(date): Pre-install complete" >> "$LOG"
 </FILE>
 
 <!-- Main Page File -->
-<FILE Name="/usr/local/emhttp/plugins/&name;/AtpEmbySmartCache.page">
+<FILE Name="/usr/local/emhttp/plugins/atp_emby_smart_cache/AtpEmbySmartCache.page">
 <INLINE>
 <![CDATA[
 Menu="Utilities"
@@ -106,7 +109,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.01.30b";
+$version = "v2026.01.30c";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -3054,7 +3057,7 @@ if (typeof module !== 'undefined' && module.exports) {
 </FILE>
 
 <!-- Python Daemon -->
-<FILE Name="/usr/local/emhttp/plugins/&name;/&name;.py" Mode="0755">
+<FILE Name="/usr/local/emhttp/plugins/atp_emby_smart_cache/atp_emby_smart_cache.py" Mode="0755">
 <INLINE>
 <![CDATA[
 """
@@ -4686,7 +4689,7 @@ if __name__ == "__main__":
 </FILE>
 
 <!-- RC Service Script -->
-<FILE Name="/usr/local/emhttp/plugins/&name;/rc.&name;" Mode="0755">
+<FILE Name="/usr/local/emhttp/plugins/atp_emby_smart_cache/rc.atp_emby_smart_cache" Mode="0755">
 <INLINE>
 <![CDATA[
 #!/bin/bash
@@ -4785,7 +4788,7 @@ esac
 </FILE>
 
 <!-- AJAX Handler -->
-<FILE Name="/usr/local/emhttp/plugins/&name;/include/ajax.php">
+<FILE Name="/usr/local/emhttp/plugins/atp_emby_smart_cache/include/ajax.php">
 <INLINE>
 <![CDATA[
 <?php
@@ -5099,7 +5102,7 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Emby Smart Cache v2026.01.30b installed!"
+echo "ATP Emby Smart Cache v2026.01.30c installed!"
 echo "Service will start in 5 seconds..."
 echo ""
 echo "IMPORTANT: Configure settings before enabling:"

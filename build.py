@@ -209,6 +209,9 @@ def build_atp_emby_smart_cache() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30c
+- FIX: FILE paths now use hardcoded snake_case (atp_emby_smart_cache) instead of ENTITY name
+
 ##2026.01.30b
 - FIX: Removed HTML tags from shared CSS/JS comments that broke page rendering
 
@@ -292,7 +295,7 @@ echo "$(date): Pre-install complete" >> "$LOG"
 </FILE>
 
 <!-- Main Page File -->
-<FILE Name="/usr/local/emhttp/plugins/&name;/AtpEmbySmartCache.page">
+<FILE Name="/usr/local/emhttp/plugins/atp_emby_smart_cache/AtpEmbySmartCache.page">
 <INLINE>
 <![CDATA[
 {page_content}
@@ -301,7 +304,7 @@ echo "$(date): Pre-install complete" >> "$LOG"
 </FILE>
 
 <!-- Python Daemon -->
-<FILE Name="/usr/local/emhttp/plugins/&name;/&name;.py" Mode="0755">
+<FILE Name="/usr/local/emhttp/plugins/atp_emby_smart_cache/atp_emby_smart_cache.py" Mode="0755">
 <INLINE>
 <![CDATA[
 {python_content}
@@ -310,7 +313,7 @@ echo "$(date): Pre-install complete" >> "$LOG"
 </FILE>
 
 <!-- RC Service Script -->
-<FILE Name="/usr/local/emhttp/plugins/&name;/rc.&name;" Mode="0755">
+<FILE Name="/usr/local/emhttp/plugins/atp_emby_smart_cache/rc.atp_emby_smart_cache" Mode="0755">
 <INLINE>
 <![CDATA[
 {rc_content}
@@ -319,7 +322,7 @@ echo "$(date): Pre-install complete" >> "$LOG"
 </FILE>
 
 <!-- AJAX Handler -->
-<FILE Name="/usr/local/emhttp/plugins/&name;/include/ajax.php">
+<FILE Name="/usr/local/emhttp/plugins/atp_emby_smart_cache/include/ajax.php">
 <INLINE>
 <![CDATA[
 {ajax_content}
@@ -468,6 +471,9 @@ def build_atp_backup() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30d
+- BUILD: Rebuild with fixed build system
+
 ##2026.01.30c
 - FIX: Removed HTML tags from shared CSS/JS comments that broke page rendering
 
