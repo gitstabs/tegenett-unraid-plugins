@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "atp_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.29c">
+<!ENTITY version   "2026.01.29d">
 <!ENTITY launch    "Settings/AtpBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>
@@ -10,6 +10,9 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.29d
+- UI: Tab buttons margin/font reset for consistent spacing (reversion bump)
+
 ##2026.01.29c
 - UI: Version moved to far right (consistent with ATP Emby Smart Cache)
 - UI: Tab buttons reset margin for consistent gap spacing
