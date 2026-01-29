@@ -1,0 +1,3290 @@
+Menu="Utilities"
+Title="ATP Backup"
+Icon="shield"
+---
+<?php
+$plugin = "atp_backup";
+$version = "v2026.01.30b";
+$docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
+$pluginDir = "{$docroot}/plugins/{$plugin}";
+
+// Check if service is running
+$pidFile = "/var/run/{$plugin}.pid";
+$isRunning = false;
+$pid = null;
+if (file_exists($pidFile)) {
+    $pid = trim(file_get_contents($pidFile));
+    if ($pid && file_exists("/proc/{$pid}")) {
+        $isRunning = true;
+    } else {
+        $pid = null;
+    }
+}
+?>
+
+<script>var csrf_token = "<?=$var['csrf_token']?>";</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<style>
+
+/* ============================================
+   ATP SHARED CSS - Injected by build.py
+   Variable aliases for backwards compatibility
+   ============================================ */
+:root {
+    /* Alias atp-* to tb-* for backwards compatibility */
+    --tb-primary: var(--atp-primary);
+    --tb-primary-dark: var(--atp-primary-dark);
+    --tb-success: var(--atp-success);
+    --tb-danger: var(--atp-danger);
+    --tb-warning: var(--atp-warning);
+    --tb-info: var(--atp-info);
+    --tb-bg: var(--atp-bg);
+    --tb-card-bg: var(--atp-card-bg);
+    --tb-text: var(--atp-text);
+    --tb-text-muted: var(--atp-text-muted);
+    --tb-border: var(--atp-border);
+}
+
+/* ============================================
+   ATP COMMON CSS - v2026.01.30
+   Shared styles for all ATP (A Tegenett Plugin) plugins
+
+   Usage in .page file:
+   1. Include this CSS via <style> tag or inline
+   2. Set your plugin prefix: --atp-prefix: 'tb' or 'esc'
+   3. Use classes like .atp-container, .atp-card, etc.
+
+   Or copy and replace 'atp' with your plugin prefix.
+   ============================================ */
+
+/* ============================================
+   CSS VARIABLES (Theme Colors)
+   ============================================ */
+:root {
+    /* Brand Colors - ATP Orange Theme */
+    --atp-primary: #e67e22;
+    --atp-primary-dark: #d35400;
+    --atp-primary-light: #f39c12;
+
+    /* Status Colors */
+    --atp-success: #27ae60;
+    --atp-success-dark: #1e8449;
+    --atp-danger: #c0392b;
+    --atp-danger-dark: #a93226;
+    --atp-warning: #f39c12;
+    --atp-warning-dark: #d68910;
+    --atp-info: #3498db;
+    --atp-info-dark: #2980b9;
+
+    /* Theme-aware colors (from Unraid CSS variables) */
+    --atp-bg: var(--body-background, #1a1a1a);
+    --atp-card-bg: var(--card-background, #262626);
+    --atp-text: var(--text-color, #e0e0e0);
+    --atp-text-muted: var(--text-muted, #888);
+    --atp-border: var(--border-color, #3a3a3a);
+
+    /* Spacing */
+    --atp-spacing-xs: 5px;
+    --atp-spacing-sm: 10px;
+    --atp-spacing-md: 15px;
+    --atp-spacing-lg: 20px;
+    --atp-spacing-xl: 30px;
+
+    /* Border Radius */
+    --atp-radius-sm: 4px;
+    --atp-radius-md: 8px;
+    --atp-radius-lg: 12px;
+    --atp-radius-round: 50%;
+}
+
+/* ============================================
+   LAYOUT - Container
+   ============================================ */
+.atp-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: var(--atp-spacing-lg);
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+.atp-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--atp-spacing-lg);
+    padding-bottom: var(--atp-spacing-md);
+    border-bottom: 1px solid var(--atp-border);
+}
+
+.atp-title {
+    display: flex;
+    align-items: center;
+    gap: var(--atp-spacing-md);
+}
+
+.atp-title h1 {
+    margin: 0;
+    color: var(--atp-primary);
+    font-size: 1.8em;
+}
+
+.atp-title h1 i {
+    margin-right: var(--atp-spacing-sm);
+}
+
+.atp-header-right {
+    display: flex;
+    gap: var(--atp-spacing-sm);
+    align-items: center;
+}
+
+.atp-version {
+    color: var(--atp-text-muted);
+    font-size: 0.85em;
+}
+
+/* Status Badge */
+.atp-status-badge {
+    padding: 0 16px;
+    border-radius: var(--atp-radius-sm);
+    font-size: 0.85em;
+    font-weight: 600;
+    white-space: nowrap;
+    height: 36px;
+    line-height: 36px;
+    display: inline-block;
+}
+
+.atp-status-badge i {
+    font-size: 0.6em;
+    margin-right: 6px;
+}
+
+.atp-status-badge.running { background: var(--atp-success); color: white; }
+.atp-status-badge.stopped { background: var(--atp-danger); color: white; }
+.atp-status-badge.warning { background: var(--atp-warning); color: white; }
+
+/* ============================================
+   TABS - Navigation
+   ============================================ */
+.atp-tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: var(--atp-spacing-lg);
+    border-bottom: 1px solid var(--atp-border);
+    padding-bottom: var(--atp-spacing-sm);
+    flex-wrap: wrap;
+}
+
+.atp-tab {
+    padding: 10px 20px;
+    background: var(--atp-card-bg);
+    border: 1px solid var(--atp-border);
+    border-radius: var(--atp-radius-sm) var(--atp-radius-sm) 0 0;
+    color: var(--atp-text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.atp-tab:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--atp-text);
+}
+
+.atp-tab.active {
+    background: var(--atp-primary);
+    color: #fff;
+    border-color: var(--atp-primary);
+}
+
+.atp-tab i {
+    margin-right: 8px;
+}
+
+/* Panels */
+.atp-panel { display: none; }
+.atp-panel.active { display: block; }
+
+/* ============================================
+   CARDS
+   ============================================ */
+.atp-card {
+    background: var(--atp-card-bg);
+    border-radius: var(--atp-radius-md);
+    padding: var(--atp-spacing-lg);
+    margin-bottom: var(--atp-spacing-lg);
+    border: 1px solid var(--atp-border);
+}
+
+.atp-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--atp-spacing-md);
+    padding-bottom: var(--atp-spacing-sm);
+    border-bottom: 1px solid var(--atp-border);
+}
+
+.atp-card-title {
+    margin: 0;
+    font-size: 1.1em;
+    color: var(--atp-primary);
+}
+
+.atp-card-title i {
+    margin-right: 8px;
+}
+
+/* Section (alternative card style) */
+.atp-section {
+    background: var(--atp-card-bg);
+    border: 1px solid var(--atp-border);
+    border-radius: var(--atp-radius-md);
+    padding: var(--atp-spacing-lg);
+    margin-bottom: var(--atp-spacing-lg);
+}
+
+.atp-section-title {
+    color: var(--atp-primary);
+    font-size: 14px;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-bottom: var(--atp-spacing-md);
+    padding-bottom: var(--atp-spacing-sm);
+    border-bottom: 1px solid var(--atp-border);
+}
+
+.atp-section-title i {
+    margin-right: 8px;
+}
+
+/* ============================================
+   STAT CARDS (Dashboard)
+   ============================================ */
+.atp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--atp-spacing-md);
+    margin-bottom: var(--atp-spacing-lg);
+}
+
+.atp-stat-card {
+    background: var(--atp-card-bg);
+    border-radius: var(--atp-radius-md);
+    padding: var(--atp-spacing-lg);
+    border: 1px solid var(--atp-border);
+    text-align: center;
+}
+
+.atp-stat-icon {
+    font-size: 2em;
+    margin-bottom: var(--atp-spacing-sm);
+    color: var(--atp-primary);
+}
+
+.atp-stat-value {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: var(--atp-text);
+}
+
+.atp-stat-label {
+    color: var(--atp-text-muted);
+    font-size: 0.9em;
+    margin-top: var(--atp-spacing-xs);
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+.atp-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: var(--atp-radius-sm);
+    cursor: pointer;
+    font-size: 0.9em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+
+.atp-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.atp-btn-primary { background: var(--atp-primary); color: white; }
+.atp-btn-primary:hover:not(:disabled) { background: var(--atp-primary-dark); }
+
+.atp-btn-success { background: var(--atp-success); color: white; }
+.atp-btn-success:hover:not(:disabled) { background: var(--atp-success-dark); }
+
+.atp-btn-danger { background: var(--atp-danger); color: white; }
+.atp-btn-danger:hover:not(:disabled) { background: var(--atp-danger-dark); }
+
+.atp-btn-warning { background: var(--atp-warning); color: white; }
+.atp-btn-warning:hover:not(:disabled) { background: var(--atp-warning-dark); }
+
+.atp-btn-info { background: var(--atp-info); color: white; }
+.atp-btn-info:hover:not(:disabled) { background: var(--atp-info-dark); }
+
+.atp-btn-secondary { background: var(--atp-border); color: var(--atp-text); }
+.atp-btn-secondary:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+
+.atp-btn-sm { padding: 5px 10px; font-size: 0.85em; }
+.atp-btn-lg { padding: 12px 24px; font-size: 1em; }
+
+/* ============================================
+   TABLES
+   ============================================ */
+.atp-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: var(--atp-spacing-md);
+}
+
+.atp-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+}
+
+.atp-table th,
+.atp-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--atp-border);
+}
+
+.atp-table th {
+    color: var(--atp-primary);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.atp-table tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.atp-table .filename,
+.atp-table .truncate {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ============================================
+   FORMS
+   ============================================ */
+.atp-form-group {
+    margin-bottom: var(--atp-spacing-md);
+}
+
+.atp-form-group label {
+    display: block;
+    margin-bottom: var(--atp-spacing-xs);
+    color: var(--atp-text);
+    font-weight: 500;
+}
+
+.atp-form-group input,
+.atp-form-group select,
+.atp-form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--atp-border);
+    border-radius: var(--atp-radius-sm);
+    background: var(--atp-bg);
+    color: var(--atp-text);
+    font-size: 0.95em;
+}
+
+.atp-form-group input:focus,
+.atp-form-group select:focus,
+.atp-form-group textarea:focus {
+    outline: none;
+    border-color: var(--atp-primary);
+}
+
+.atp-form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--atp-spacing-md);
+}
+
+.atp-form-hint {
+    font-size: 0.85em;
+    color: var(--atp-text-muted);
+    margin-top: 4px;
+}
+
+/* Checkbox styling */
+.atp-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.atp-checkbox-label input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
+/* ============================================
+   BADGES
+   ============================================ */
+.atp-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: var(--atp-radius-lg);
+    font-size: 0.8em;
+    font-weight: 600;
+}
+
+.atp-badge-success { background: rgba(39, 174, 96, 0.2); color: #27ae60; }
+.atp-badge-danger { background: rgba(192, 57, 43, 0.2); color: #e74c3c; }
+.atp-badge-warning { background: rgba(243, 156, 18, 0.2); color: #f39c12; }
+.atp-badge-info { background: rgba(52, 152, 219, 0.2); color: #3498db; }
+
+/* ============================================
+   STATUS TEXT COLORS
+   ============================================ */
+.atp-text-success, .success { color: var(--atp-success) !important; }
+.atp-text-danger, .danger { color: var(--atp-danger) !important; }
+.atp-text-warning, .warning { color: var(--atp-warning) !important; }
+.atp-text-info, .info { color: var(--atp-info) !important; }
+.atp-text-muted { color: var(--atp-text-muted) !important; }
+
+/* ============================================
+   LOG VIEWER
+   ============================================ */
+.atp-log-viewer {
+    background: #1a1a1a;
+    border: 1px solid var(--atp-border);
+    border-radius: var(--atp-radius-sm);
+    padding: var(--atp-spacing-md);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.85em;
+    line-height: 1.5;
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #0f0;
+}
+
+/* ============================================
+   PROGRESS BAR
+   ============================================ */
+.atp-progress-bar {
+    height: 8px;
+    background: #333;
+    border-radius: var(--atp-radius-sm);
+    overflow: hidden;
+    flex-grow: 1;
+    min-width: 100px;
+}
+
+.atp-progress-fill {
+    height: 100%;
+    background: var(--atp-success);
+    transition: width 0.3s, background 0.3s;
+}
+
+.atp-progress-fill.warning { background: var(--atp-warning); }
+.atp-progress-fill.danger { background: var(--atp-danger); }
+
+/* ============================================
+   TOOLBAR
+   ============================================ */
+.atp-toolbar {
+    display: flex;
+    gap: var(--atp-spacing-sm);
+    margin-bottom: var(--atp-spacing-md);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* ============================================
+   ACTIVITY LIST
+   ============================================ */
+.atp-activity {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.atp-activity-item {
+    padding: var(--atp-spacing-sm);
+    border-bottom: 1px solid var(--atp-border);
+    display: flex;
+    align-items: center;
+    gap: var(--atp-spacing-sm);
+}
+
+.atp-activity-item:last-child {
+    border-bottom: none;
+}
+
+.atp-activity-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--atp-radius-round);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+}
+
+.atp-activity-icon.copy { background: var(--atp-info); }
+.atp-activity-icon.cleanup { background: var(--atp-warning); }
+.atp-activity-icon.error { background: var(--atp-danger); }
+.atp-activity-icon.success { background: var(--atp-success); }
+
+/* ============================================
+   MODAL
+   ============================================ */
+.atp-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.atp-modal {
+    background: var(--atp-card-bg);
+    border-radius: var(--atp-radius-md);
+    padding: var(--atp-spacing-lg);
+    max-width: 600px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.atp-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--atp-spacing-md);
+    padding-bottom: var(--atp-spacing-sm);
+    border-bottom: 1px solid var(--atp-border);
+}
+
+.atp-modal-title {
+    margin: 0;
+    color: var(--atp-primary);
+}
+
+.atp-modal-close {
+    background: none;
+    border: none;
+    color: var(--atp-text-muted);
+    font-size: 1.5em;
+    cursor: pointer;
+}
+
+.atp-modal-close:hover {
+    color: var(--atp-text);
+}
+
+.atp-modal-footer {
+    margin-top: var(--atp-spacing-lg);
+    padding-top: var(--atp-spacing-md);
+    border-top: 1px solid var(--atp-border);
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--atp-spacing-sm);
+}
+
+/* ============================================
+   HEALTH INDICATORS
+   ============================================ */
+.atp-health-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--atp-spacing-xs);
+}
+
+.atp-health-label {
+    font-size: 12px;
+    color: var(--atp-text-muted);
+    text-transform: uppercase;
+}
+
+.atp-health-value {
+    font-size: 14px;
+    color: var(--atp-text);
+    font-weight: 500;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+.atp-countdown {
+    font-family: monospace;
+    color: var(--atp-warning);
+}
+
+.atp-refresh-indicator {
+    font-size: 11px;
+    color: var(--atp-text-muted);
+}
+
+.atp-hidden { display: none !important; }
+.atp-text-center { text-align: center; }
+.atp-text-right { text-align: right; }
+.atp-mt-0 { margin-top: 0; }
+.atp-mb-0 { margin-bottom: 0; }
+.atp-mt-lg { margin-top: var(--atp-spacing-lg); }
+.atp-mb-lg { margin-bottom: var(--atp-spacing-lg); }
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+@keyframes atp-spin {
+    to { transform: rotate(360deg); }
+}
+
+.atp-spin {
+    animation: atp-spin 1s linear infinite;
+}
+
+@keyframes atp-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.atp-pulse {
+    animation: atp-pulse 2s ease-in-out infinite;
+}
+
+/* ============================================
+   RESPONSIVE - Tablet (768px)
+   ============================================ */
+@media (max-width: 768px) {
+    .atp-header {
+        flex-direction: column;
+        gap: var(--atp-spacing-md);
+        text-align: center;
+    }
+
+    .atp-tabs {
+        gap: 3px;
+    }
+
+    .atp-tab {
+        padding: 8px 12px;
+        font-size: 12px;
+        flex: 1 1 auto;
+        text-align: center;
+        min-width: 70px;
+    }
+
+    .atp-tab i {
+        margin-right: 5px;
+    }
+
+    .atp-form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .atp-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .atp-stat-card {
+        padding: var(--atp-spacing-md);
+    }
+
+    .atp-stat-value {
+        font-size: 1.5em;
+    }
+
+    .atp-table {
+        font-size: 12px;
+    }
+
+    .atp-table th,
+    .atp-table td {
+        padding: 8px 10px;
+    }
+
+    .atp-table .filename,
+    .atp-table .truncate {
+        max-width: 120px;
+    }
+
+    .atp-section,
+    .atp-card {
+        padding: var(--atp-spacing-md);
+    }
+
+    /* Force single column on 2-column grids */
+    div[style*="grid-template-columns: 1fr 1fr"] {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* ============================================
+   RESPONSIVE - Mobile (480px)
+   ============================================ */
+@media (max-width: 480px) {
+    .atp-container {
+        padding: var(--atp-spacing-sm);
+    }
+
+    .atp-tabs {
+        gap: 2px;
+    }
+
+    .atp-tab {
+        padding: 6px 8px;
+        font-size: 11px;
+        min-width: 50px;
+    }
+
+    .atp-tab i {
+        margin-right: 0;
+    }
+
+    .atp-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .atp-stat-value {
+        font-size: 1.2em;
+    }
+
+    .atp-table {
+        font-size: 11px;
+    }
+
+    .atp-table th,
+    .atp-table td {
+        padding: 6px 8px;
+    }
+
+    .atp-log-viewer {
+        max-height: 300px;
+        font-size: 10px;
+    }
+
+    .atp-btn {
+        padding: 6px 12px;
+        font-size: 0.85em;
+    }
+}
+
+
+/* ============================================
+   ATP BACKUP - CSS v2026.01.28
+   ============================================ */
+
+:root {
+    --tb-primary: #e67e22;
+    --tb-primary-dark: #d35400;
+    --tb-success: #27ae60;
+    --tb-danger: #c0392b;
+    --tb-warning: #f39c12;
+    --tb-info: #3498db;
+    --tb-bg: var(--body-background, #1a1a1a);
+    --tb-card-bg: var(--card-background, #262626);
+    --tb-text: var(--text-color, #e0e0e0);
+    --tb-text-muted: var(--text-muted, #888);
+    --tb-border: var(--border-color, #3a3a3a);
+}
+
+.tb-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+.tb-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--tb-border);
+}
+
+.tb-title {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.tb-title h1 {
+    margin: 0;
+    color: var(--tb-primary);
+    font-size: 1.8em;
+}
+
+.tb-status-badge {
+    padding: 0 16px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 600;
+    white-space: nowrap;
+    height: 36px;
+    line-height: 36px;
+    display: inline-block;
+}
+
+.tb-status-badge i {
+    font-size: 0.6em;
+    margin-right: 6px;
+}
+
+.tb-status-running { background: var(--tb-success); color: white; }
+.tb-status-stopped { background: var(--tb-danger); color: white; }
+
+.tb-header-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.tb-header-actions .tb-btn {
+    height: 36px;
+    line-height: 20px;
+    padding: 8px 16px;
+    border-radius: 4px;
+}
+
+.tb-version {
+    color: var(--tb-text-muted);
+    font-size: 0.85em;
+}
+
+/* Tabs - ESC style (full button highlight) */
+.tb-tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--tb-border);
+    padding-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.tb-tab {
+    padding: 10px 20px;
+    margin: 0;
+    background: var(--tb-card-bg);
+    border: 1px solid var(--tb-border);
+    border-radius: 5px 5px 0 0;
+    color: var(--tb-text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.tb-tab:hover {
+    background: rgba(255,255,255,0.05);
+    color: var(--tb-text);
+}
+
+.tb-tab.active {
+    background: var(--tb-primary);
+    color: #fff;
+    border-color: var(--tb-primary);
+}
+
+.tb-tab i {
+    margin-right: 8px;
+}
+
+/* Tab Content */
+.tb-tab-content {
+    display: none;
+}
+
+.tb-tab-content.active {
+    display: block;
+}
+
+/* Cards */
+.tb-card {
+    background: var(--tb-card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid var(--tb-border);
+}
+
+.tb-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--tb-border);
+}
+
+.tb-card-title {
+    margin: 0;
+    font-size: 1.1em;
+    color: var(--tb-primary);
+}
+
+/* Dashboard Stats Grid */
+.tb-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.tb-stat-card {
+    background: var(--tb-card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid var(--tb-border);
+    text-align: center;
+}
+
+.tb-stat-icon {
+    font-size: 2em;
+    margin-bottom: 10px;
+    color: var(--tb-primary);
+}
+
+.tb-stat-value {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: var(--tb-text);
+}
+
+.tb-stat-label {
+    color: var(--tb-text-muted);
+    font-size: 0.9em;
+    margin-top: 5px;
+}
+
+/* Buttons */
+.tb-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+
+.tb-btn-primary {
+    background: var(--tb-primary);
+    color: white;
+}
+
+.tb-btn-primary:hover {
+    background: var(--tb-primary-dark);
+}
+
+.tb-btn-success {
+    background: var(--tb-success);
+    color: white;
+}
+
+.tb-btn-danger {
+    background: var(--tb-danger);
+    color: white;
+}
+
+.tb-btn-secondary {
+    background: var(--tb-border);
+    color: var(--tb-text);
+}
+
+.tb-btn-sm {
+    padding: 5px 10px;
+    font-size: 0.85em;
+}
+
+.tb-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Tables - Responsive with wrapper */
+.tb-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 15px;
+}
+
+.tb-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+}
+
+.tb-table th,
+.tb-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--tb-border);
+}
+
+.tb-table th {
+    color: var(--tb-primary);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    background: rgba(0,0,0,0.2);
+}
+
+.tb-table tr:hover {
+    background: rgba(255,255,255,0.02);
+}
+
+.tb-table .truncate {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Forms */
+.tb-form-group {
+    margin-bottom: 15px;
+}
+
+.tb-form-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--tb-text);
+    font-weight: 500;
+}
+
+.tb-form-group input,
+.tb-form-group select,
+.tb-form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--tb-border);
+    border-radius: 4px;
+    background: var(--tb-bg);
+    color: var(--tb-text);
+    font-size: 0.95em;
+}
+
+.tb-form-group input:focus,
+.tb-form-group select:focus,
+.tb-form-group textarea:focus {
+    outline: none;
+    border-color: var(--tb-primary);
+}
+
+.tb-form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.tb-form-hint {
+    font-size: 0.85em;
+    color: var(--tb-text-muted);
+    margin-top: 4px;
+}
+
+/* Status badges */
+.tb-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+}
+
+.tb-badge-success { background: rgba(39, 174, 96, 0.2); color: #27ae60; }
+.tb-badge-danger { background: rgba(192, 57, 43, 0.2); color: #e74c3c; }
+.tb-badge-warning { background: rgba(243, 156, 18, 0.2); color: #f39c12; }
+.tb-badge-info { background: rgba(52, 152, 219, 0.2); color: #3498db; }
+.tb-badge-secondary { background: rgba(136, 136, 136, 0.2); color: #888; }
+
+/* Log viewer */
+.tb-log-viewer {
+    background: #1a1a1a;
+    border: 1px solid var(--tb-border);
+    border-radius: 4px;
+    padding: 15px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.85em;
+    line-height: 1.5;
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Modal */
+.tb-modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.tb-modal-overlay.active {
+    display: flex;
+}
+
+.tb-modal {
+    background: var(--tb-card-bg);
+    border-radius: 8px;
+    width: 90%;
+    max-width: 700px;
+    max-height: 90vh;
+    overflow-y: auto;
+    border: 1px solid var(--tb-border);
+}
+
+.tb-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--tb-border);
+}
+
+.tb-modal-header h3 {
+    margin: 0;
+    color: var(--tb-primary);
+}
+
+.tb-modal-close {
+    background: none;
+    border: none;
+    color: var(--tb-text-muted);
+    font-size: 1.5em;
+    cursor: pointer;
+}
+
+.tb-modal-body {
+    padding: 20px;
+}
+
+.tb-modal-footer {
+    padding: 15px 20px;
+    border-top: 1px solid var(--tb-border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+/* Animations */
+@keyframes tb-spin {
+    to { transform: rotate(360deg); }
+}
+
+.tb-spin {
+    animation: tb-spin 1s linear infinite;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .tb-header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+    }
+
+    .tb-tabs {
+        gap: 3px;
+    }
+
+    .tb-tab {
+        padding: 8px 12px;
+        font-size: 12px;
+        flex: 1 1 auto;
+        text-align: center;
+        min-width: 70px;
+    }
+
+    .tb-tab i {
+        margin-right: 5px;
+    }
+
+    .tb-form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .tb-table {
+        font-size: 12px;
+    }
+
+    .tb-table th,
+    .tb-table td {
+        padding: 8px 10px;
+    }
+
+    .tb-table .truncate {
+        max-width: 120px;
+    }
+
+    .tb-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .tb-tabs {
+        gap: 2px;
+    }
+
+    .tb-tab {
+        padding: 6px 8px;
+        font-size: 11px;
+        min-width: 50px;
+    }
+
+    .tb-tab i {
+        margin-right: 0;
+    }
+
+    .tb-table {
+        font-size: 11px;
+    }
+
+    .tb-table th,
+    .tb-table td {
+        padding: 6px 8px;
+    }
+
+    .tb-stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Checkbox styling */
+.tb-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 8px 0;
+}
+
+.tb-checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--tb-primary);
+}
+
+.tb-checkbox-label span {
+    color: var(--tb-text);
+}
+
+.tb-checkbox-group {
+    display: flex;
+    gap: 30px;
+    padding: 10px 0;
+    border-top: 1px solid var(--tb-border);
+    margin-top: 15px;
+}
+
+/* Large button */
+.tb-btn-lg {
+    padding: 12px 30px;
+    font-size: 1em;
+}
+
+/* Extra small button for inline use */
+.tb-btn-xs {
+    padding: 2px 8px;
+    font-size: 0.75em;
+    border-radius: 3px;
+}
+
+/* Actions column */
+.tb-actions {
+    white-space: nowrap;
+}
+
+.tb-actions .tb-btn {
+    margin-right: 5px;
+}
+
+.tb-actions .tb-btn:last-child {
+    margin-right: 0;
+}
+
+/* Grid layouts for settings */
+@media (max-width: 900px) {
+    #tab-settings > div:first-child {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Toggle switch */
+.tb-toggle {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.tb-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.tb-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #555;
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.tb-toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+.tb-toggle input:checked + .tb-toggle-slider {
+    background-color: var(--tb-success);
+}
+
+.tb-toggle input:checked + .tb-toggle-slider:before {
+    transform: translateX(20px);
+}
+</style>
+
+<div class="tb-container">
+    <!-- Header -->
+    <div class="tb-header">
+        <div class="tb-title">
+            <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
+            <h1>ATP Backup</h1>
+        </div>
+        <div class="tb-header-actions">
+            <span id="serviceStatus" class="tb-status-badge <?=$isRunning ? 'tb-status-running' : 'tb-status-stopped'?>">
+                <i class="fas fa-circle"></i><?=$isRunning ? 'Running' : 'Stopped'?><?php if ($isRunning && $pid): ?> (PID <?=$pid?>)<?php endif; ?>
+            </span>
+            <button class="tb-btn <?=$isRunning ? 'tb-btn-danger' : 'tb-btn-success'?>" onclick="toggleService()" id="serviceToggleBtn">
+                <i class="fas fa-<?=$isRunning ? 'stop' : 'play'?>" id="serviceToggleIcon"></i>
+                <span id="serviceToggleText"><?=$isRunning ? 'Stop' : 'Start'?></span>
+            </button>
+            <span class="tb-version">v2026.01.30</span>
+        </div>
+    </div>
+    
+    <!-- Tabs -->
+    <div class="tb-tabs">
+        <button class="tb-tab active" onclick="showTab('dashboard')">
+            <i class="fas fa-tachometer-alt"></i> Dashboard
+        </button>
+        <button class="tb-tab" onclick="showTab('jobs')">
+            <i class="fas fa-tasks"></i> Jobs
+        </button>
+        <button class="tb-tab" onclick="showTab('history')">
+            <i class="fas fa-history"></i> History
+        </button>
+        <button class="tb-tab" onclick="showTab('stats')">
+            <i class="fas fa-chart-bar"></i> Statistics
+        </button>
+        <button class="tb-tab" onclick="showTab('logs')">
+            <i class="fas fa-file-alt"></i> Logs
+        </button>
+        <button class="tb-tab" onclick="showTab('settings')">
+            <i class="fas fa-cog"></i> Settings
+        </button>
+    </div>
+    
+    <!-- Dashboard Tab -->
+    <div id="tab-dashboard" class="tb-tab-content active">
+        <div class="tb-stats-grid">
+            <div class="tb-stat-card">
+                <div class="tb-stat-icon"><i class="fas fa-tasks"></i></div>
+                <div class="tb-stat-value" id="statActiveJobs">-</div>
+                <div class="tb-stat-label">Active Jobs</div>
+            </div>
+            <div class="tb-stat-card">
+                <div class="tb-stat-icon"><i class="fas fa-check-circle" style="color: var(--tb-success)"></i></div>
+                <div class="tb-stat-value" id="statSuccessful">-</div>
+                <div class="tb-stat-label">Successful (30d)</div>
+            </div>
+            <div class="tb-stat-card">
+                <div class="tb-stat-icon"><i class="fas fa-times-circle" style="color: var(--tb-danger)"></i></div>
+                <div class="tb-stat-value" id="statFailed">-</div>
+                <div class="tb-stat-label">Failed (30d)</div>
+            </div>
+            <div class="tb-stat-card">
+                <div class="tb-stat-icon"><i class="fas fa-database"></i></div>
+                <div class="tb-stat-value" id="statTotalData">-</div>
+                <div class="tb-stat-label">Data Transferred</div>
+            </div>
+        </div>
+        
+        <div class="tb-card">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-running"></i> Current Status</h3>
+                <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="refreshDashboard()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+            <div id="currentStatus">
+                <p style="color: var(--tb-text-muted)">Loading...</p>
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div class="tb-card">
+                <div class="tb-card-header">
+                    <h3 class="tb-card-title"><i class="fas fa-calendar-alt"></i> Upcoming Jobs</h3>
+                </div>
+                <div id="upcomingJobs">
+                    <p style="color: var(--tb-text-muted)">Loading...</p>
+                </div>
+            </div>
+            
+            <div class="tb-card">
+                <div class="tb-card-header">
+                    <h3 class="tb-card-title"><i class="fas fa-clock"></i> Recent Activity</h3>
+                </div>
+                <div id="recentActivity">
+                    <p style="color: var(--tb-text-muted)">Loading...</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Backup Health -->
+        <div class="tb-card" style="margin-top: 20px;">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-heartbeat"></i> Backup Health</h3>
+            </div>
+            <div id="backupHealth">
+                <p style="color: var(--tb-text-muted)">Loading...</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Jobs Tab -->
+    <div id="tab-jobs" class="tb-tab-content">
+        <div class="tb-card">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-tasks"></i> Backup Jobs</h3>
+                <button class="tb-btn tb-btn-primary" onclick="showJobModal()">
+                    <i class="fas fa-plus"></i> Add Job
+                </button>
+            </div>
+            <div id="jobsList">
+                <p style="color: var(--tb-text-muted)">Loading...</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- History Tab -->
+    <div id="tab-history" class="tb-tab-content">
+        <div class="tb-card">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-history"></i> Backup History</h3>
+                <select id="historyFilter" onchange="loadHistory()" style="padding: 5px 10px; background: var(--tb-bg); color: var(--tb-text); border: 1px solid var(--tb-border); border-radius: 4px;">
+                    <option value="">All Jobs</option>
+                </select>
+            </div>
+            <div id="historyList">
+                <p style="color: var(--tb-text-muted)">Loading...</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Statistics Tab -->
+    <div id="tab-stats" class="tb-tab-content">
+        <div class="tb-card">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-chart-bar"></i> Backup Statistics (30 Days)</h3>
+            </div>
+            <div id="statsContainer">
+                <canvas id="statsChart" height="100"></canvas>
+                <div id="statsEmpty" style="display: none; text-align: center; padding: 40px; color: var(--tb-text-muted);">
+                    <i class="fas fa-chart-line" style="font-size: 3em; margin-bottom: 15px; opacity: 0.5;"></i>
+                    <p>No backup data yet</p>
+                    <p style="font-size: 0.9em;">Run some backups to see statistics here</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Logs Tab -->
+    <div id="tab-logs" class="tb-tab-content">
+        <div class="tb-card">
+            <div class="tb-card-header">
+                <h3 class="tb-card-title"><i class="fas fa-file-alt"></i> Service Log</h3>
+                <div>
+                    <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="loadLogs()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div id="logViewer" class="tb-log-viewer">Loading...</div>
+        </div>
+    </div>
+    
+    <!-- Settings Tab -->
+    <div id="tab-settings" class="tb-tab-content">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <!-- Left Column -->
+            <div>
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-cog"></i> General</h3>
+                    </div>
+                    <form id="settingsForm">
+                        <div class="tb-form-group">
+                            <label>Log Level</label>
+                            <select name="LOG_LEVEL" id="setLogLevel">
+                                <option value="DEBUG">DEBUG - All details</option>
+                                <option value="INFO">INFO - Normal</option>
+                                <option value="WARNING">WARNING - Issues only</option>
+                                <option value="ERROR">ERROR - Errors only</option>
+                            </select>
+                        </div>
+                        <div class="tb-form-group">
+                            <label>Default Bandwidth Limit (KB/s)</label>
+                            <input type="number" name="DEFAULT_BANDWIDTH_LIMIT" id="setBandwidth" min="0" placeholder="0 = unlimited">
+                            <div class="tb-form-hint">Applied to new jobs. 0 = no limit.</div>
+                        </div>
+                </div>
+                
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-redo"></i> Auto-Retry</h3>
+                    </div>
+                    <div class="tb-form-group">
+                        <label class="tb-checkbox-label">
+                            <input type="checkbox" name="RETRY_ON_FAILURE" id="setRetryOnFailure">
+                            <span>Automatically retry failed jobs</span>
+                        </label>
+                    </div>
+                    <div class="tb-form-row">
+                        <div class="tb-form-group">
+                            <label>Retry Interval</label>
+                            <input type="number" name="RETRY_INTERVAL_MINUTES" id="setRetryInterval" min="5" max="1440" value="60">
+                            <div class="tb-form-hint">Minutes between retries</div>
+                        </div>
+                        <div class="tb-form-group">
+                            <label>Max Attempts</label>
+                            <input type="number" name="RETRY_MAX_ATTEMPTS" id="setRetryMax" min="1" max="10" value="3">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-network-wired"></i> Wake-on-LAN</h3>
+                    </div>
+                    <div class="tb-form-row">
+                        <div class="tb-form-group">
+                            <label>Wait Timeout</label>
+                            <input type="number" name="WOL_WAIT_TIMEOUT" id="setWolTimeout" min="30" max="600" value="120">
+                            <div class="tb-form-hint">Seconds to wait for host</div>
+                        </div>
+                        <div class="tb-form-group">
+                            <label>Ping Interval</label>
+                            <input type="number" name="WOL_PING_INTERVAL" id="setWolInterval" min="1" max="30" value="5">
+                            <div class="tb-form-hint">Seconds between pings</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Column -->
+            <div>
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fab fa-discord"></i> Discord Notifications</h3>
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Webhook URL</label>
+                        <input type="text" name="DISCORD_WEBHOOK_URL" id="setDiscordUrl" placeholder="https://discord.com/api/webhooks/...">
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Notify When</label>
+                        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 5px;">
+                            <label class="tb-checkbox-label" style="padding: 0;">
+                                <input type="checkbox" name="DISCORD_NOTIFY_START" id="setDiscordStart" checked>
+                                <span>Backup started</span>
+                            </label>
+                            <label class="tb-checkbox-label" style="padding: 0;">
+                                <input type="checkbox" name="DISCORD_NOTIFY_SUCCESS" id="setDiscordSuccess" checked>
+                                <span>Backup completed successfully</span>
+                            </label>
+                            <label class="tb-checkbox-label" style="padding: 0;">
+                                <input type="checkbox" name="DISCORD_NOTIFY_FAILURE" id="setDiscordFailure" checked>
+                                <span>Backup failed</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="tb-form-group" style="border-top: 1px solid var(--tb-border); padding-top: 15px; margin-top: 10px;">
+                        <label class="tb-checkbox-label" style="padding: 0;">
+                            <input type="checkbox" name="DISCORD_DAILY_SUMMARY" id="setDailySummary">
+                            <span>Send daily summary</span>
+                        </label>
+                        <div class="tb-form-row" style="margin-top: 10px;">
+                            <div class="tb-form-group" style="margin-bottom: 0;">
+                                <label>Summary Time</label>
+                                <input type="number" name="DISCORD_SUMMARY_HOUR" id="setSummaryHour" min="0" max="23" value="20">
+                                <div class="tb-form-hint">Hour (0-23)</div>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="tb-btn tb-btn-secondary" onclick="testDiscord()" style="margin-top: 10px;">
+                        <i class="fab fa-discord"></i> Send Test
+                    </button>
+                </div>
+                
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-bell"></i> Unraid Notifications</h3>
+                    </div>
+                    <div class="tb-form-group">
+                        <label class="tb-checkbox-label">
+                            <input type="checkbox" name="UNRAID_NOTIFICATIONS" id="setUnraidNotify" checked>
+                            <span>Enable Unraid notifications</span>
+                        </label>
+                        <div class="tb-form-hint">Shows in Unraid notification panel</div>
+                    </div>
+                </div>
+                
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-database"></i> Data Management</h3>
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Job History Retention</label>
+                        <input type="number" name="HISTORY_RETENTION_DAYS" id="setHistoryDays" min="0" max="365" value="90">
+                        <div class="tb-form-hint">Days to keep backup run records in database (0 = forever). This is NOT backup file retention - configure that per job.</div>
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Log File Max Size (KB)</label>
+                        <input type="number" name="LOG_MAX_SIZE_KB" id="setLogMaxSize" min="100" max="100000" value="5000">
+                        <div class="tb-form-hint">Maximum log file size before rotation (default 5MB)</div>
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Keep Rotated Logs</label>
+                        <input type="number" name="LOG_KEEP_COUNT" id="setLogKeepCount" min="1" max="30" value="5">
+                        <div class="tb-form-hint">Number of old log files to keep</div>
+                    </div>
+                    
+                    <div style="border-top: 1px solid var(--tb-border); margin-top: 15px; padding-top: 15px;">
+                        <label style="margin-bottom: 10px; display: block;">Database Actions</label>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button type="button" class="tb-btn tb-btn-secondary" onclick="clearHistory()">
+                                <i class="fas fa-history"></i> Clear History
+                            </button>
+                            <button type="button" class="tb-btn tb-btn-secondary" onclick="resetStatistics()">
+                                <i class="fas fa-chart-bar"></i> Reset Stats
+                            </button>
+                            <button type="button" class="tb-btn tb-btn-danger" onclick="resetDatabase()">
+                                <i class="fas fa-trash-alt"></i> Full Reset
+                            </button>
+                        </div>
+                        <div class="tb-form-hint" style="margin-top: 8px;">Clear History removes backup logs. Reset Stats clears statistics. Full Reset deletes all data (jobs kept).</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="margin-top: 20px; text-align: center;">
+            <button type="submit" class="tb-btn tb-btn-primary tb-btn-lg">
+                <i class="fas fa-save"></i> Save All Settings
+            </button>
+        </div>
+        </form>
+    </div>
+</div>
+
+<!-- Job Modal -->
+<div id="jobModal" class="tb-modal-overlay">
+    <div class="tb-modal">
+        <div class="tb-modal-header">
+            <h3 id="jobModalTitle">Add Backup Job</h3>
+            <button class="tb-modal-close" onclick="closeJobModal()">&times;</button>
+        </div>
+        <div class="tb-modal-body">
+            <form id="jobForm">
+                <input type="hidden" id="jobId" name="id">
+                
+                <div class="tb-form-group">
+                    <label>Job Name *</label>
+                    <input type="text" id="jobName" name="name" required placeholder="My Backup Job">
+                </div>
+                
+                <div class="tb-form-group">
+                    <label>Job Type *</label>
+                    <select id="jobType" name="job_type" onchange="toggleJobFields()" required>
+                        <option value="local">Local (Array to Share)</option>
+                        <option value="remote_smb">Remote SMB</option>
+                        <option value="remote_smb_wol">Remote SMB with WOL</option>
+                    </select>
+                </div>
+                
+                <div class="tb-form-group">
+                    <label>Source Path *</label>
+                    <input type="text" id="jobSource" name="source_path" required placeholder="/mnt/user/appdata">
+                </div>
+                
+                <div class="tb-form-group">
+                    <label>Destination Path</label>
+                    <input type="text" id="jobDest" name="dest_path" placeholder="/mnt/user/backups">
+                    <div class="tb-form-hint">For remote: subdirectory within mount point</div>
+                </div>
+                
+                <!-- Remote fields -->
+                <div id="remoteFields" style="display: none;">
+                    <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
+                        <i class="fas fa-server"></i> Remote Settings
+                    </h4>
+                    
+                    <div class="tb-form-row">
+                        <div class="tb-form-group">
+                            <label>Remote Host (IP)</label>
+                            <input type="text" id="jobRemoteHost" name="remote_host" placeholder="192.168.0.31">
+                        </div>
+                        <div class="tb-form-group">
+                            <label>Remote Share</label>
+                            <input type="text" id="jobRemoteShare" name="remote_share" placeholder="//192.168.0.31/backups">
+                        </div>
+                    </div>
+                    
+                    <div class="tb-form-group">
+                        <label>Mount Point</label>
+                        <input type="text" id="jobMountPoint" name="remote_mount_point" placeholder="/mnt/remotes/192.168.0.31_backups">
+                        <div class="tb-form-hint">As configured in Unassigned Devices</div>
+                    </div>
+                </div>
+                
+                <!-- WOL fields -->
+                <div id="wolFields" style="display: none;">
+                    <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
+                        <i class="fas fa-broadcast-tower"></i> Wake-on-LAN Settings
+                    </h4>
+                    
+                    <div class="tb-form-row">
+                        <div class="tb-form-group">
+                            <label>MAC Address</label>
+                            <input type="text" id="jobMac" name="mac_address" placeholder="AA:BB:CC:DD:EE:FF">
+                        </div>
+                        <div class="tb-form-group" style="display: flex; align-items: flex-end;">
+                            <button type="button" class="tb-btn tb-btn-secondary" onclick="testWol()">
+                                <i class="fas fa-bolt"></i> Test WOL
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="tb-form-group">
+                        <label>
+                            <input type="checkbox" id="jobShutdown" name="shutdown_after">
+                            Shutdown after backup (if woken by WOL)
+                        </label>
+                    </div>
+                    
+                    <div id="shutdownCredentials" style="display: none;">
+                        <div class="tb-form-row">
+                            <div class="tb-form-group">
+                                <label>Windows Username</label>
+                                <input type="text" id="jobRemoteUser" name="remote_user" placeholder="Administrator">
+                            </div>
+                            <div class="tb-form-group">
+                                <label>Windows Password</label>
+                                <input type="password" id="jobRemotePass" name="remote_pass">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
+                    <i class="fas fa-clock"></i> Schedule
+                </h4>
+                
+                <div class="tb-form-row">
+                    <div class="tb-form-group">
+                        <label>Schedule Type</label>
+                        <select id="jobScheduleType" name="schedule_type" onchange="toggleScheduleFields()">
+                            <option value="disabled">Disabled (Manual only)</option>
+                            <option value="hourly">Hourly</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="custom">Custom (Cron)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div id="scheduleFields" style="display: none;">
+                    <div class="tb-form-row">
+                        <div class="tb-form-group" id="scheduleHourGroup">
+                            <label>Hour (0-23)</label>
+                            <input type="number" id="jobScheduleHour" name="schedule_hour" min="0" max="23" value="2">
+                        </div>
+                        <div class="tb-form-group" id="scheduleMinuteGroup">
+                            <label>Minute (0-59)</label>
+                            <input type="number" id="jobScheduleMinute" name="schedule_minute" min="0" max="59" value="0">
+                        </div>
+                        <div class="tb-form-group" id="scheduleDayGroup" style="display: none;">
+                            <label>Day of Week</label>
+                            <select id="jobScheduleDay" name="schedule_day">
+                                <option value="0">Monday</option>
+                                <option value="1">Tuesday</option>
+                                <option value="2">Wednesday</option>
+                                <option value="3">Thursday</option>
+                                <option value="4">Friday</option>
+                                <option value="5">Saturday</option>
+                                <option value="6">Sunday</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="tb-form-group" id="scheduleCronGroup" style="display: none;">
+                        <label>Cron Expression</label>
+                        <input type="text" id="jobScheduleCron" name="schedule_cron" placeholder="0 2 * * *">
+                        <div class="tb-form-hint">Format: minute hour day month weekday</div>
+                    </div>
+                </div>
+                
+                <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
+                    <i class="fas fa-sliders-h"></i> Options
+                </h4>
+                
+                <div class="tb-form-row">
+                    <div class="tb-form-group">
+                        <label>Bandwidth Limit (KB/s)</label>
+                        <input type="number" id="jobBandwidth" name="bandwidth_limit" min="0" value="0" placeholder="0 = unlimited">
+                        <div class="tb-form-hint">0 = use default from settings</div>
+                    </div>
+                </div>
+                
+                <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
+                    <i class="fas fa-archive"></i> Backup Retention
+                </h4>
+                
+                <div class="tb-form-row">
+                    <div class="tb-form-group">
+                        <label>Keep Backups (count)</label>
+                        <input type="number" id="jobRetentionCount" name="retention_count" min="0" value="0">
+                        <div class="tb-form-hint">Number of backups to keep (0 = unlimited)</div>
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Keep Backups (days)</label>
+                        <input type="number" id="jobRetentionDays" name="retention_days" min="0" value="0">
+                        <div class="tb-form-hint">Delete backups older than X days (0 = forever)</div>
+                    </div>
+                </div>
+                
+                <div class="tb-form-group">
+                    <label>Exclude Patterns</label>
+                    <div style="margin-bottom: 8px;">
+                        <span style="font-size: 0.85em; color: var(--tb-text-muted);">Quick add:</span>
+                        <button type="button" class="tb-btn tb-btn-xs" onclick="addExcludePreset('temp')" title="*.tmp, *.temp, *.swp, ~*">Temp files</button>
+                        <button type="button" class="tb-btn tb-btn-xs" onclick="addExcludePreset('logs')" title="*.log, logs/">Logs</button>
+                        <button type="button" class="tb-btn tb-btn-xs" onclick="addExcludePreset('cache')" title="cache/, .cache/, *cache*/">Cache</button>
+                        <button type="button" class="tb-btn tb-btn-xs" onclick="addExcludePreset('os')" title="Thumbs.db, .DS_Store, desktop.ini">OS junk</button>
+                        <button type="button" class="tb-btn tb-btn-xs" onclick="addExcludePreset('docker')" title="*.sock, docker.pid">Docker</button>
+                    </div>
+                    <textarea id="jobExcludes" name="exclude_patterns" rows="4" placeholder="*.tmp&#10;*.log&#10;cache/&#10;Thumbs.db"></textarea>
+                    <div class="tb-form-hint">One pattern per line. Use * for wildcards, / suffix for directories.</div>
+                </div>
+                
+                <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
+                    <i class="fas fa-terminal"></i> Pre/Post Scripts
+                </h4>
+                
+                <div class="tb-form-group">
+                    <label>Pre-Backup Script</label>
+                    <input type="text" id="jobPreScript" name="pre_script" placeholder="/mnt/user/scripts/pre_backup.sh">
+                    <div class="tb-form-hint">Script to run BEFORE backup starts (e.g., stop containers, dump DB)</div>
+                </div>
+                
+                <div class="tb-form-group">
+                    <label>Post-Backup Script</label>
+                    <input type="text" id="jobPostScript" name="post_script" placeholder="/mnt/user/scripts/post_backup.sh">
+                    <div class="tb-form-hint">Script to run AFTER backup completes (e.g., start containers)</div>
+                </div>
+                
+                <div class="tb-checkbox-group">
+                    <label class="tb-checkbox-label">
+                        <input type="checkbox" id="jobEnabled" name="enabled" checked>
+                        <span>Job Enabled</span>
+                    </label>
+                    <label class="tb-checkbox-label">
+                        <input type="checkbox" id="jobRetryOnFailure" name="retry_on_failure" checked>
+                        <span>Retry on Failure</span>
+                    </label>
+                </div>
+            </form>
+        </div>
+        <div class="tb-modal-footer">
+            <button class="tb-btn tb-btn-secondary" onclick="closeJobModal()">Cancel</button>
+            <button class="tb-btn tb-btn-primary" onclick="saveJob()">
+                <i class="fas fa-save"></i> Save Job
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================
+// ATP BACKUP - JavaScript v2026.01.28
+// ============================================
+
+const TB = {
+    ajaxUrl: '/plugins/atp_backup/include/ajax.php',
+    refreshInterval: null,
+    statsChart: null
+};
+
+// ====== Tab Navigation ======
+
+function showTab(tabName) {
+    document.querySelectorAll('.tb-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tb-tab-content').forEach(t => t.classList.remove('active'));
+    
+    document.querySelector(`.tb-tab[onclick="showTab('${tabName}')"]`).classList.add('active');
+    document.getElementById(`tab-${tabName}`).classList.add('active');
+    
+    // Load data for tab
+    switch(tabName) {
+        case 'dashboard': refreshDashboard(); break;
+        case 'jobs': loadJobs(); break;
+        case 'history': loadHistory(); break;
+        case 'stats': loadStats(); break;
+        case 'logs': loadLogs(); break;
+        case 'settings': loadSettings(); break;
+    }
+}
+
+// ====== API Helper ======
+
+async function apiCall(action, params = {}) {
+    const url = new URL(TB.ajaxUrl, window.location.origin);
+    url.searchParams.set('action', action);
+    
+    for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== null) {
+            url.searchParams.set(key, value);
+        }
+    }
+    
+    try {
+        const response = await fetch(url);
+        return await response.json();
+    } catch (e) {
+        console.error('API Error:', e);
+        return { success: false, error: e.message };
+    }
+}
+
+async function apiPost(action, data = {}) {
+    const url = new URL(TB.ajaxUrl, window.location.origin);
+    url.searchParams.set('action', action);
+    
+    // Add csrf_token to data for Unraid security
+    data.csrf_token = csrf_token;
+    
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(data).toString()
+        });
+        return await response.json();
+    } catch (e) {
+        console.error('API Error:', e);
+        return { success: false, error: e.message };
+    }
+}
+
+// ====== Dashboard ======
+
+async function refreshDashboard() {
+    // Load status
+    const status = await apiCall('status');
+    const statusDiv = document.getElementById('currentStatus');
+    
+    if (status.success) {
+        if (status.backup?.running) {
+            statusDiv.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <i class="fas fa-sync-alt tb-spin" style="font-size: 2em; color: var(--tb-primary)"></i>
+                    <div>
+                        <strong>Running:</strong> ${status.backup.job_name}<br>
+                        <small style="color: var(--tb-text-muted)">Phase: ${status.backup.progress?.phase || 'running'}</small>
+                    </div>
+                </div>
+            `;
+        } else {
+            statusDiv.innerHTML = `
+                <p><i class="fas fa-check-circle" style="color: var(--tb-success)"></i> No backup currently running</p>
+                <p style="color: var(--tb-text-muted); font-size: 0.9em;">
+                    Uptime: ${formatDuration(status.uptime)} |
+                    Unassigned Devices: ${status.ud_available ? '<span style="color: var(--tb-success)">Available</span>' : '<span style="color: var(--tb-danger)">Not found</span>'}
+                </p>
+            `;
+        }
+    } else {
+        statusDiv.innerHTML = `<p style="color: var(--tb-danger)"><i class="fas fa-exclamation-triangle"></i> Service not responding</p>`;
+    }
+    
+    // Load stats
+    const stats = await apiCall('get_stats', { days: 30 });
+    if (stats.success) {
+        const totals = stats.totals || {};
+        document.getElementById('statSuccessful').textContent = totals.successful || 0;
+        document.getElementById('statFailed').textContent = totals.failed || 0;
+        document.getElementById('statTotalData').textContent = formatBytes(totals.total_bytes || 0);
+    }
+    
+    // Load jobs for active count and upcoming
+    const jobsResult = await apiCall('get_jobs');
+    const upcomingDiv = document.getElementById('upcomingJobs');
+    
+    if (jobsResult.success && jobsResult.jobs) {
+        const activeJobs = jobsResult.jobs.filter(j => j.enabled);
+        document.getElementById('statActiveJobs').textContent = `${activeJobs.length}/${jobsResult.jobs.length}`;
+        
+        const scheduledJobs = activeJobs.filter(j => j.schedule_type !== 'disabled');
+        
+        if (scheduledJobs.length > 0) {
+            let html = '<div class="tb-table-wrapper"><table class="tb-table"><tbody>';
+            for (const job of scheduledJobs.slice(0, 5)) {
+                const nextRun = calculateNextRun(job);
+                html += `<tr>
+                    <td>${job.name}</td>
+                    <td style="text-align: right; color: var(--tb-text-muted);">${nextRun}</td>
+                </tr>`;
+            }
+            html += '</tbody></table></div>';
+            upcomingDiv.innerHTML = html;
+        } else {
+            upcomingDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No scheduled jobs</p>';
+        }
+    } else {
+        upcomingDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No jobs configured</p>';
+    }
+    
+    // Load recent activity
+    const history = await apiCall('get_history', { limit: 5 });
+    const activityDiv = document.getElementById('recentActivity');
+    
+    if (history.success && history.history?.length > 0) {
+        let html = '<div class="tb-table-wrapper"><table class="tb-table"><tbody>';
+        for (const h of history.history) {
+            const statusBadge = h.status === 'completed' ? 'tb-badge-success' :
+                               h.status === 'running' ? 'tb-badge-info' : 'tb-badge-danger';
+            html += `<tr>
+                <td>${h.job_name}${h.is_retry ? ' <span class="tb-badge tb-badge-warning">retry</span>' : ''}</td>
+                <td><span class="tb-badge ${statusBadge}">${h.status}</span></td>
+                <td style="text-align: right; color: var(--tb-text-muted);">${formatDate(h.started_at)}</td>
+            </tr>`;
+        }
+        html += '</tbody></table></div>';
+        activityDiv.innerHTML = html;
+    } else {
+        activityDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No recent activity</p>';
+    }
+    
+    // Load backup health
+    loadBackupHealth();
+}
+
+function calculateNextRun(job) {
+    const now = new Date();
+    const hour = job.schedule_hour || 0;
+    const minute = job.schedule_minute || 0;
+    
+    let next = new Date();
+    next.setSeconds(0);
+    next.setMilliseconds(0);
+    
+    switch (job.schedule_type) {
+        case 'hourly':
+            next.setMinutes(minute);
+            if (next <= now) next.setHours(next.getHours() + 1);
+            break;
+        case 'daily':
+            next.setHours(hour, minute);
+            if (next <= now) next.setDate(next.getDate() + 1);
+            break;
+        case 'weekly':
+            next.setHours(hour, minute);
+            const targetDay = job.schedule_day || 0;
+            const daysUntil = (targetDay - now.getDay() + 7) % 7;
+            next.setDate(next.getDate() + (daysUntil === 0 && next <= now ? 7 : daysUntil));
+            break;
+        default:
+            return job.schedule_cron || 'Custom';
+    }
+    
+    const diff = next - now;
+    const hours = Math.floor(diff / 3600000);
+    const mins = Math.floor((diff % 3600000) / 60000);
+    
+    if (hours > 24) {
+        const days = Math.floor(hours / 24);
+        return `in ${days}d ${hours % 24}h`;
+    } else if (hours > 0) {
+        return `in ${hours}h ${mins}m`;
+    } else {
+        return `in ${mins}m`;
+    }
+}
+
+// ====== Jobs ======
+
+async function loadJobs() {
+    const result = await apiCall('get_jobs');
+    const jobsDiv = document.getElementById('jobsList');
+    
+    // Also populate history filter
+    const historyFilter = document.getElementById('historyFilter');
+    historyFilter.innerHTML = '<option value="">All Jobs</option>';
+    
+    if (result.success && result.jobs?.length > 0) {
+        // Sort jobs by schedule time
+        const sortedJobs = [...result.jobs].sort((a, b) => {
+            if (a.schedule_type === 'disabled') return 1;
+            if (b.schedule_type === 'disabled') return -1;
+            const timeA = (a.schedule_hour || 0) * 60 + (a.schedule_minute || 0);
+            const timeB = (b.schedule_hour || 0) * 60 + (b.schedule_minute || 0);
+            return timeA - timeB;
+        });
+        
+        let html = '<div class="tb-table-wrapper"><table class="tb-table"><thead><tr><th>Enabled</th><th>Name</th><th>Type</th><th>Schedule</th><th>Time</th><th>Last Run</th><th>Actions</th></tr></thead><tbody>';
+        
+        for (const job of sortedJobs) {
+            const typeBadge = job.job_type === 'local' ? 'tb-badge-info' : 
+                             job.job_type.includes('wol') ? 'tb-badge-warning' : 'tb-badge-secondary';
+            const lastRun = job.last_run ? formatDate(job.last_run.started_at) : 'Never';
+            const lastStatus = job.last_run ? 
+                (job.last_run.status === 'completed' ? '✅' : '❌') : '';
+            
+            // Format schedule time
+            let scheduleTime = '-';
+            if (job.schedule_type !== 'disabled' && job.schedule_type !== 'cron') {
+                const hour = String(job.schedule_hour || 0).padStart(2, '0');
+                const minute = String(job.schedule_minute || 0).padStart(2, '0');
+                scheduleTime = `${hour}:${minute}`;
+            } else if (job.schedule_type === 'cron') {
+                scheduleTime = job.schedule_cron || 'custom';
+            }
+            
+            html += `<tr style="${job.enabled ? '' : 'opacity: 0.6;'}">
+                <td style="text-align: center;">
+                    <label class="tb-toggle">
+                        <input type="checkbox" ${job.enabled ? 'checked' : ''} onchange="toggleJobEnabled(${job.id}, this.checked)">
+                        <span class="tb-toggle-slider"></span>
+                    </label>
+                </td>
+                <td>${job.name}</td>
+                <td><span class="tb-badge ${typeBadge}">${job.job_type}</span></td>
+                <td>${job.schedule_type === 'disabled' ? '<span style="color: var(--tb-text-muted)">Manual</span>' : job.schedule_type}</td>
+                <td>${scheduleTime}</td>
+                <td>${lastStatus} ${lastRun}</td>
+                <td class="tb-actions">
+                    <button class="tb-btn tb-btn-sm tb-btn-success" onclick="runJob(${job.id})" title="Run Now" ${job.enabled ? '' : 'disabled'}>
+                        <i class="fas fa-play"></i> Run
+                    </button>
+                    <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="runJob(${job.id}, true)" title="Dry Run">
+                        <i class="fas fa-vial"></i> Test
+                    </button>
+                    <button class="tb-btn tb-btn-sm tb-btn-secondary" onclick="editJob(${job.id})" title="Edit">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button class="tb-btn tb-btn-sm tb-btn-danger" onclick="deleteJob(${job.id})" title="Delete">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </td>
+            </tr>`;
+            
+            historyFilter.innerHTML += `<option value="${job.id}">${job.name}</option>`;
+        }
+        
+        html += '</tbody></table></div>';
+        jobsDiv.innerHTML = html;
+    } else {
+        jobsDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No backup jobs configured. Click "Add Job" to create one.</p>';
+    }
+}
+
+async function toggleJobEnabled(jobId, enabled) {
+    const result = await apiPost('toggle_job', { id: jobId, enabled: enabled ? 1 : 0 });
+    
+    if (result.success) {
+        loadJobs(); // Refresh the list
+        refreshDashboard(); // Update stats
+    } else {
+        alert('Error: ' + (result.error || 'Failed to toggle job'));
+        loadJobs(); // Reload to show correct state
+    }
+}
+
+async function runJob(jobId, dryRun = false) {
+    const action = dryRun ? 'dry run' : 'run';
+    if (!confirm(`Are you sure you want to ${action} this job?`)) return;
+    
+    const result = await apiCall('run_job', { id: jobId, dry_run: dryRun ? 'true' : 'false' });
+    
+    if (result.success) {
+        alert(`Job started${dryRun ? ' (dry run)' : ''}!`);
+        showTab('dashboard');
+    } else {
+        alert('Error: ' + (result.error || 'Unknown error'));
+    }
+}
+
+async function deleteJob(jobId) {
+    if (!confirm('Are you sure you want to delete this job? This will also delete all history for this job.')) return;
+    
+    const result = await apiCall('delete_job', { id: jobId });
+    
+    if (result.success) {
+        loadJobs();
+    } else {
+        alert('Error: ' + (result.error || 'Unknown error'));
+    }
+}
+
+// ====== Job Modal ======
+
+function showJobModal(jobId = null) {
+    document.getElementById('jobModalTitle').textContent = jobId ? 'Edit Backup Job' : 'Add Backup Job';
+    document.getElementById('jobForm').reset();
+    document.getElementById('jobId').value = jobId || '';
+    document.getElementById('jobEnabled').checked = true;
+    document.getElementById('jobRetryOnFailure').checked = true;
+    
+    toggleJobFields();
+    toggleScheduleFields();
+    
+    if (jobId) {
+        loadJobForEdit(jobId);
+    }
+    
+    document.getElementById('jobModal').classList.add('active');
+}
+
+function closeJobModal() {
+    document.getElementById('jobModal').classList.remove('active');
+}
+
+async function loadJobForEdit(jobId) {
+    const result = await apiCall('get_job', { id: jobId });
+    
+    if (result.success && result.job) {
+        const job = result.job;
+        
+        document.getElementById('jobName').value = job.name || '';
+        document.getElementById('jobType').value = job.job_type || 'local';
+        document.getElementById('jobSource').value = job.source_path || '';
+        document.getElementById('jobDest').value = job.dest_path || '';
+        document.getElementById('jobRemoteHost').value = job.remote_host || '';
+        document.getElementById('jobRemoteShare').value = job.remote_share || '';
+        document.getElementById('jobMountPoint').value = job.remote_mount_point || '';
+        document.getElementById('jobMac').value = job.mac_address || '';
+        document.getElementById('jobShutdown').checked = !!job.shutdown_after;
+        document.getElementById('jobRemoteUser').value = job.remote_user || '';
+        document.getElementById('jobRemotePass').value = job.remote_pass || '';
+        document.getElementById('jobScheduleType').value = job.schedule_type || 'disabled';
+        document.getElementById('jobScheduleHour').value = job.schedule_hour || 0;
+        document.getElementById('jobScheduleMinute').value = job.schedule_minute || 0;
+        document.getElementById('jobScheduleDay').value = job.schedule_day || 0;
+        document.getElementById('jobScheduleCron').value = job.schedule_cron || '';
+        document.getElementById('jobBandwidth').value = job.bandwidth_limit || 0;
+        document.getElementById('jobRetentionCount').value = job.retention_count || 0;
+        document.getElementById('jobRetentionDays').value = job.retention_days || 0;
+        document.getElementById('jobEnabled').checked = !!job.enabled;
+        document.getElementById('jobRetryOnFailure').checked = job.retry_on_failure !== 0;
+        document.getElementById('jobExcludes').value = job.exclude_patterns || '';
+        document.getElementById('jobPreScript').value = job.pre_script || '';
+        document.getElementById('jobPostScript').value = job.post_script || '';
+        
+        toggleJobFields();
+        toggleScheduleFields();
+        toggleShutdownCredentials();
+    }
+}
+
+function toggleJobFields() {
+    const jobType = document.getElementById('jobType').value;
+    
+    document.getElementById('remoteFields').style.display = 
+        jobType.includes('remote') ? 'block' : 'none';
+    
+    document.getElementById('wolFields').style.display = 
+        jobType.includes('wol') ? 'block' : 'none';
+}
+
+function toggleScheduleFields() {
+    const scheduleType = document.getElementById('jobScheduleType').value;
+    const show = scheduleType !== 'disabled';
+    
+    document.getElementById('scheduleFields').style.display = show ? 'block' : 'none';
+    document.getElementById('scheduleHourGroup').style.display = 
+        ['daily', 'weekly'].includes(scheduleType) ? 'block' : 'none';
+    document.getElementById('scheduleDayGroup').style.display = 
+        scheduleType === 'weekly' ? 'block' : 'none';
+    document.getElementById('scheduleCronGroup').style.display = 
+        scheduleType === 'custom' ? 'block' : 'none';
+}
+
+function toggleShutdownCredentials() {
+    const show = document.getElementById('jobShutdown').checked;
+    document.getElementById('shutdownCredentials').style.display = show ? 'block' : 'none';
+}
+
+document.getElementById('jobShutdown').addEventListener('change', toggleShutdownCredentials);
+
+async function saveJob() {
+    const form = document.getElementById('jobForm');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    
+    // Convert checkboxes
+    data.enabled = document.getElementById('jobEnabled').checked ? 1 : 0;
+    data.shutdown_after = document.getElementById('jobShutdown').checked ? 1 : 0;
+    data.use_wol = data.job_type.includes('wol') ? 1 : 0;
+    data.retry_on_failure = document.getElementById('jobRetryOnFailure').checked ? 1 : 0;
+    
+    // Convert numeric fields
+    data.retention_count = parseInt(data.retention_count) || 0;
+    data.retention_days = parseInt(data.retention_days) || 0;
+    data.bandwidth_limit = parseInt(data.bandwidth_limit) || 0;
+    
+    const jobId = data.id;
+    delete data.id;
+    
+    let result;
+    if (jobId) {
+        result = await apiPost('update_job', { ...data, id: jobId });
+    } else {
+        result = await apiPost('create_job', data);
+    }
+    
+    if (result.success) {
+        closeJobModal();
+        loadJobs();
+    } else {
+        alert('Error: ' + (result.error || 'Unknown error'));
+    }
+}
+
+async function editJob(jobId) {
+    showJobModal(jobId);
+}
+
+// ====== History ======
+
+async function loadHistory() {
+    const jobId = document.getElementById('historyFilter').value;
+    const result = await apiCall('get_history', { limit: 100, job_id: jobId || undefined });
+    const historyDiv = document.getElementById('historyList');
+    
+    if (result.success && result.history?.length > 0) {
+        let html = '<div class="tb-table-wrapper"><table class="tb-table"><thead><tr><th>Job</th><th>Status</th><th>Started</th><th>Duration</th><th>Size</th><th>Speed</th></tr></thead><tbody>';
+        
+        for (const h of result.history) {
+            const statusBadge = h.status === 'completed' ? 'tb-badge-success' : 
+                               h.status === 'running' ? 'tb-badge-info' : 'tb-badge-danger';
+            
+            html += `<tr>
+                <td>${h.job_name}${h.dry_run ? ' <span class="tb-badge tb-badge-secondary">dry run</span>' : ''}${h.is_retry ? ' <span class="tb-badge tb-badge-warning">retry</span>' : ''}</td>
+                <td><span class="tb-badge ${statusBadge}">${h.status}</span></td>
+                <td>${formatDate(h.started_at)}</td>
+                <td>${formatDuration(h.duration_seconds)}</td>
+                <td>${formatBytes(h.bytes_transferred)}</td>
+                <td>${formatSpeed(h.transfer_speed_mbps)}</td>
+            </tr>`;
+        }
+        
+        html += '</tbody></table></div>';
+        historyDiv.innerHTML = html;
+    } else {
+        historyDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No backup history</p>';
+    }
+}
+
+// ====== Statistics ======
+
+async function loadStats() {
+    const result = await apiCall('get_stats', { days: 30 });
+    
+    const chartCanvas = document.getElementById('statsChart');
+    const emptyDiv = document.getElementById('statsEmpty');
+    
+    if (result.success && result.stats?.length > 0) {
+        chartCanvas.style.display = 'block';
+        emptyDiv.style.display = 'none';
+        
+        const labels = result.stats.map(s => s.date).reverse();
+        const successful = result.stats.map(s => s.successful_jobs).reverse();
+        const failed = result.stats.map(s => s.failed_jobs).reverse();
+        
+        const ctx = chartCanvas.getContext('2d');
+        
+        if (TB.statsChart) {
+            TB.statsChart.destroy();
+        }
+        
+        TB.statsChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Successful',
+                        data: successful,
+                        backgroundColor: 'rgba(39, 174, 96, 0.7)'
+                    },
+                    {
+                        label: 'Failed',
+                        data: failed,
+                        backgroundColor: 'rgba(192, 57, 43, 0.7)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: { stacked: true },
+                    y: { 
+                        stacked: true, 
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1,
+                            callback: function(value) {
+                                if (Math.floor(value) === value) {
+                                    return value;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } else {
+        chartCanvas.style.display = 'none';
+        emptyDiv.style.display = 'block';
+    }
+}
+
+// ====== Logs ======
+
+async function loadLogs() {
+    const result = await apiCall('get_logs', { lines: 200 });
+    const logDiv = document.getElementById('logViewer');
+    
+    if (result.success) {
+        logDiv.textContent = result.logs || 'No logs available';
+        logDiv.scrollTop = logDiv.scrollHeight;
+    } else {
+        logDiv.textContent = 'Error loading logs: ' + (result.error || 'Unknown');
+    }
+}
+
+// ====== Settings ======
+
+async function loadSettings() {
+    const result = await apiCall('get_settings');
+    
+    if (result.success && result.settings) {
+        const s = result.settings;
+        document.getElementById('setLogLevel').value = s.LOG_LEVEL || 'INFO';
+        document.getElementById('setBandwidth').value = s.DEFAULT_BANDWIDTH_LIMIT || 0;
+        document.getElementById('setDiscordUrl').value = s.DISCORD_WEBHOOK_URL || '';
+        document.getElementById('setDiscordStart').checked = s.DISCORD_NOTIFY_START !== false;
+        document.getElementById('setDiscordSuccess').checked = s.DISCORD_NOTIFY_SUCCESS !== false;
+        document.getElementById('setDiscordFailure').checked = s.DISCORD_NOTIFY_FAILURE !== false;
+        document.getElementById('setDailySummary').checked = !!s.DISCORD_DAILY_SUMMARY;
+        document.getElementById('setSummaryHour').value = s.DISCORD_SUMMARY_HOUR || 20;
+        document.getElementById('setUnraidNotify').checked = s.UNRAID_NOTIFICATIONS !== false;
+        document.getElementById('setRetryOnFailure').checked = s.RETRY_ON_FAILURE !== false;
+        document.getElementById('setRetryInterval').value = s.RETRY_INTERVAL_MINUTES || 60;
+        document.getElementById('setRetryMax').value = s.RETRY_MAX_ATTEMPTS || 3;
+        document.getElementById('setWolTimeout').value = s.WOL_WAIT_TIMEOUT || 120;
+        document.getElementById('setWolInterval').value = s.WOL_PING_INTERVAL || 5;
+        document.getElementById('setHistoryDays').value = s.HISTORY_RETENTION_DAYS || 90;
+        document.getElementById('setLogMaxSize').value = s.LOG_MAX_SIZE_KB || 5000;
+        document.getElementById('setLogKeepCount').value = s.LOG_KEEP_COUNT || 5;
+    }
+}
+
+document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const data = {
+        LOG_LEVEL: document.getElementById('setLogLevel').value,
+        DEFAULT_BANDWIDTH_LIMIT: parseInt(document.getElementById('setBandwidth').value) || 0,
+        DISCORD_WEBHOOK_URL: document.getElementById('setDiscordUrl').value,
+        DISCORD_NOTIFY_START: document.getElementById('setDiscordStart').checked,
+        DISCORD_NOTIFY_SUCCESS: document.getElementById('setDiscordSuccess').checked,
+        DISCORD_NOTIFY_FAILURE: document.getElementById('setDiscordFailure').checked,
+        DISCORD_DAILY_SUMMARY: document.getElementById('setDailySummary').checked,
+        DISCORD_SUMMARY_HOUR: parseInt(document.getElementById('setSummaryHour').value) || 20,
+        UNRAID_NOTIFICATIONS: document.getElementById('setUnraidNotify').checked,
+        RETRY_ON_FAILURE: document.getElementById('setRetryOnFailure').checked,
+        RETRY_INTERVAL_MINUTES: parseInt(document.getElementById('setRetryInterval').value) || 60,
+        RETRY_MAX_ATTEMPTS: parseInt(document.getElementById('setRetryMax').value) || 3,
+        WOL_WAIT_TIMEOUT: parseInt(document.getElementById('setWolTimeout').value) || 120,
+        WOL_PING_INTERVAL: parseInt(document.getElementById('setWolInterval').value) || 5,
+        HISTORY_RETENTION_DAYS: parseInt(document.getElementById('setHistoryDays').value) || 90,
+        LOG_MAX_SIZE_KB: parseInt(document.getElementById('setLogMaxSize').value) || 5000,
+        LOG_KEEP_COUNT: parseInt(document.getElementById('setLogKeepCount').value) || 5
+    };
+    
+    const result = await apiPost('save_settings', data);
+    
+    if (result.success) {
+        alert('Settings saved successfully!');
+    } else {
+        alert('Error: ' + (result.error || 'Unknown error'));
+    }
+});
+
+async function testDiscord() {
+    const result = await apiCall('test_discord');
+    
+    if (result.success) {
+        alert('Test notification sent! Check your Discord channel.');
+    } else {
+        alert('Error: ' + (result.error || 'Failed to send'));
+    }
+}
+
+async function testWol() {
+    const mac = document.getElementById('jobMac').value;
+    if (!mac) {
+        alert('Please enter a MAC address first');
+        return;
+    }
+    
+    const result = await apiCall('test_wol', { mac_address: mac });
+    
+    if (result.success) {
+        alert('WOL packet sent to ' + mac);
+    } else {
+        alert('Error: ' + (result.error || 'Failed to send'));
+    }
+}
+
+// ====== Database Management ======
+
+async function clearHistory() {
+    if (!confirm('This will delete all backup history records.\n\nYour jobs and settings will be kept.\n\nContinue?')) return;
+    
+    const result = await apiPost('clear_history');
+    if (result.success) {
+        alert('History cleared successfully!');
+        refreshDashboard();
+        loadHistory();
+    } else {
+        alert('Error: ' + (result.error || 'Failed to clear history'));
+    }
+}
+
+async function resetStatistics() {
+    if (!confirm('This will reset all backup statistics.\n\nHistory and jobs will be kept.\n\nContinue?')) return;
+    
+    const result = await apiPost('reset_statistics');
+    if (result.success) {
+        alert('Statistics reset successfully!');
+        refreshDashboard();
+        loadStats();
+    } else {
+        alert('Error: ' + (result.error || 'Failed to reset statistics'));
+    }
+}
+
+async function resetDatabase() {
+    if (!confirm('⚠️ FULL DATABASE RESET ⚠️\n\nThis will delete:\n• All backup history\n• All statistics\n\nYour jobs and settings will be kept.\n\nAre you sure?')) return;
+    if (!confirm('This cannot be undone. Type "RESET" in the next prompt to confirm.')) return;
+    
+    const confirmation = prompt('Type RESET to confirm:');
+    if (confirmation !== 'RESET') {
+        alert('Reset cancelled.');
+        return;
+    }
+    
+    const result = await apiPost('reset_database');
+    if (result.success) {
+        alert('Database reset complete!');
+        refreshDashboard();
+        loadHistory();
+        loadStats();
+    } else {
+        alert('Error: ' + (result.error || 'Failed to reset database'));
+    }
+}
+
+// ====== Exclude Pattern Presets ======
+
+const excludePresets = {
+    temp: ['*.tmp', '*.temp', '*.swp', '~*', '*.bak'],
+    logs: ['*.log', 'logs/', '*.log.*'],
+    cache: ['cache/', '.cache/', '*cache*/', 'Cache/'],
+    os: ['Thumbs.db', '.DS_Store', 'desktop.ini', '._*', '.Spotlight-V100', '.Trashes'],
+    docker: ['*.sock', 'docker.pid', '*.pid']
+};
+
+function addExcludePreset(preset) {
+    const textarea = document.getElementById('jobExcludes');
+    const currentPatterns = textarea.value.split('\n').filter(p => p.trim());
+    const newPatterns = excludePresets[preset] || [];
+    
+    // Add only patterns that don't already exist
+    for (const pattern of newPatterns) {
+        if (!currentPatterns.includes(pattern)) {
+            currentPatterns.push(pattern);
+        }
+    }
+    
+    textarea.value = currentPatterns.join('\n');
+}
+
+// ====== Backup Health ======
+
+async function loadBackupHealth() {
+    const healthDiv = document.getElementById('backupHealth');
+    const jobsResult = await apiCall('get_jobs');
+    
+    if (!jobsResult.success || !jobsResult.jobs?.length) {
+        healthDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No jobs configured</p>';
+        return;
+    }
+    
+    let html = '<div class="tb-table-wrapper"><table class="tb-table"><thead><tr><th>Job</th><th>Last Backup</th><th>Status</th><th>Health</th></tr></thead><tbody>';
+    
+    const now = new Date();
+    
+    for (const job of jobsResult.jobs) {
+        if (!job.enabled) continue;
+        
+        let lastBackup = 'Never';
+        let status = '-';
+        let health = '<span style="color: var(--tb-text-muted);">No data</span>';
+        let healthIcon = '⚪';
+        
+        if (job.last_run) {
+            const lastDate = new Date(job.last_run.started_at);
+            const hoursSince = (now - lastDate) / (1000 * 60 * 60);
+            lastBackup = formatDate(job.last_run.started_at);
+            status = job.last_run.status === 'completed' ? '✅' : '❌';
+            
+            if (job.last_run.status === 'completed') {
+                if (hoursSince < 24) {
+                    health = '<span style="color: var(--tb-success);">Healthy</span>';
+                    healthIcon = '🟢';
+                } else if (hoursSince < 48) {
+                    health = '<span style="color: var(--tb-warning);">Check Soon</span>';
+                    healthIcon = '🟡';
+                } else {
+                    health = '<span style="color: var(--tb-danger);">Overdue</span>';
+                    healthIcon = '🔴';
+                }
+            } else {
+                health = '<span style="color: var(--tb-danger);">Failed</span>';
+                healthIcon = '🔴';
+            }
+        }
+        
+        html += `<tr>
+            <td>${healthIcon} ${job.name}</td>
+            <td>${lastBackup}</td>
+            <td>${status}</td>
+            <td>${health}</td>
+        </tr>`;
+    }
+    
+    html += '</tbody></table></div>';
+    healthDiv.innerHTML = html;
+}
+
+// ====== Service Control ======
+
+async function toggleService() {
+    const statusEl = document.getElementById('serviceStatus');
+    const btn = document.getElementById('serviceToggleBtn');
+    const btnText = document.getElementById('serviceToggleText');
+    const btnIcon = document.getElementById('serviceToggleIcon');
+    const isRunning = statusEl.classList.contains('tb-status-running');
+    const cmd = isRunning ? 'stop' : 'start';
+    
+    // Show loading state
+    btn.disabled = true;
+    btnIcon.className = 'fas fa-spinner tb-spin';
+    btnText.textContent = cmd === 'start' ? 'Starting...' : 'Stopping...';
+    
+    const result = await apiCall('service', { cmd: cmd });
+    
+    if (result.success) {
+        // Wait a moment for service to fully start/stop
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Reload page to get fresh state including PID
+        window.location.reload();
+    } else {
+        btn.disabled = false;
+        alert('Error: ' + (result.output || result.error || 'Unknown'));
+        // Restore button state
+        btnIcon.className = isRunning ? 'fas fa-stop' : 'fas fa-play';
+        btnText.textContent = isRunning ? 'Stop' : 'Start';
+    }
+}
+
+// ====== Utilities ======
+
+function formatBytes(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function formatSpeed(bytesPerSec) {
+    // Speed is stored as bytes/sec in database
+    if (!bytesPerSec || bytesPerSec === 0) return '0 B/s';
+    const k = 1024;
+    const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    const i = Math.min(Math.floor(Math.log(bytesPerSec) / Math.log(k)), sizes.length - 1);
+    return parseFloat((bytesPerSec / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function formatDuration(seconds) {
+    if (!seconds || seconds === 0) return '-';
+    if (seconds < 60) return seconds + 's';
+    if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + (seconds % 60) + 's';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return h + 'h ' + m + 'm';
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+}
+
+// ====== Init ======
+
+document.addEventListener('DOMContentLoaded', () => {
+    refreshDashboard();
+    
+    // Auto-refresh every 30 seconds
+    TB.refreshInterval = setInterval(() => {
+        if (document.getElementById('tab-dashboard').classList.contains('active')) {
+            refreshDashboard();
+        }
+    }, 30000);
+});
+
+
+/* ============================================
+   ATP SHARED JS - Injected by build.py
+   ============================================ */
+/**
+ * ATP COMMON JS - v2026.01.30
+ * Shared JavaScript utilities for all ATP (A Tegenett Plugin) plugins
+ *
+ * Usage in .page file:
+ * 1. Include this JS via <script> tag
+ * 2. Call ATP.init({ prefix: 'tb', ajaxUrl: '/plugins/atp_backup/include/ajax.php' })
+ * 3. Use ATP.ajax(), ATP.formatBytes(), etc.
+ */
+
+var ATP = ATP || {};
+
+/**
+ * Initialize ATP utilities
+ * @param {Object} options - Configuration options
+ * @param {string} options.prefix - Plugin prefix (e.g., 'tb', 'esc')
+ * @param {string} options.ajaxUrl - AJAX endpoint URL
+ * @param {string} options.csrfToken - CSRF token for security
+ */
+ATP.init = function(options) {
+    this.prefix = options.prefix || 'atp';
+    this.ajaxUrl = options.ajaxUrl || '';
+    this.csrfToken = options.csrfToken || '';
+    this.refreshInterval = options.refreshInterval || 3000;
+    this.refreshTimer = null;
+    this.countdown = this.refreshInterval / 1000;
+    this.currentTab = 'dashboard';
+
+    console.log('[ATP] Initialized with prefix:', this.prefix);
+};
+
+/**
+ * Get CSRF token from page or stored value
+ * @returns {string} CSRF token
+ */
+ATP.getCsrfToken = function() {
+    if (this.csrfToken) return this.csrfToken;
+
+    // Try to get from hidden input
+    var input = document.querySelector('input[name="csrf_token"]');
+    if (input) return input.value;
+
+    // Try to get from meta tag
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta) return meta.getAttribute('content');
+
+    return '';
+};
+
+/**
+ * Make AJAX request with CSRF token
+ * @param {string} action - AJAX action name
+ * @param {Object} data - Additional data to send
+ * @param {Function} callback - Success callback
+ * @param {Function} errorCallback - Error callback
+ */
+ATP.ajax = function(action, data, callback, errorCallback) {
+    var self = this;
+    data = data || {};
+    data.ajax = action;
+    data.csrf_token = this.getCsrfToken();
+
+    $.ajax({
+        url: this.ajaxUrl,
+        method: 'POST',
+        data: data,
+        dataType: 'json',
+        timeout: 30000
+    }).done(function(response) {
+        if (callback) callback(response);
+    }).fail(function(xhr, status, error) {
+        console.error('[ATP] AJAX error:', action, status, error);
+        if (errorCallback) {
+            errorCallback(error, xhr);
+        }
+    });
+};
+
+/**
+ * Make AJAX request with extended timeout (for long operations)
+ * @param {string} action - AJAX action name
+ * @param {Object} data - Additional data to send
+ * @param {number} timeout - Timeout in milliseconds
+ * @param {Function} callback - Success callback
+ * @param {Function} errorCallback - Error callback
+ */
+ATP.ajaxLong = function(action, data, timeout, callback, errorCallback) {
+    var self = this;
+    data = data || {};
+    data.ajax = action;
+    data.csrf_token = this.getCsrfToken();
+
+    $.ajax({
+        url: this.ajaxUrl,
+        method: 'POST',
+        data: data,
+        dataType: 'json',
+        timeout: timeout || 120000
+    }).done(function(response) {
+        if (callback) callback(response);
+    }).fail(function(xhr, status, error) {
+        console.error('[ATP] AJAX long error:', action, status, error);
+        if (errorCallback) {
+            errorCallback(error, xhr);
+        }
+    });
+};
+
+/* ============================================
+   FORMATTING UTILITIES
+   ============================================ */
+
+/**
+ * Format bytes to human readable string
+ * @param {number} bytes - Number of bytes
+ * @param {number} decimals - Decimal places (default: 2)
+ * @returns {string} Formatted string (e.g., "1.5 GB")
+ */
+ATP.formatBytes = function(bytes, decimals) {
+    if (bytes === 0 || bytes === null || bytes === undefined) return '0 B';
+    decimals = decimals !== undefined ? decimals : 2;
+
+    var k = 1024;
+    var sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    var i = Math.floor(Math.log(bytes) / Math.log(k));
+
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
+};
+
+/**
+ * Format seconds to human readable duration
+ * @param {number} seconds - Number of seconds
+ * @returns {string} Formatted duration (e.g., "2h 30m")
+ */
+ATP.formatDuration = function(seconds) {
+    if (!seconds || isNaN(seconds) || seconds <= 0) return '-';
+
+    seconds = Math.floor(seconds);
+
+    if (seconds < 60) {
+        return seconds + 's';
+    }
+    if (seconds < 3600) {
+        var m = Math.floor(seconds / 60);
+        var s = seconds % 60;
+        return m + 'm ' + s + 's';
+    }
+    if (seconds < 86400) {
+        var h = Math.floor(seconds / 3600);
+        var m = Math.floor((seconds % 3600) / 60);
+        return h + 'h ' + m + 'm';
+    }
+
+    var d = Math.floor(seconds / 86400);
+    var h = Math.floor((seconds % 86400) / 3600);
+    return d + 'd ' + h + 'h';
+};
+
+/**
+ * Format countdown timer
+ * @param {number} seconds - Seconds remaining
+ * @returns {string} Formatted countdown (e.g., "5m 30s")
+ */
+ATP.formatCountdown = function(seconds) {
+    if (seconds <= 0) return 'Now';
+    return this.formatDuration(seconds);
+};
+
+/**
+ * Format timestamp to locale string
+ * @param {number|string} timestamp - Unix timestamp or ISO string
+ * @returns {string} Formatted date/time
+ */
+ATP.formatTimestamp = function(timestamp) {
+    if (!timestamp) return '-';
+
+    var date;
+    if (typeof timestamp === 'number') {
+        date = new Date(timestamp * 1000);
+    } else {
+        date = new Date(timestamp);
+    }
+
+    if (isNaN(date.getTime())) return '-';
+
+    return date.toLocaleString();
+};
+
+/**
+ * Format relative time (e.g., "5 minutes ago")
+ * @param {number|string} timestamp - Unix timestamp or ISO string
+ * @returns {string} Relative time string
+ */
+ATP.formatRelativeTime = function(timestamp) {
+    if (!timestamp) return '-';
+
+    var date;
+    if (typeof timestamp === 'number') {
+        date = new Date(timestamp * 1000);
+    } else {
+        date = new Date(timestamp);
+    }
+
+    if (isNaN(date.getTime())) return '-';
+
+    var seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return Math.floor(seconds / 60) + ' min ago';
+    if (seconds < 86400) return Math.floor(seconds / 3600) + ' hours ago';
+    if (seconds < 604800) return Math.floor(seconds / 86400) + ' days ago';
+
+    return date.toLocaleDateString();
+};
+
+/* ============================================
+   STRING UTILITIES
+   ============================================ */
+
+/**
+ * Escape HTML entities to prevent XSS
+ * @param {string} str - String to escape
+ * @returns {string} Escaped string
+ */
+ATP.escapeHtml = function(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+};
+
+/**
+ * Truncate string with ellipsis
+ * @param {string} str - String to truncate
+ * @param {number} maxLength - Maximum length
+ * @returns {string} Truncated string
+ */
+ATP.truncate = function(str, maxLength) {
+    if (!str) return '';
+    maxLength = maxLength || 50;
+    if (str.length <= maxLength) return str;
+    return str.substring(0, maxLength - 3) + '...';
+};
+
+/**
+ * Get filename from path
+ * @param {string} path - Full file path
+ * @returns {string} Filename only
+ */
+ATP.getFilename = function(path) {
+    if (!path) return '';
+    return path.split('/').pop().split('\\').pop();
+};
+
+/* ============================================
+   TAB MANAGEMENT
+   ============================================ */
+
+/**
+ * Initialize tab switching
+ * @param {string} tabSelector - Selector for tab elements
+ * @param {string} panelPrefix - Prefix for panel IDs
+ * @param {Function} onTabChange - Callback when tab changes
+ */
+ATP.initTabs = function(tabSelector, panelPrefix, onTabChange) {
+    var self = this;
+    tabSelector = tabSelector || '.atp-tab';
+    panelPrefix = panelPrefix || '#panel-';
+
+    $(tabSelector).click(function() {
+        var tab = $(this).data('tab');
+
+        // Update tab active state
+        $(tabSelector).removeClass('active');
+        $(this).addClass('active');
+
+        // Update panel visibility
+        $('.atp-panel').removeClass('active');
+        $(panelPrefix + tab).addClass('active');
+
+        self.currentTab = tab;
+
+        if (onTabChange) {
+            onTabChange(tab);
+        }
+    });
+};
+
+/* ============================================
+   AUTO-REFRESH
+   ============================================ */
+
+/**
+ * Start auto-refresh timer
+ * @param {Function} refreshFunction - Function to call on refresh
+ * @param {string} countdownSelector - Selector for countdown display
+ */
+ATP.startRefresh = function(refreshFunction, countdownSelector) {
+    var self = this;
+    countdownSelector = countdownSelector || '#refresh-countdown';
+
+    this.stopRefresh();
+
+    // Initial refresh
+    if (refreshFunction) refreshFunction();
+
+    this.countdown = this.refreshInterval / 1000;
+    $(countdownSelector).text(this.countdown);
+
+    this.refreshTimer = setInterval(function() {
+        self.countdown--;
+        $(countdownSelector).text(self.countdown);
+
+        if (self.countdown <= 0) {
+            self.countdown = self.refreshInterval / 1000;
+            if (refreshFunction) refreshFunction();
+        }
+    }, 1000);
+};
+
+/**
+ * Stop auto-refresh timer
+ */
+ATP.stopRefresh = function() {
+    if (this.refreshTimer) {
+        clearInterval(this.refreshTimer);
+        this.refreshTimer = null;
+    }
+};
+
+/* ============================================
+   DIALOG HELPERS
+   ============================================ */
+
+/**
+ * Show confirmation dialog using SweetAlert or fallback
+ * @param {Object} options - Dialog options
+ * @param {string} options.title - Dialog title
+ * @param {string} options.text - Dialog message
+ * @param {string} options.type - Dialog type (warning, info, success, error)
+ * @param {Function} callback - Called with true/false
+ */
+ATP.confirm = function(options, callback) {
+    if (typeof swal !== 'undefined') {
+        swal({
+            title: options.title || 'Confirm',
+            text: options.text || 'Are you sure?',
+            type: options.type || 'warning',
+            showCancelButton: true,
+            confirmButtonColor: options.type === 'warning' ? '#f44336' : '#e67e22'
+        }, function(confirmed) {
+            if (callback) callback(confirmed);
+        });
+    } else {
+        var result = confirm(options.text || 'Are you sure?');
+        if (callback) callback(result);
+    }
+};
+
+/**
+ * Show alert dialog using SweetAlert or fallback
+ * @param {Object} options - Dialog options
+ * @param {string} options.title - Dialog title
+ * @param {string} options.text - Dialog message
+ * @param {string} options.type - Dialog type (success, error, info, warning)
+ */
+ATP.alert = function(options) {
+    if (typeof swal !== 'undefined') {
+        swal({
+            title: options.title || 'Alert',
+            text: options.text || '',
+            type: options.type || 'info'
+        });
+    } else {
+        alert((options.title ? options.title + '\n\n' : '') + (options.text || ''));
+    }
+};
+
+/**
+ * Show loading dialog
+ * @param {string} title - Loading title
+ * @param {string} text - Loading message
+ */
+ATP.showLoading = function(title, text) {
+    if (typeof swal !== 'undefined') {
+        swal({
+            title: title || 'Processing...',
+            text: text || 'Please wait...',
+            type: 'info',
+            showConfirmButton: false
+        });
+    }
+};
+
+/**
+ * Close any open dialog
+ */
+ATP.closeDialog = function() {
+    if (typeof swal !== 'undefined') {
+        swal.close();
+    }
+};
+
+/* ============================================
+   BUTTON STATE HELPERS
+   ============================================ */
+
+/**
+ * Set button to loading state
+ * @param {jQuery|string} button - Button element or selector
+ * @param {string} loadingText - Text to show while loading
+ */
+ATP.setButtonLoading = function(button, loadingText) {
+    var $btn = $(button);
+    var $icon = $btn.find('i').first();
+    var $text = $btn.find('span').first();
+
+    $btn.prop('disabled', true);
+    $btn.data('original-icon', $icon.attr('class'));
+    $btn.data('original-text', $text.text());
+
+    $icon.attr('class', 'fa fa-spinner fa-spin');
+    if (loadingText) $text.text(loadingText);
+};
+
+/**
+ * Reset button from loading state
+ * @param {jQuery|string} button - Button element or selector
+ * @param {boolean} success - Whether operation was successful
+ * @param {string} resultText - Optional text to show briefly
+ */
+ATP.resetButton = function(button, success, resultText) {
+    var $btn = $(button);
+    var $icon = $btn.find('i').first();
+    var $text = $btn.find('span').first();
+
+    var originalIcon = $btn.data('original-icon');
+    var originalText = $btn.data('original-text');
+
+    // Show result briefly
+    $icon.attr('class', success ? 'fa fa-check' : 'fa fa-times');
+    if (resultText) $text.text(resultText);
+
+    setTimeout(function() {
+        $btn.prop('disabled', false);
+        $icon.attr('class', originalIcon || 'fa fa-save');
+        $text.text(originalText || 'Save');
+    }, 1500);
+};
+
+/* ============================================
+   EXPORT FOR CommonJS/AMD
+   ============================================ */
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = ATP;
+} else if (typeof define === 'function' && define.amd) {
+    define(function() { return ATP; });
+}
+
+</script>

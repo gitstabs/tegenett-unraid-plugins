@@ -1,0 +1,102 @@
+#!/bin/bash
+# rc.atp_backup - Service control script for ATP Backup
+
+PLUGIN_NAME="atp_backup"
+DAEMON="/usr/local/emhttp/plugins/${PLUGIN_NAME}/${PLUGIN_NAME}.py"
+PID_FILE="/var/run/${PLUGIN_NAME}.pid"
+CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
+DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
+
+# Ensure directories exist
+mkdir -p "${DATA_DIR}/logs"
+mkdir -p "${CONFIG_DIR}"
+
+start() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo "${PLUGIN_NAME} is already running (PID $PID)"
+            return 1
+        else
+            rm -f "$PID_FILE"
+        fi
+    fi
+    
+    echo "Starting ${PLUGIN_NAME}..."
+    chmod +x "$DAEMON"
+    
+    # Start daemon - Python handles its own logging, redirect nohup output to /dev/null
+    nohup python3 "$DAEMON" >/dev/null 2>&1 &
+    echo $! > "$PID_FILE"
+    
+    # Wait for service to be ready
+    sleep 2
+    
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat $PID_FILE)" 2>/dev/null; then
+        echo "${PLUGIN_NAME} started (PID $(cat $PID_FILE))"
+        return 0
+    else
+        echo "Failed to start ${PLUGIN_NAME}"
+        rm -f "$PID_FILE"
+        return 1
+    fi
+}
+
+stop() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        echo "Stopping ${PLUGIN_NAME} (PID $PID)..."
+        kill "$PID" 2>/dev/null
+        
+        for i in {1..10}; do
+            if ! kill -0 "$PID" 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        
+        if kill -0 "$PID" 2>/dev/null; then
+            echo "Force killing ${PLUGIN_NAME}..."
+            kill -9 "$PID" 2>/dev/null
+        fi
+        
+        rm -f "$PID_FILE"
+        echo "${PLUGIN_NAME} stopped"
+    else
+        echo "${PLUGIN_NAME} is not running"
+    fi
+    
+    # Also kill any orphaned processes
+    pkill -f "${PLUGIN_NAME}.py" 2>/dev/null || true
+}
+
+restart() {
+    stop
+    sleep 2
+    start
+}
+
+status() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo "${PLUGIN_NAME} is running (PID $PID)"
+            return 0
+        else
+            echo "${PLUGIN_NAME} is not running (stale PID file)"
+            rm -f "$PID_FILE"
+            return 1
+        fi
+    else
+        echo "${PLUGIN_NAME} is not running"
+        return 1
+    fi
+}
+
+case "$1" in
+    start) start ;;
+    stop) stop ;;
+    restart) restart ;;
+    status) status ;;
+    *) echo "Usage: $0 {start|stop|restart|status}"; exit 1 ;;
+esac

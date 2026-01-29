@@ -141,6 +141,10 @@ All plugins must match ATP Backup's visual design:
 - [x] ~~Create build script that injects shared code into plugins~~ Done 2026.01.30 (build.py)
 - [x] ~~Integrate shared CSS/JS into both plugins~~ Done 2026.01.30a
 - [ ] Document CSS class naming convention
+- [ ] Review plugin name references (ENTITY name vs folder names vs internal paths)
+  - Note: ENTITY name = display name in Unraid GUI
+  - Folder/file names use snake_case (atp_backup)
+  - Internal paths must match folder names
 
 ### 🟡 Medium Priority
 - [ ] Create plugin template for new plugins
@@ -151,7 +155,8 @@ All plugins must match ATP Backup's visual design:
 ## Infrastructure
 
 ### 🟠 High Priority
-- [ ] Set up proper build pipeline
+- [x] ~~Set up proper build pipeline~~ Done 2026.01.30b (GitHub Actions)
+- [x] ~~Convert ATP Backup to src-file structure~~ Done 2026.01.30b
 - [ ] Create development/testing guide
 - [ ] Document GitHub workflow
 
@@ -159,6 +164,26 @@ All plugins must match ATP Backup's visual design:
 - [ ] Automated version bumping
 - [ ] Change log generation
 - [ ] Unit tests for Python daemon
+
+---
+
+## Branding & Design
+
+### 🟠 High Priority
+- [ ] Design uniform Tegenett logo for all plugins
+- [ ] Design plugin-specific icons (same design system as logo)
+- [ ] Create icon guidelines document
+
+### Assets
+- [ ] Master Tegenett logo (SVG, PNG in multiple sizes)
+- [ ] ATP Backup icon
+- [ ] ATP Emby Smart Cache icon
+- [ ] Favicon (existing in assets/icons/ - may need updates)
+
+### Design System
+- [ ] Color palette documentation
+- [ ] Icon style guide (size, stroke width, corners)
+- [ ] Badge/thumbnail specifications for Unraid plugin list
 
 ---
 

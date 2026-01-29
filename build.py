@@ -428,89 +428,259 @@ echo "Data preserved at: /mnt/user/appdata/${{PLUGIN_NAME}}"
 
 
 def build_atp_backup() -> bool:
-    """Build ATP Backup plugin with shared CSS/JS injection."""
+    """Build ATP Backup plugin from src files."""
     plugin = PLUGINS['backup']
-    plg_path = plugin['dir'] / 'atp_backup.plg'
+    src_dir = plugin['dir'] / 'src'
+    output = plugin['dir'] / 'atp_backup.plg'
 
     print(f"\nBuilding {plugin['display_name']}...")
 
-    if not plg_path.exists():
-        print(f"  Error: PLG file not found at {plg_path}")
+    # Read source files
+    try:
+        page_content = read_file(src_dir / 'AtpBackup.page')
+        python_content = read_file(src_dir / 'atp_backup.py')
+        rc_content = read_file(src_dir / 'rc.atp_backup')
+        ajax_content = read_file(src_dir / 'ajax.php')
+    except FileNotFoundError as e:
+        print(f"  Error: Missing source file - {e}")
         return False
 
-    # Read the PLG file
-    plg_content = read_file(plg_path)
+    # Inject shared CSS/JS into page content
+    page_content = inject_shared_resources(page_content, prefix='tb')
+    print("  Injected shared CSS/JS")
 
-    # Check if shared CSS is already injected
-    if 'ATP SHARED CSS - Injected by build.py' in plg_content:
-        print("  Shared CSS/JS already injected, validating only...")
-    else:
-        # Inject shared CSS/JS
-        shared_css = get_shared_css()
-        shared_js = get_shared_js()
+    # Get version from page content
+    version_match = re.search(r'\$version\s*=\s*["\']v?(\d{4}\.\d{2}\.\d{2}\w*)["\']', page_content)
+    version = version_match.group(1) if version_match else datetime.now().strftime('%Y.%m.%d')
 
-        if shared_css:
-            # Create CSS variable aliases for tb-* prefix
-            css_aliases = """
-/* ============================================
-   ATP SHARED CSS - Injected by build.py
-   Variable aliases for backwards compatibility
-   ============================================ */
-:root {
-    /* Alias atp-* to tb-* for backwards compatibility */
-    --tb-primary: var(--atp-primary);
-    --tb-primary-dark: var(--atp-primary-dark);
-    --tb-success: var(--atp-success);
-    --tb-danger: var(--atp-danger);
-    --tb-warning: var(--atp-warning);
-    --tb-info: var(--atp-info);
-    --tb-bg: var(--atp-bg);
-    --tb-card-bg: var(--atp-card-bg);
-    --tb-text: var(--atp-text);
-    --tb-text-muted: var(--atp-text-muted);
-    --tb-border: var(--atp-border);
-}
+    plg = f'''<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name      "ATP Backup">
+<!ENTITY author    "Tegenett">
+<!ENTITY version   "{version}">
+<!ENTITY launch    "Settings/AtpBackup">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
+]>
 
-""" + shared_css
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
-            # Find <style> tag in PLG and inject after it
-            style_match = re.search(r'(<style[^>]*>)', plg_content)
-            if style_match:
-                insert_pos = style_match.end()
-                plg_content = plg_content[:insert_pos] + '\n' + css_aliases + '\n' + plg_content[insert_pos:]
-                print("  Injected shared CSS")
+<CHANGES>
+##2026.01.30b
+- BUILD: Converted to src-file structure for automatic GitHub builds
+- BUILD: Shared CSS/JS now injected automatically from shared/ folder
 
-        if shared_js:
-            js_injection = """
-/* ============================================
-   ATP SHARED JS - Injected by build.py
-   ============================================ */
-""" + shared_js
+##2026.01.30a
+- BUILD: Shared CSS/JS now injected automatically from shared/ folder
+- BUILD: CSS variable aliases for backwards compatibility (--tb-* maps to --atp-*)
 
-            # Find the last </script> in the PLG and inject before it
-            last_script_end = plg_content.rfind('</script>')
-            if last_script_end != -1:
-                plg_content = plg_content[:last_script_end] + '\n' + js_injection + '\n' + plg_content[last_script_end:]
-                print("  Injected shared JS")
+##2026.01.30
+- SECURITY: Added CSRF token validation for all modifying AJAX requests
+- SECURITY: Improved exception handling with specific exception types
+- CODE: PHP handler now validates Unraid 7.x CSRF tokens
 
-        # Update version in CHANGES
-        if '##2026.01.30a' not in plg_content and '##2026.01.30' in plg_content:
-            plg_content = plg_content.replace(
-                '##2026.01.30\n',
-                '##2026.01.30a\n- BUILD: Shared CSS/JS now injected automatically from shared/ folder\n- BUILD: CSS variable aliases for backwards compatibility (--tb-* maps to --atp-*)\n\n##2026.01.30\n'
-            )
+##2026.01.29d
+- UI: Tab buttons margin/font reset for consistent spacing (reversion bump)
 
-        # Write back
-        write_file(plg_path, plg_content)
+##2026.01.29c
+- UI: Version moved to far right (consistent with ATP Emby Smart Cache)
+- UI: Tab buttons reset margin for consistent gap spacing
 
-    xml_valid = validate_xml(plg_path)
+##2026.01.29b
+- UI: New tab styling (full button highlight instead of underline)
+- UI: Improved mobile responsiveness for all tables
+- UI: Better table headers with uppercase styling
 
-    size = plg_path.stat().st_size
-    print(f"  File: {plg_path}")
+##2026.01.29a
+- RENAME: Plugin renamed from tegenett_backup to atp_backup (A Tegenett Plugin)
+- All paths updated: config, data, logs now use atp_backup prefix
+- NOTE: Requires fresh install - see migration guide
+
+##2026.01.28k
+- NEW: Reset Database - clear history, reset statistics, or full reset
+- NEW: Exclude Patterns UI - quick-add presets (temp, logs, cache, OS junk, docker)
+- NEW: Pre/Post Backup Scripts - run custom scripts before and after backups
+- NEW: Backup Health Dashboard - visual overview of job health status
+- NEW: Log Rotation - automatic rotation with configurable size and count
+- FIX: Database schema v3 for pre/post scripts
+
+##2026.01.28j
+- FIX: Speed now shows in appropriate units (B/s, KB/s, MB/s)
+- FIX: Size and speed formatting in Discord notifications
+- FIX: Improved auto-start with delayed background start
+
+##2026.01.28i
+- FIX: Rsync stats parsing
+
+##2026.01.28h
+- FIX: Service auto-starts via /boot/config/go
+
+##2026.01.28
+- CSRF token support for Unraid 7
+
+##2026.01.27
+- Initial release
+</CHANGES>
+
+<!-- Pre-install: Stop existing service and clean up -->
+<FILE Run="/bin/bash">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+PLUGIN_NAME="atp_backup"
+PLUGIN_DIR="/usr/local/emhttp/plugins/${{PLUGIN_NAME}}"
+LOG="/var/log/${{PLUGIN_NAME}}_install.log"
+
+echo "$(date): Pre-install starting" >> "$LOG"
+
+# Stop old service if running
+if [ -f "/var/run/${{PLUGIN_NAME}}.pid" ]; then
+    PID=$(cat /var/run/${{PLUGIN_NAME}}.pid)
+    echo "$(date): Stopping service PID $PID" >> "$LOG"
+    kill "$PID" 2>/dev/null
+    sleep 3
+fi
+pkill -f "${{PLUGIN_NAME}}.py" 2>/dev/null || true
+
+rm -rf "${{PLUGIN_DIR}}"
+mkdir -p "${{PLUGIN_DIR}}/include"
+
+echo "$(date): Pre-install complete" >> "$LOG"
+]]>
+</INLINE>
+</FILE>
+
+<!-- Main Page File -->
+<FILE Name="/usr/local/emhttp/plugins/atp_backup/AtpBackup.page">
+<INLINE>
+<![CDATA[
+{page_content}
+]]>
+</INLINE>
+</FILE>
+
+<!-- Python Daemon -->
+<FILE Name="/usr/local/emhttp/plugins/atp_backup/atp_backup.py" Mode="0755">
+<INLINE>
+<![CDATA[
+{python_content}
+]]>
+</INLINE>
+</FILE>
+
+<!-- RC Service Script -->
+<FILE Name="/usr/local/emhttp/plugins/atp_backup/rc.atp_backup" Mode="0755">
+<INLINE>
+<![CDATA[
+{rc_content}
+]]>
+</INLINE>
+</FILE>
+
+<!-- AJAX Handler -->
+<FILE Name="/usr/local/emhttp/plugins/atp_backup/include/ajax.php">
+<INLINE>
+<![CDATA[
+{ajax_content}
+]]>
+</INLINE>
+</FILE>
+
+<!-- Post-install: Set up directories and auto-start -->
+<FILE Run="/bin/bash">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+PLUGIN_NAME="atp_backup"
+DATA_DIR="/mnt/user/appdata/${{PLUGIN_NAME}}"
+CONFIG_DIR="/boot/config/plugins/${{PLUGIN_NAME}}"
+RC_SCRIPT="/usr/local/emhttp/plugins/${{PLUGIN_NAME}}/rc.${{PLUGIN_NAME}}"
+GO_FILE="/boot/config/go"
+LOG="/var/log/${{PLUGIN_NAME}}_install.log"
+
+echo "$(date): Post-install starting" >> "$LOG"
+
+# Create directories
+mkdir -p "$DATA_DIR/logs"
+mkdir -p "$CONFIG_DIR"
+
+# Make scripts executable
+chmod +x "/usr/local/emhttp/plugins/${{PLUGIN_NAME}}/${{PLUGIN_NAME}}.py"
+chmod +x "$RC_SCRIPT"
+
+# Add to startup if not already there
+if ! grep -q "rc.${{PLUGIN_NAME}}" "$GO_FILE" 2>/dev/null; then
+    echo "" >> "$GO_FILE"
+    echo "# Start ATP Backup" >> "$GO_FILE"
+    echo "$RC_SCRIPT start &" >> "$GO_FILE"
+    echo "$(date): Added to $GO_FILE" >> "$LOG"
+fi
+
+# Start the service in background with delay
+(
+    sleep 5
+    "$RC_SCRIPT" start >> "$LOG" 2>&1
+) &
+
+echo "$(date): Post-install complete" >> "$LOG"
+echo ""
+echo "ATP Backup v{version} installed!"
+echo "Service will start in 5 seconds..."
+]]>
+</INLINE>
+</FILE>
+
+<!-- Uninstall script -->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+PLUGIN_NAME="atp_backup"
+RC_SCRIPT="/usr/local/emhttp/plugins/${{PLUGIN_NAME}}/rc.${{PLUGIN_NAME}}"
+GO_FILE="/boot/config/go"
+
+echo "Removing ATP Backup..."
+
+# Stop service
+if [ -f "$RC_SCRIPT" ]; then
+    "$RC_SCRIPT" stop 2>/dev/null
+fi
+pkill -f "${{PLUGIN_NAME}}.py" 2>/dev/null || true
+rm -f "/var/run/${{PLUGIN_NAME}}.pid"
+
+# Remove from startup
+if [ -f "$GO_FILE" ]; then
+    sed -i "/# Start ATP Backup/d" "$GO_FILE"
+    sed -i "/rc.${{PLUGIN_NAME}}/d" "$GO_FILE"
+fi
+
+# Remove plugin files (keep config and data)
+rm -rf "/usr/local/emhttp/plugins/${{PLUGIN_NAME}}"
+rm -f "/var/log/${{PLUGIN_NAME}}_install.log"
+rm -f "/var/log/${{PLUGIN_NAME}}_startup.log"
+
+echo "ATP Backup removed."
+echo "Config preserved at: /boot/config/plugins/${{PLUGIN_NAME}}"
+echo "Data preserved at: /mnt/user/appdata/${{PLUGIN_NAME}}"
+]]>
+</INLINE>
+</FILE>
+
+</PLUGIN>
+'''
+
+    write_file(output, plg)
+
+    # Validate
+    xml_valid = validate_xml(output)
+    py_valid = validate_python(src_dir / 'atp_backup.py')
+
+    size = output.stat().st_size
+    print(f"  Output: {output}")
     print(f"  Size: {size:,} bytes")
     print(f"  XML valid: {'Yes' if xml_valid else 'NO'}")
+    print(f"  Python valid: {'Yes' if py_valid else 'NO'}")
 
-    return xml_valid
+    return xml_valid and py_valid
 
 
 def print_shared_info():

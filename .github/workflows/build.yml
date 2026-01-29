@@ -4,8 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      # Only trigger on source file changes, NOT on built .plg files
+      # Trigger on source file changes only
       - 'shared/**'
+      - 'atp_backup/src/**'
       - 'atp_emby_smart_cache/src/**'
       - 'build.py'
   workflow_dispatch:  # Allows manual trigger from GitHub UI
@@ -29,13 +30,13 @@ jobs:
       - name: Check for changes
         id: check
         run: |
-          git diff --quiet atp_emby_smart_cache/atp_emby_smart_cache.plg || echo "changed=true" >> $GITHUB_OUTPUT
+          git diff --quiet *.plg **/*.plg 2>/dev/null || echo "changed=true" >> $GITHUB_OUTPUT
 
       - name: Commit built files
         if: steps.check.outputs.changed == 'true'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add atp_emby_smart_cache/atp_emby_smart_cache.plg
-          git commit -m "Auto-build: Update ATP Emby Smart Cache PLG [skip ci]"
+          git add atp_backup/atp_backup.plg atp_emby_smart_cache/atp_emby_smart_cache.plg
+          git commit -m "Auto-build: Update PLG files [skip ci]"
           git push
