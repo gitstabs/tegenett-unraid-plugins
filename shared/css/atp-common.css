@@ -1,13 +1,7 @@
 /* ============================================
    ATP COMMON CSS - v2026.01.30
    Shared styles for all ATP (A Tegenett Plugin) plugins
-
-   Usage in .page file:
-   1. Include this CSS via <style> tag or inline
-   2. Set your plugin prefix: --atp-prefix: 'tb' or 'esc'
-   3. Use classes like .atp-container, .atp-card, etc.
-
-   Or copy and replace 'atp' with your plugin prefix.
+   Injected automatically by build.py
    ============================================ */
 
 /* ============================================

@@ -1,11 +1,7 @@
 /**
  * ATP COMMON JS - v2026.01.30
- * Shared JavaScript utilities for all ATP (A Tegenett Plugin) plugins
- *
- * Usage in .page file:
- * 1. Include this JS via <script> tag
- * 2. Call ATP.init({ prefix: 'tb', ajaxUrl: '/plugins/atp_backup/include/ajax.php' })
- * 3. Use ATP.ajax(), ATP.formatBytes(), etc.
+ * Shared JavaScript utilities for all ATP plugins
+ * Injected automatically by build.py
  */
 
 var ATP = ATP || {};

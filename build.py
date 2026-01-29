@@ -116,7 +116,8 @@ def validate_python(py_path: Path) -> bool:
 def inject_shared_resources(page_content: str, prefix: str = 'esc') -> str:
     """
     Inject shared CSS/JS into a .page file.
-    Creates CSS variable aliases from atp-* to plugin-specific prefix (esc-*, tb-*).
+    The shared CSS already defines --atp-* variables.
+    We add aliases so plugin-specific --{prefix}-* also work.
     """
     shared_css = get_shared_css()
     shared_js = get_shared_js()
@@ -124,15 +125,16 @@ def inject_shared_resources(page_content: str, prefix: str = 'esc') -> str:
     if not shared_css and not shared_js:
         return page_content
 
-    # Create CSS variable aliases for backwards compatibility
-    # This maps --atp-* variables to --{prefix}-* so existing CSS still works
-    css_aliases = f"""
+    # Shared CSS is injected first (it defines --atp-* variables)
+    # Then we add aliases for backwards compatibility with plugin-specific prefixes
+    css_injection = f"""
 /* ============================================
    ATP SHARED CSS - Injected by build.py
-   Variable aliases for backwards compatibility
    ============================================ */
+{shared_css}
+
+/* Backwards compatibility aliases: --{prefix}-* maps to --atp-* */
 :root {{
-    /* Alias atp-* to {prefix}-* for backwards compatibility */
     --{prefix}-primary: var(--atp-primary);
     --{prefix}-primary-dark: var(--atp-primary-dark);
     --{prefix}-success: var(--atp-success);
@@ -145,15 +147,13 @@ def inject_shared_resources(page_content: str, prefix: str = 'esc') -> str:
     --{prefix}-text-muted: var(--atp-text-muted);
     --{prefix}-border: var(--atp-border);
 }}
-
-{shared_css}
 """
 
     # Find the <style> tag and inject shared CSS at the beginning
     style_match = re.search(r'(<style[^>]*>)', page_content)
     if style_match:
         insert_pos = style_match.end()
-        page_content = page_content[:insert_pos] + '\n' + css_aliases + '\n' + page_content[insert_pos:]
+        page_content = page_content[:insert_pos] + '\n' + css_injection + '\n' + page_content[insert_pos:]
 
     # Inject shared JS before closing </script> tag (at the end)
     if shared_js:
@@ -209,6 +209,9 @@ def build_atp_emby_smart_cache() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30b
+- FIX: Removed HTML tags from shared CSS/JS comments that broke page rendering
+
 ##2026.01.30a
 - BUILD: Shared CSS/JS now injected automatically from shared/ folder
 - BUILD: CSS variable aliases for backwards compatibility (--esc-* maps to --atp-*)
@@ -465,6 +468,9 @@ def build_atp_backup() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30c
+- FIX: Removed HTML tags from shared CSS/JS comments that broke page rendering
+
 ##2026.01.30b
 - BUILD: Converted to src-file structure for automatic GitHub builds
 - BUILD: Shared CSS/JS now injected automatically from shared/ folder
