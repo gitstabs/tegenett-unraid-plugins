@@ -20,19 +20,19 @@ All plugins skal hete **"ATP [Name]"** (A Tegenett Plugin) for konsistent sorter
 | (future) | ATP [Name] | atp_[name] |
 
 **Rename checklist per plugin:**
-- [ ] Rename folder: `tegenett_backup/` → `atp_backup/`
-- [ ] Rename PLG file: `tegenett_backup.plg` → `atp_backup.plg`
-- [ ] Update PLG `<!ENTITY name>` 
-- [ ] Update PLG `<!ENTITY pluginURL>` (new GitHub path)
-- [ ] Update all internal paths in PLG (`/usr/local/emhttp/plugins/...`)
-- [ ] Update Python daemon filename and references
-- [ ] Update RC script filename
-- [ ] Update PID file path
-- [ ] Update config directory path (`/boot/config/plugins/...`)
-- [ ] Update data directory path (`/mnt/user/appdata/...`)
-- [ ] Update Page file `Menu=` and `Title=`
-- [ ] Update database path references
-- [ ] Test fresh install on Unraid
+- [x] Rename folder: `tegenett_backup/` → `atp_backup/` ✅
+- [x] Rename PLG file: `tegenett_backup.plg` → `atp_backup.plg` ✅
+- [x] Update PLG `<!ENTITY name>` ✅
+- [x] Update PLG `<!ENTITY pluginURL>` (new GitHub path) ✅
+- [x] Update all internal paths in PLG (`/usr/local/emhttp/plugins/...`) ✅
+- [x] Update Python daemon filename and references ✅
+- [x] Update RC script filename ✅
+- [x] Update PID file path ✅
+- [x] Update config directory path (`/boot/config/plugins/...`) ✅
+- [x] Update data directory path (`/mnt/user/appdata/...`) ✅
+- [x] Update Page file `Menu=` and `Title=` ✅
+- [x] Update database path references ✅
+- [ ] Test fresh install on Unraid (USER TODO)
 
 **Post-rename instructions for user:**
 1. Uninstall old plugin via Unraid GUI
@@ -100,10 +100,10 @@ All plugins must match ATP Backup's visual design:
 
 ---
 
-## tegenett_backup (→ ATP Backup)
+## atp_backup (ATP Backup)
 
 ### 🔴 Critical
-- [ ] Rename to ATP Backup (see Phase 1)
+- [x] ~~Rename to ATP Backup (see Phase 1)~~ ✅ Done 2026.01.29
 - [ ] Code audit and review.
 
 ### 🟠 High Priority
@@ -183,7 +183,10 @@ All plugins must match ATP Backup's visual design:
 
 ## Completed ✅
 
-### tegenett_backup (→ ATP Backup)
+### atp_backup (ATP Backup)
+- [x] Rename from tegenett_backup to atp_backup (2026.01.29)
+
+### tegenett_backup (→ ATP Backup) - Legacy
 - [x] Core backup functionality (local, remote SMB)
 - [x] Wake-on-LAN support
 - [x] Discord notifications with embeds

@@ -5,7 +5,7 @@
   "version": "2026.02.09.1",
   "description": "Smart caching for Emby media files - automatically moves actively watched content to fast storage",
   "support": "https://github.com/gitstabs/unraid-plugins/issues",
-  "pluginURL": "https://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@raw.githubusercontent.com/gitstabs/unraid-plugins/main/emby_smart_cache/emby_smart_cache.plg",
+  "pluginURL": "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg",
   "icon": "bolt",
   "launch": "Settings/EmbySmartCache",
   "min_unraid": "7.0.0",
