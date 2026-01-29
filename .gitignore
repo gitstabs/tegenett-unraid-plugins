@@ -12,6 +12,10 @@ ehthumbs.db
 Thumbs.db
 desktop.ini
 
+# Claude Code local config (not needed in repo)
+.claude/
+.claudeignore
+
 # IDE and editor files
 .vscode/
 .idea/
