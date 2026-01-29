@@ -1,9 +1,9 @@
 """
-ATP Emby Smart Cache - Python Daemon v2026.01.30
+ATP Emby Smart Cache - Python Daemon v2026.01.30d
 SQLite-backed state management with preserved file operation logic
 Author: Tegenett
 
-SECURITY UPDATES v2026.01.30:
+SECURITY UPDATES v2026.01.30d:
 - API server binds to 127.0.0.1 for localhost-only access
 - Improved exception handling with specific exception types
 - Added path traversal protection

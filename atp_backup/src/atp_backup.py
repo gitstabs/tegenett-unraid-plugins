@@ -34,7 +34,7 @@ class Config:
     DB_FILE = "atp_backup.db"
     SETTINGS_FILE = "settings.json"
     PID_FILE = f"/var/run/{PLUGIN_NAME}.pid"
-    VERSION = "2026.01.28k"
+    VERSION = "2026.01.30e"
     
     DEFAULTS = {
         "ENABLED": True,

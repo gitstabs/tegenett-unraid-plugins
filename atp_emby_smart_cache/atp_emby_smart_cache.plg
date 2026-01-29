@@ -1,8 +1,8 @@
 <?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
-<!ENTITY name      "ATP Emby Smart Cache">
+<!ENTITY name      "atp_emby_smart_cache">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.30c">
+<!ENTITY version   "2026.01.30d">
 <!ENTITY launch    "Settings/AtpEmbySmartCache">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
@@ -10,6 +10,9 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30d
+- FIX: ENTITY name restored to snake_case (atp_emby_smart_cache) for Unraid plugin ID
+
 ##2026.01.30c
 - FIX: FILE paths now use hardcoded snake_case (atp_emby_smart_cache) instead of ENTITY name
 
@@ -109,7 +112,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.01.30c";
+$version = "v2026.01.30d";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -3061,11 +3064,11 @@ if (typeof module !== 'undefined' && module.exports) {
 <INLINE>
 <![CDATA[
 """
-ATP Emby Smart Cache - Python Daemon v2026.01.30
+ATP Emby Smart Cache - Python Daemon v2026.01.30d
 SQLite-backed state management with preserved file operation logic
 Author: Tegenett
 
-SECURITY UPDATES v2026.01.30:
+SECURITY UPDATES v2026.01.30d:
 - API server binds to 127.0.0.1 for localhost-only access
 - Improved exception handling with specific exception types
 - Added path traversal protection
@@ -5102,7 +5105,7 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Emby Smart Cache v2026.01.30c installed!"
+echo "ATP Emby Smart Cache v2026.01.30d installed!"
 echo "Service will start in 5 seconds..."
 echo ""
 echo "IMPORTANT: Configure settings before enabling:"

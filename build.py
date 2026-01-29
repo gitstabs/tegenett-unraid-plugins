@@ -199,7 +199,7 @@ def build_atp_emby_smart_cache() -> bool:
 
     plg = f'''<?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
-<!ENTITY name      "ATP Emby Smart Cache">
+<!ENTITY name      "atp_emby_smart_cache">
 <!ENTITY author    "Tegenett">
 <!ENTITY version   "{version}">
 <!ENTITY launch    "Settings/AtpEmbySmartCache">
@@ -209,6 +209,9 @@ def build_atp_emby_smart_cache() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30d
+- FIX: ENTITY name restored to snake_case (atp_emby_smart_cache) for Unraid plugin ID
+
 ##2026.01.30c
 - FIX: FILE paths now use hardcoded snake_case (atp_emby_smart_cache) instead of ENTITY name
 
@@ -461,7 +464,7 @@ def build_atp_backup() -> bool:
 
     plg = f'''<?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
-<!ENTITY name      "ATP Backup">
+<!ENTITY name      "atp_backup">
 <!ENTITY author    "Tegenett">
 <!ENTITY version   "{version}">
 <!ENTITY launch    "Settings/AtpBackup">
@@ -471,6 +474,9 @@ def build_atp_backup() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30e
+- FIX: ENTITY name restored to snake_case (atp_backup) for Unraid plugin ID
+
 ##2026.01.30d
 - BUILD: Rebuild with fixed build system
 
