@@ -209,6 +209,9 @@ def build_atp_emby_smart_cache() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30e
+- FIX: Moved Chart.js script to head section (fixes JS showing as text after container)
+
 ##2026.01.30d
 - FIX: ENTITY name restored to snake_case (atp_emby_smart_cache) for Unraid plugin ID
 

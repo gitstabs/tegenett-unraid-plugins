@@ -8,7 +8,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.01.30d";
+$version = "v2026.01.30e";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -255,6 +255,7 @@ if (file_exists($pidFile)) {
 ?>
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
 <style>
 /* ============================================
@@ -1139,7 +1140,6 @@ if (file_exists($pidFile)) {
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 // AJAX endpoint - use separate PHP file to bypass Unraid page template
 var escAjaxUrl = '/plugins/atp_emby_smart_cache/include/ajax.php';
