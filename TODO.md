@@ -136,10 +136,11 @@ All plugins must match ATP Backup's visual design:
 ## Shared Components
 
 ### 🟠 High Priority
-- [ ] Extract common CSS to shared/css/tegenett-common.css
-- [ ] Extract common JS utilities to shared/js/tegenett-common.js
-- [ ] Create build script that injects shared code into plugins
+- [x] ~~Extract common CSS to shared/css/atp-common.css~~ Done 2026.01.30
+- [x] ~~Extract common JS utilities to shared/js/atp-common.js~~ Done 2026.01.30
+- [x] ~~Create build script that injects shared code into plugins~~ Done 2026.01.30 (build.py)
 - [ ] Document CSS class naming convention
+- [ ] Integrate shared CSS/JS into both plugins (currently standalone)
 
 ### 🟡 Medium Priority
 - [ ] Create plugin template for new plugins
