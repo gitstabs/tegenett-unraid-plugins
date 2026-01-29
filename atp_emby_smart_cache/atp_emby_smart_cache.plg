@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "atp_emby_smart_cache">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.29a">
+<!ENTITY version   "2026.01.29b">
 <!ENTITY launch    "Settings/AtpEmbySmartCache">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
@@ -10,6 +10,12 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.29b
+- UI: Responsive tables - all tables now support horizontal scrolling on mobile
+- UI: ESC-style tabs - active tab fully highlighted for better visibility
+- UI: Dashboard status colors - Running/Stopped clearly colored (green/red)
+- UI: Mobile responsive improvements for tablets and phones
+
 ##2026.01.29a
 - RENAME: Plugin renamed from emby_smart_cache to atp_emby_smart_cache (A Tegenett Plugin)
 - SECURITY: All personal data removed from defaults (user must configure)
@@ -71,7 +77,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.01.29a";
+$version = "v2026.01.29b";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -355,11 +361,19 @@ if (file_exists($pidFile)) {
 .esc-card-value.warning { color: var(--esc-warning); }
 .esc-card-value.danger { color: var(--esc-danger); }
 .esc-card-icon { float: right; font-size: 32px; opacity: 0.3; margin-top: -10px; }
-.esc-table { width: 100%; border-collapse: collapse; background: var(--esc-bg-card); border-radius: 8px; overflow: hidden; }
+.esc-table-wrapper { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 15px; }
+.esc-table { width: 100%; border-collapse: collapse; background: var(--esc-bg-card); border-radius: 8px; overflow: hidden; min-width: 500px; }
 .esc-table th, .esc-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--esc-border); }
-.esc-table th { background: #333; color: var(--esc-primary); font-weight: 600; text-transform: uppercase; font-size: 11px; }
+.esc-table th { background: #333; color: var(--esc-primary); font-weight: 600; text-transform: uppercase; font-size: 11px; white-space: nowrap; }
 .esc-table tr:hover { background: #2a2a2a; }
 .esc-table .filename { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.esc-table .truncate { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Dashboard status colors */
+.success, .esc-text-success { color: var(--esc-success) !important; }
+.danger, .esc-text-danger { color: var(--esc-danger) !important; }
+.warning, .esc-text-warning { color: var(--esc-warning) !important; }
+.info, .esc-text-info { color: var(--esc-info) !important; }
 .esc-btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
 .esc-btn-primary { background: var(--esc-primary); color: #fff; }
 .esc-btn-primary:hover { background: #e07b00; }
@@ -573,6 +587,7 @@ if (file_exists($pidFile)) {
 
         <div class="esc-section" style="margin-top:20px;">
             <div class="esc-section-title"><i class="fa fa-list"></i> Top 10 Most Cached Files</div>
+            <div class="esc-table-wrapper">
             <table class="esc-table" id="stats-top-files">
                 <thead>
                     <tr>
@@ -585,8 +600,9 @@ if (file_exists($pidFile)) {
                     <tr><td colspan="3" style="text-align:center;color:#888;">Loading statistics...</td></tr>
                 </tbody>
             </table>
+            </div>
         </div>
-        
+
         <div class="esc-toolbar" style="margin-top:20px;">
             <button class="esc-btn esc-btn-danger" onclick="resetStatistics()"><i class="fa fa-trash"></i> Reset Statistics</button>
             <span style="color:#888;font-size:12px;margin-left:10px;">Clear all activity history and reset counters</span>
@@ -597,6 +613,7 @@ if (file_exists($pidFile)) {
     <div class="esc-panel" id="panel-files">
         <div class="esc-section">
             <div class="esc-section-title"><i class="fa fa-folder-open"></i> Files Currently on Cache</div>
+            <div class="esc-table-wrapper">
             <table class="esc-table" id="managed-table">
                 <thead>
                     <tr>
@@ -611,6 +628,7 @@ if (file_exists($pidFile)) {
                     <tr><td colspan="5" style="text-align:center;color:#888;">Loading...</td></tr>
                 </tbody>
             </table>
+            </div>
         </div>
 
         <div class="esc-section">
@@ -623,6 +641,7 @@ if (file_exists($pidFile)) {
     <div class="esc-panel" id="panel-queue">
         <div class="esc-section">
             <div class="esc-section-title"><i class="fa fa-clock"></i> Scheduled Cleanup Queue</div>
+            <div class="esc-table-wrapper">
             <table class="esc-table" id="queue-table">
                 <thead>
                     <tr>
@@ -636,6 +655,7 @@ if (file_exists($pidFile)) {
                     <tr><td colspan="4" style="text-align:center;color:#888;">Loading...</td></tr>
                 </tbody>
             </table>
+            </div>
         </div>
     </div>
 
@@ -3315,7 +3335,7 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Emby Smart Cache v2026.01.29a installed!"
+echo "ATP Emby Smart Cache v2026.01.29b installed!"
 echo "Service will start in 5 seconds..."
 echo ""
 echo "IMPORTANT: Configure settings before enabling:"

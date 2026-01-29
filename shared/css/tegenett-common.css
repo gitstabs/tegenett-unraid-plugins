@@ -1,1 +1,452 @@
-/* Tegenett Common CSS - Shared across all plugins */
+/* ============================================
+   TEGENETT COMMON CSS - Shared across all ATP plugins
+   Version: 2026.01.29
+   ============================================ */
+
+/* ============================================
+   COLOR VARIABLES (ATP Brand Colors)
+   ============================================ */
+:root {
+    /* Primary brand colors */
+    --atp-primary: #e67e22;
+    --atp-primary-dark: #d35400;
+    --atp-primary-light: #f39c12;
+
+    /* Status colors */
+    --atp-success: #27ae60;
+    --atp-success-dark: #1e8449;
+    --atp-danger: #c0392b;
+    --atp-danger-dark: #a93226;
+    --atp-warning: #f39c12;
+    --atp-warning-dark: #d68910;
+    --atp-info: #3498db;
+    --atp-info-dark: #2980b9;
+
+    /* Background colors (dark theme) */
+    --atp-bg-dark: #1a1a1a;
+    --atp-bg-card: #252525;
+    --atp-bg-hover: #2a2a2a;
+    --atp-bg-input: #1e1e1e;
+
+    /* Text colors */
+    --atp-text: #e0e0e0;
+    --atp-text-muted: #888;
+    --atp-text-light: #fff;
+
+    /* Border colors */
+    --atp-border: #333;
+    --atp-border-light: #444;
+}
+
+/* ============================================
+   TAB NAVIGATION (ESC-style - full button highlight)
+   ============================================ */
+.atp-tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--atp-border);
+    padding-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.atp-tab {
+    padding: 10px 20px;
+    background: var(--atp-bg-card);
+    border: 1px solid var(--atp-border);
+    border-radius: 5px 5px 0 0;
+    cursor: pointer;
+    color: var(--atp-text-muted);
+    transition: all 0.2s ease;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.atp-tab:hover {
+    background: var(--atp-bg-hover);
+    color: var(--atp-text);
+}
+
+.atp-tab.active {
+    background: var(--atp-primary);
+    color: var(--atp-text-light);
+    border-color: var(--atp-primary);
+}
+
+.atp-tab i {
+    margin-right: 8px;
+}
+
+.atp-tab-content {
+    display: none;
+}
+
+.atp-tab-content.active {
+    display: block;
+}
+
+/* ============================================
+   TABLES - Responsive
+   ============================================ */
+.atp-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.atp-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--atp-bg-card);
+    border-radius: 8px;
+    overflow: hidden;
+    min-width: 600px; /* Ensures table doesn't squish too much */
+}
+
+.atp-table th,
+.atp-table td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid var(--atp-border);
+}
+
+.atp-table th {
+    background: #333;
+    color: var(--atp-primary);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.atp-table tr:hover {
+    background: var(--atp-bg-hover);
+}
+
+.atp-table .truncate {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ============================================
+   CARDS / STATS
+   ============================================ */
+.atp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.atp-card {
+    background: var(--atp-bg-card);
+    border: 1px solid var(--atp-border);
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.atp-card-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: var(--atp-text);
+}
+
+.atp-card-value.success { color: var(--atp-success); }
+.atp-card-value.danger { color: var(--atp-danger); }
+.atp-card-value.warning { color: var(--atp-warning); }
+.atp-card-value.info { color: var(--atp-info); }
+
+.atp-card-label {
+    font-size: 12px;
+    color: var(--atp-text-muted);
+    text-transform: uppercase;
+    margin-top: 5px;
+}
+
+.atp-card-icon {
+    float: right;
+    font-size: 32px;
+    opacity: 0.3;
+    margin-top: -10px;
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+.atp-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.atp-btn-primary {
+    background: var(--atp-primary);
+    color: var(--atp-text-light);
+}
+
+.atp-btn-primary:hover {
+    background: var(--atp-primary-dark);
+}
+
+.atp-btn-success {
+    background: var(--atp-success);
+    color: var(--atp-text-light);
+}
+
+.atp-btn-success:hover {
+    background: var(--atp-success-dark);
+}
+
+.atp-btn-danger {
+    background: var(--atp-danger);
+    color: var(--atp-text-light);
+}
+
+.atp-btn-danger:hover {
+    background: var(--atp-danger-dark);
+}
+
+.atp-btn-secondary {
+    background: var(--atp-bg-card);
+    color: var(--atp-text);
+    border: 1px solid var(--atp-border);
+}
+
+.atp-btn-secondary:hover {
+    background: var(--atp-bg-hover);
+}
+
+/* ============================================
+   STATUS BADGES
+   ============================================ */
+.atp-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.atp-badge-success {
+    background: var(--atp-success);
+    color: var(--atp-text-light);
+}
+
+.atp-badge-danger {
+    background: var(--atp-danger);
+    color: var(--atp-text-light);
+}
+
+.atp-badge-warning {
+    background: var(--atp-warning);
+    color: #000;
+}
+
+.atp-badge-info {
+    background: var(--atp-info);
+    color: var(--atp-text-light);
+}
+
+.atp-badge-muted {
+    background: var(--atp-border);
+    color: var(--atp-text-muted);
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+.atp-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 0;
+    border-bottom: 2px solid var(--atp-primary);
+    margin-bottom: 20px;
+}
+
+.atp-header h1 {
+    margin: 0;
+    font-size: 24px;
+    color: var(--atp-primary);
+}
+
+.atp-header h1 i {
+    margin-right: 10px;
+}
+
+.atp-header-version {
+    font-size: 12px;
+    color: var(--atp-text-muted);
+    margin-left: 10px;
+}
+
+/* ============================================
+   FORMS
+   ============================================ */
+.atp-form-group {
+    margin-bottom: 15px;
+}
+
+.atp-form-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--atp-text);
+    font-weight: 500;
+}
+
+.atp-form-group input[type="text"],
+.atp-form-group input[type="number"],
+.atp-form-group input[type="password"],
+.atp-form-group select,
+.atp-form-group textarea {
+    width: 100%;
+    padding: 10px;
+    background: var(--atp-bg-input);
+    border: 1px solid var(--atp-border);
+    border-radius: 4px;
+    color: var(--atp-text);
+    font-size: 14px;
+}
+
+.atp-form-group input:focus,
+.atp-form-group select:focus,
+.atp-form-group textarea:focus {
+    outline: none;
+    border-color: var(--atp-primary);
+}
+
+.atp-form-hint {
+    font-size: 11px;
+    color: var(--atp-text-muted);
+    margin-top: 4px;
+}
+
+/* ============================================
+   MOBILE RESPONSIVE
+   ============================================ */
+@media (max-width: 768px) {
+    .atp-tabs {
+        gap: 3px;
+    }
+
+    .atp-tab {
+        padding: 8px 12px;
+        font-size: 12px;
+        flex: 1 1 auto;
+        text-align: center;
+        min-width: 70px;
+    }
+
+    .atp-tab i {
+        margin-right: 5px;
+    }
+
+    /* Hide icon text on mobile, show only icon */
+    .atp-tab .tab-text {
+        display: none;
+    }
+
+    .atp-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+
+    .atp-card {
+        padding: 15px;
+    }
+
+    .atp-card-value {
+        font-size: 22px;
+    }
+
+    .atp-card-icon {
+        font-size: 24px;
+    }
+
+    .atp-table {
+        font-size: 12px;
+    }
+
+    .atp-table th,
+    .atp-table td {
+        padding: 8px 10px;
+    }
+
+    .atp-table .truncate {
+        max-width: 120px;
+    }
+
+    .atp-header {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+    }
+
+    .atp-header h1 {
+        font-size: 20px;
+    }
+}
+
+@media (max-width: 480px) {
+    .atp-tabs {
+        gap: 2px;
+    }
+
+    .atp-tab {
+        padding: 6px 8px;
+        font-size: 11px;
+        min-width: 50px;
+    }
+
+    .atp-tab i {
+        margin-right: 0;
+    }
+
+    .atp-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .atp-card-value {
+        font-size: 18px;
+    }
+
+    .atp-table {
+        font-size: 11px;
+    }
+
+    .atp-table th,
+    .atp-table td {
+        padding: 6px 8px;
+    }
+}
+
+/* ============================================
+   UTILITIES
+   ============================================ */
+.atp-text-success { color: var(--atp-success) !important; }
+.atp-text-danger { color: var(--atp-danger) !important; }
+.atp-text-warning { color: var(--atp-warning) !important; }
+.atp-text-info { color: var(--atp-info) !important; }
+.atp-text-muted { color: var(--atp-text-muted) !important; }
+
+.atp-bg-success { background-color: var(--atp-success) !important; }
+.atp-bg-danger { background-color: var(--atp-danger) !important; }
+.atp-bg-warning { background-color: var(--atp-warning) !important; }
+.atp-bg-info { background-color: var(--atp-info) !important; }
+
+.atp-mt-1 { margin-top: 10px; }
+.atp-mt-2 { margin-top: 20px; }
+.atp-mb-1 { margin-bottom: 10px; }
+.atp-mb-2 { margin-bottom: 20px; }
+
+.atp-hidden { display: none !important; }
+.atp-visible { display: block !important; }

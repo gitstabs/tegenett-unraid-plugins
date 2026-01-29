@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "atp_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.29a">
+<!ENTITY version   "2026.01.29b">
 <!ENTITY launch    "Settings/AtpBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>
@@ -10,6 +10,11 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.29b
+- UI: New tab styling (full button highlight instead of underline)
+- UI: Improved mobile responsiveness for all tables
+- UI: Better table headers with uppercase styling
+
 ##2026.01.29a
 - RENAME: Plugin renamed from tegenett_backup to atp_backup (A Tegenett Plugin)
 - All paths updated: config, data, logs now use atp_backup prefix
@@ -176,34 +181,37 @@ if (file_exists($pidFile)) {
     border-radius: 4px;
 }
 
-/* Tabs */
+/* Tabs - ESC style (full button highlight) */
 .tb-tabs {
     display: flex;
     gap: 5px;
     margin-bottom: 20px;
-    border-bottom: 2px solid var(--tb-border);
-    padding-bottom: 0;
+    border-bottom: 1px solid var(--tb-border);
+    padding-bottom: 10px;
+    flex-wrap: wrap;
 }
 
 .tb-tab {
-    padding: 12px 24px;
-    background: transparent;
-    border: none;
+    padding: 10px 20px;
+    background: var(--tb-card-bg);
+    border: 1px solid var(--tb-border);
+    border-radius: 5px 5px 0 0;
     color: var(--tb-text-muted);
     cursor: pointer;
-    font-size: 0.95em;
-    border-bottom: 3px solid transparent;
-    margin-bottom: -2px;
-    transition: all 0.2s;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
 }
 
 .tb-tab:hover {
+    background: rgba(255,255,255,0.05);
     color: var(--tb-text);
 }
 
 .tb-tab.active {
-    color: var(--tb-primary);
-    border-bottom-color: var(--tb-primary);
+    background: var(--tb-primary);
+    color: #fff;
+    border-color: var(--tb-primary);
 }
 
 .tb-tab i {
@@ -324,10 +332,18 @@ if (file_exists($pidFile)) {
     cursor: not-allowed;
 }
 
-/* Tables */
+/* Tables - Responsive with wrapper */
+.tb-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 15px;
+}
+
 .tb-table {
     width: 100%;
     border-collapse: collapse;
+    min-width: 600px;
 }
 
 .tb-table th,
@@ -338,13 +354,23 @@ if (file_exists($pidFile)) {
 }
 
 .tb-table th {
-    color: var(--tb-text-muted);
+    color: var(--tb-primary);
     font-weight: 600;
-    font-size: 0.9em;
+    font-size: 11px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    background: rgba(0,0,0,0.2);
 }
 
 .tb-table tr:hover {
     background: rgba(255,255,255,0.02);
+}
+
+.tb-table .truncate {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* Forms */
@@ -495,19 +521,73 @@ if (file_exists($pidFile)) {
     .tb-header {
         flex-direction: column;
         gap: 15px;
+        text-align: center;
     }
-    
+
     .tb-tabs {
-        flex-wrap: wrap;
+        gap: 3px;
     }
-    
+
     .tb-tab {
-        padding: 10px 15px;
-        font-size: 0.85em;
+        padding: 8px 12px;
+        font-size: 12px;
+        flex: 1 1 auto;
+        text-align: center;
+        min-width: 70px;
     }
-    
+
+    .tb-tab i {
+        margin-right: 5px;
+    }
+
     .tb-form-row {
         grid-template-columns: 1fr;
+    }
+
+    .tb-table {
+        font-size: 12px;
+    }
+
+    .tb-table th,
+    .tb-table td {
+        padding: 8px 10px;
+    }
+
+    .tb-table .truncate {
+        max-width: 120px;
+    }
+
+    .tb-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .tb-tabs {
+        gap: 2px;
+    }
+
+    .tb-tab {
+        padding: 6px 8px;
+        font-size: 11px;
+        min-width: 50px;
+    }
+
+    .tb-tab i {
+        margin-right: 0;
+    }
+
+    .tb-table {
+        font-size: 11px;
+    }
+
+    .tb-table th,
+    .tb-table td {
+        padding: 6px 8px;
+    }
+
+    .tb-stats-grid {
+        grid-template-columns: 1fr 1fr;
     }
 }
 
@@ -626,7 +706,7 @@ if (file_exists($pidFile)) {
             <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
             <div>
                 <h1>ATP Backup</h1>
-                <small style="color: var(--tb-text-muted)">v2026.01.29a</small>
+                <small style="color: var(--tb-text-muted)">v2026.01.29b</small>
             </div>
         </div>
         <div class="tb-header-actions">
@@ -1315,7 +1395,7 @@ async function refreshDashboard() {
         const scheduledJobs = activeJobs.filter(j => j.schedule_type !== 'disabled');
         
         if (scheduledJobs.length > 0) {
-            let html = '<table class="tb-table"><tbody>';
+            let html = '<div class="tb-table-wrapper"><table class="tb-table"><tbody>';
             for (const job of scheduledJobs.slice(0, 5)) {
                 const nextRun = calculateNextRun(job);
                 html += `<tr>
@@ -1323,7 +1403,7 @@ async function refreshDashboard() {
                     <td style="text-align: right; color: var(--tb-text-muted);">${nextRun}</td>
                 </tr>`;
             }
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
             upcomingDiv.innerHTML = html;
         } else {
             upcomingDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No scheduled jobs</p>';
@@ -1337,9 +1417,9 @@ async function refreshDashboard() {
     const activityDiv = document.getElementById('recentActivity');
     
     if (history.success && history.history?.length > 0) {
-        let html = '<table class="tb-table"><tbody>';
+        let html = '<div class="tb-table-wrapper"><table class="tb-table"><tbody>';
         for (const h of history.history) {
-            const statusBadge = h.status === 'completed' ? 'tb-badge-success' : 
+            const statusBadge = h.status === 'completed' ? 'tb-badge-success' :
                                h.status === 'running' ? 'tb-badge-info' : 'tb-badge-danger';
             html += `<tr>
                 <td>${h.job_name}${h.is_retry ? ' <span class="tb-badge tb-badge-warning">retry</span>' : ''}</td>
@@ -1347,7 +1427,7 @@ async function refreshDashboard() {
                 <td style="text-align: right; color: var(--tb-text-muted);">${formatDate(h.started_at)}</td>
             </tr>`;
         }
-        html += '</tbody></table>';
+        html += '</tbody></table></div>';
         activityDiv.innerHTML = html;
     } else {
         activityDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No recent activity</p>';
@@ -1419,7 +1499,7 @@ async function loadJobs() {
             return timeA - timeB;
         });
         
-        let html = '<table class="tb-table"><thead><tr><th>Enabled</th><th>Name</th><th>Type</th><th>Schedule</th><th>Time</th><th>Last Run</th><th>Actions</th></tr></thead><tbody>';
+        let html = '<div class="tb-table-wrapper"><table class="tb-table"><thead><tr><th>Enabled</th><th>Name</th><th>Type</th><th>Schedule</th><th>Time</th><th>Last Run</th><th>Actions</th></tr></thead><tbody>';
         
         for (const job of sortedJobs) {
             const typeBadge = job.job_type === 'local' ? 'tb-badge-info' : 
@@ -1469,7 +1549,7 @@ async function loadJobs() {
             historyFilter.innerHTML += `<option value="${job.id}">${job.name}</option>`;
         }
         
-        html += '</tbody></table>';
+        html += '</tbody></table></div>';
         jobsDiv.innerHTML = html;
     } else {
         jobsDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No backup jobs configured. Click "Add Job" to create one.</p>';
@@ -1650,7 +1730,7 @@ async function loadHistory() {
     const historyDiv = document.getElementById('historyList');
     
     if (result.success && result.history?.length > 0) {
-        let html = '<table class="tb-table"><thead><tr><th>Job</th><th>Status</th><th>Started</th><th>Duration</th><th>Size</th><th>Speed</th></tr></thead><tbody>';
+        let html = '<div class="tb-table-wrapper"><table class="tb-table"><thead><tr><th>Job</th><th>Status</th><th>Started</th><th>Duration</th><th>Size</th><th>Speed</th></tr></thead><tbody>';
         
         for (const h of result.history) {
             const statusBadge = h.status === 'completed' ? 'tb-badge-success' : 
@@ -1666,7 +1746,7 @@ async function loadHistory() {
             </tr>`;
         }
         
-        html += '</tbody></table>';
+        html += '</tbody></table></div>';
         historyDiv.innerHTML = html;
     } else {
         historyDiv.innerHTML = '<p style="color: var(--tb-text-muted)">No backup history</p>';
@@ -1921,7 +2001,7 @@ async function loadBackupHealth() {
         return;
     }
     
-    let html = '<table class="tb-table"><thead><tr><th>Job</th><th>Last Backup</th><th>Status</th><th>Health</th></tr></thead><tbody>';
+    let html = '<div class="tb-table-wrapper"><table class="tb-table"><thead><tr><th>Job</th><th>Last Backup</th><th>Status</th><th>Health</th></tr></thead><tbody>';
     
     const now = new Date();
     
@@ -1964,7 +2044,7 @@ async function loadBackupHealth() {
         </tr>`;
     }
     
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
     healthDiv.innerHTML = html;
 }
 
@@ -4315,7 +4395,7 @@ echo "$(date): Scheduling delayed start" >> "$LOG"
 
 echo ""
 echo "====================================="
-echo "ATP Backup v2026.01.29a installed!"
+echo "ATP Backup v2026.01.29b installed!"
 echo "Service will start in 5 seconds..."
 echo "====================================="
 

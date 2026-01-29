@@ -100,6 +100,12 @@ If you previously had `emby_smart_cache` installed:
 
 ## Changelog
 
+### v2026.01.29b
+- UI: Responsive tables - all tables now support horizontal scrolling on mobile
+- UI: ESC-style tabs - active tab fully highlighted for better visibility
+- UI: Dashboard status colors - Running/Stopped clearly colored (green/red)
+- UI: Mobile responsive improvements for tablets and phones
+
 ### v2026.01.29a
 - RENAME: Plugin renamed from emby_smart_cache to atp_emby_smart_cache
 - SECURITY: All personal data removed from defaults
