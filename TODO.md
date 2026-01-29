@@ -141,10 +141,14 @@ All plugins must match ATP Backup's visual design:
 - [x] ~~Create build script that injects shared code into plugins~~ Done 2026.01.30 (build.py)
 - [x] ~~Integrate shared CSS/JS into both plugins~~ Done 2026.01.30a
 - [ ] Document CSS class naming convention
-- [ ] Review plugin name references (ENTITY name vs folder names vs internal paths)
-  - Note: ENTITY name = display name in Unraid GUI
-  - Folder/file names use snake_case (atp_backup)
-  - Internal paths must match folder names
+- [x] ~~Review plugin name references (ENTITY name vs folder names vs internal paths)~~ Done 2026.01.30
+  - **CRITICAL LEARNING:** ENTITY `&name;` must be snake_case (internal ID), NOT display name
+  - Display name comes from `Title=` in .page header
+  - Spaces in `&name;` cause "checking for updates" stuck forever
+- [ ] **Fix plugin display names in Unraid Plugins list**
+  - Currently shows `atp_backup` instead of "ATP Backup"
+  - Research how other plugins achieve nice display names
+  - Must NOT break the "checking" status bug we fixed
 
 ### 🟡 Medium Priority
 - [ ] Create plugin template for new plugins
@@ -159,9 +163,10 @@ All plugins must match ATP Backup's visual design:
 - [x] ~~Convert ATP Backup to src-file structure~~ Done 2026.01.30b
 - [ ] Create development/testing guide
 - [ ] Document GitHub workflow
+- [ ] **ALWAYS bump version on ANY change** - User cannot receive updates without version change!
 
 ### 🟡 Medium Priority
-- [ ] Automated version bumping
+- [ ] Automated version bumping in build.py
 - [ ] Change log generation
 - [ ] Unit tests for Python daemon
 
@@ -215,6 +220,16 @@ All plugins must match ATP Backup's visual design:
 - [x] **Security Audit v2026.01.30:**
   - CSRF validation for all modifying AJAX requests
   - Improved exception handling
+- [x] **v2026.01.30e** - ENTITY name fix (snake_case)
+
+### Build System & Bug Fixes (2026.01.30)
+- [x] Fixed ENTITY `&name;` must be snake_case - spaces caused "checking" stuck
+- [x] Fixed FILE paths in PLG must be hardcoded, not use `&name;` ENTITY
+- [x] Fixed shared CSS/JS injection - removed HTML tags from comments in CDATA
+- [x] Fixed `Markdown="false"` required in page header for JS to work
+- [x] Created shared CSS (atp-common.css) and JS (atp-common.js)
+- [x] Created build.py master build script
+- [x] Set up GitHub Actions for automatic builds
 
 ### tegenett_backup (→ ATP Backup) - Legacy
 - [x] Core backup functionality (local, remote SMB)

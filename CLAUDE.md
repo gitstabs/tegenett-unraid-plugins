@@ -13,11 +13,11 @@ You are a **Senior Unraid Developer & UI/UX Specialist** with deep expertise in:
 
 This monorepo contains personal Unraid plugins developed by Tegenett:
 
-| Plugin | Status | Description |
-|--------|--------|-------------|
-| `tegenett_backup` | Active | Backup solution with local/remote SMB, WOL, Discord notifications |
-| `emby_smart_cache` | Needs conversion | Media cache management (convert from hardcoded to configurable) |
-| Future plugins | Planned | TBD |
+| Plugin | Status | Version | Description |
+|--------|--------|---------|-------------|
+| `atp_backup` | ✅ Active | v2026.01.30e | Backup solution with local/remote SMB, WOL, Discord notifications |
+| `atp_emby_smart_cache` | ✅ Active | v2026.01.30f | Media cache management for Emby |
+| Future plugins | Planned | - | TBD |
 
 ## Critical Requirements
 
@@ -109,15 +109,110 @@ plugin_name/
 │   ├── rc.plugin_name          # Service control script
 │   └── include/
 │       └── ajax.php            # AJAX handler with CSRF
-├── plugin_name.plg             # Plugin definition (built)
+├── plugin_name.plg             # Plugin definition (built by build.py)
 └── README.md
 ```
 
+**Shared Resources:**
+```
+shared/
+├── css/
+│   └── atp-common.css          # Shared CSS for all ATP plugins
+└── js/
+    └── atp-common.js           # Shared JS utilities (ATP.ajax, formatting, etc.)
+```
+
+**Build System:**
+- `build.py` - Master build script that:
+  - Injects shared CSS/JS into .page files
+  - Builds PLG files from src/ components
+  - Validates XML and Python syntax
+  - Creates version-tagged releases
+
 **PLG File Requirements:**
-- Version format: `YYYY.MM.DDx` (e.g., 2026.01.28k)
+- Version format: `YYYY.MM.DDx` (e.g., 2026.01.30f)
+- **ALWAYS bump version on ANY change** (even small fixes)
 - Include pre-install cleanup script
 - Include post-install with auto-start setup
 - Add to `/boot/config/go` for persistence
+
+### CRITICAL: Unraid Page File Structure
+
+**Page Header - REQUIRED FORMAT:**
+```
+Menu="Utilities"
+Title="Display Name Here"
+Icon="icon-name"
+Markdown="false"
+---
+<?php
+```
+
+⚠️ **`Markdown="false"` is MANDATORY** for pages with JavaScript!
+- Without this, Unraid's Markdown parser will convert `<script>` to `<p>&lt;</p><p>script>`
+- This causes JavaScript to display as text instead of executing
+
+**Script/CSS Placement Rules:**
+- External scripts (CDN like Chart.js) → In head section, BEFORE `<style>`
+- Inline `<script>` → After main container is OK, but ONLY with `Markdown="false"`
+- All content after the last `</div>` can be Markdown-parsed without this header
+
+### CRITICAL: PLG ENTITY Naming Rules
+
+**The `&name;` ENTITY is the internal plugin ID - NOT the display name!**
+
+```xml
+<!-- CORRECT -->
+<!ENTITY name      "atp_backup">           <!-- snake_case, no spaces -->
+
+<!-- WRONG - causes "checking" status stuck -->
+<!ENTITY name      "ATP Backup">           <!-- spaces break everything -->
+```
+
+**Why this matters:**
+- Unraid uses `&name;` as the plugin identifier in `<PLUGIN name="&name;">`
+- Spaces in `&name;` cause:
+  - "Checking for updates" stuck forever
+  - `plugin check plugin_name` says "not installed"
+  - File paths break
+
+**Display name comes from the .page file:**
+```
+Title="ATP Backup"    <!-- This shows in the UI -->
+```
+
+### CRITICAL: FILE Paths in PLG
+
+**NEVER use `&name;` ENTITY in FILE Name attributes!**
+
+```xml
+<!-- CORRECT - hardcoded paths -->
+<FILE Name="/usr/local/emhttp/plugins/atp_backup/atp_backup.py" Mode="0755">
+
+<!-- WRONG - ENTITY substitution can fail -->
+<FILE Name="/usr/local/emhttp/plugins/&name;/&name;.py" Mode="0755">
+```
+
+If `&name;` contains spaces (like "ATP Backup"), the path becomes invalid.
+
+### CDATA Section Rules
+
+**Never use these inside CDATA sections (even in comments):**
+- `<style>` or `</style>` as literal text
+- `<script>` or `</script>` as literal text
+- `]]>` sequence (closes CDATA prematurely)
+
+```xml
+<!-- WRONG - breaks parsing -->
+<![CDATA[
+/* This comment mentions <style> tags */
+]]>
+
+<!-- CORRECT - avoid HTML-like text in comments -->
+<![CDATA[
+/* This comment mentions style tags */
+]]>
+```
 
 ### Development Workflow
 
@@ -144,6 +239,41 @@ https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby
 # On Unraid - force reinstall latest from GitHub
 plugin install https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg
 ```
+
+**Debugging Commands (on Unraid):**
+```bash
+# Check plugin status
+plugin check atp_backup
+
+# Validate PHP syntax
+php -l /usr/local/emhttp/plugins/atp_backup/AtpBackup.page
+
+# Show hidden characters (debug encoding issues)
+cat -A /path/to/file | head
+
+# Compare file sizes (detect injection issues)
+wc -l /usr/local/emhttp/plugins/atp_backup/AtpBackup.page
+
+# Check ENTITY definitions in installed PLG
+head -20 /boot/config/plugins/atp_backup.plg
+
+# Test PHP rendering directly
+cd /usr/local/emhttp && php -r "
+\$_SERVER['DOCUMENT_ROOT'] = '/usr/local/emhttp';
+\$var = ['csrf_token' => 'test'];
+include 'plugins/atp_backup/AtpBackup.page';
+" | head -100
+```
+
+**Common Issues & Solutions:**
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| "Checking for updates" stuck | `&name;` has spaces | Use snake_case in ENTITY |
+| JS shows as text `<p>&lt;</p>` | Missing Markdown="false" | Add to page header |
+| chmod errors on install | FILE paths use `&name;` | Hardcode all paths |
+| CSS/JS shows as raw text | HTML tags in CDATA comments | Remove `<style>`, `<script>` from comments |
+| Plugin says "not installed" | ENTITY name mismatch | Ensure PLG filename matches `&name;` |
 
 ## Reference Documentation
 
@@ -205,12 +335,24 @@ After installing update on Unraid:
 
 ## Current State
 
-**tegenett_backup v2026.01.28k:**
+**atp_backup v2026.01.30e:**
 - Features: Local/Remote SMB backup, WOL, Discord, retry logic
-- Working: All core functionality
+- Status: ✅ Fully working
 - Pending: Cloud backup (rclone integration)
 
-**emby_smart_cache:**
-- Status: Needs refactoring
-- Goal: Remove hardcoded values, make fully configurable
-- Priority: After backup plugin is stable
+**atp_emby_smart_cache v2026.01.30f:**
+- Features: Emby media caching, auto-cleanup, statistics
+- Status: ✅ Fully working
+- Recent fixes: Markdown="false" for JS rendering
+
+## Known Issues & TODO
+
+**Display Names in Plugin List:**
+- Currently shows `atp_backup` instead of "ATP Backup" in Unraid Plugins page
+- Need to research how other plugins achieve nice display names
+- Must NOT break the "checking" status (caused by spaces in `&name;`)
+
+**Version Bumping:**
+- ALWAYS bump version on ANY change, even small fixes
+- User cannot receive updates without version change
+- Format: `YYYY.MM.DDx` where x is a letter (a-z) for same-day releases
