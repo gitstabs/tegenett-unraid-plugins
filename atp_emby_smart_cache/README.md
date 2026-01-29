@@ -100,6 +100,13 @@ If you previously had `emby_smart_cache` installed:
 
 ## Changelog
 
+### v2026.01.29c
+- UI: Complete visual overhaul to match ATP Backup design system
+- UI: New card-based Settings layout with organized sections
+- UI: Square status badges (consistent with ATP Backup)
+- UI: Header without orange underline, version moved to badge area
+- UI: Stat cards with centered icons matching ATP Backup style
+
 ### v2026.01.29b
 - UI: Responsive tables - all tables now support horizontal scrolling on mobile
 - UI: ESC-style tabs - active tab fully highlighted for better visibility

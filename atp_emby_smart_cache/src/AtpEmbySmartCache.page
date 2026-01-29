@@ -8,7 +8,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.01.29b";
+$version = "v2026.01.29c";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -257,6 +257,11 @@ if (file_exists($pidFile)) {
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 <style>
+/* ============================================
+   ATP EMBY SMART CACHE - CSS v2026.01.29c
+   Matches ATP Backup design system
+   ============================================ */
+
 :root {
     --esc-primary: #e67e22;
     --esc-primary-dark: #d35400;
@@ -264,73 +269,363 @@ if (file_exists($pidFile)) {
     --esc-warning: #f39c12;
     --esc-danger: #c0392b;
     --esc-info: #3498db;
-    --esc-bg-dark: #1a1a1a;
-    --esc-bg-card: #252525;
-    --esc-border: #333;
-    --esc-text: #e0e0e0;
-    --esc-text-muted: #888;
+    --esc-bg: var(--body-background, #1a1a1a);
+    --esc-card-bg: var(--card-background, #262626);
+    --esc-text: var(--text-color, #e0e0e0);
+    --esc-text-muted: var(--text-muted, #888);
+    --esc-border: var(--border-color, #3a3a3a);
 }
-.esc-container { max-width: 1400px; margin: 0 auto; }
-.esc-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 2px solid var(--esc-primary); margin-bottom: 20px; }
-.esc-header h1 { margin: 0; font-size: 24px; color: var(--esc-primary); }
-.esc-header h1 i { margin-right: 10px; }
-.esc-status-badge { padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; }
-.esc-status-badge.running { background: var(--esc-success); color: #fff; }
-.esc-status-badge.stopped { background: var(--esc-danger); color: #fff; }
-.esc-tabs { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 1px solid var(--esc-border); padding-bottom: 10px; }
-.esc-tab { padding: 10px 20px; background: var(--esc-bg-card); border: 1px solid var(--esc-border); border-radius: 5px 5px 0 0; cursor: pointer; color: var(--esc-text-muted); transition: all 0.2s; }
-.esc-tab:hover { background: #333; color: var(--esc-text); }
-.esc-tab.active { background: var(--esc-primary); color: #fff; border-color: var(--esc-primary); }
-.esc-tab i { margin-right: 8px; }
+
+/* Container */
+.esc-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header - matches ATP Backup (no orange underline, version in badge area) */
+.esc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--esc-border);
+}
+
+.esc-title {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.esc-title h1 {
+    margin: 0;
+    color: var(--esc-primary);
+    font-size: 1.8em;
+}
+
+.esc-title h1 i {
+    margin-right: 10px;
+}
+
+/* Status badge - square like ATP Backup */
+.esc-status-badge {
+    padding: 0 16px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 600;
+    white-space: nowrap;
+    height: 36px;
+    line-height: 36px;
+    display: inline-block;
+}
+
+.esc-status-badge i {
+    font-size: 0.6em;
+    margin-right: 6px;
+}
+
+.esc-status-badge.running { background: var(--esc-success); color: white; }
+.esc-status-badge.stopped { background: var(--esc-danger); color: white; }
+
+.esc-header-right {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.esc-version {
+    color: var(--esc-text-muted);
+    font-size: 0.85em;
+}
+
+/* Tabs - ESC style (full button highlight) - matches ATP Backup */
+.esc-tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--esc-border);
+    padding-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.esc-tab {
+    padding: 10px 20px;
+    background: var(--esc-card-bg);
+    border: 1px solid var(--esc-border);
+    border-radius: 5px 5px 0 0;
+    color: var(--esc-text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.esc-tab:hover {
+    background: rgba(255,255,255,0.05);
+    color: var(--esc-text);
+}
+
+.esc-tab.active {
+    background: var(--esc-primary);
+    color: #fff;
+    border-color: var(--esc-primary);
+}
+
+.esc-tab i {
+    margin-right: 8px;
+}
+
+/* Panels */
 .esc-panel { display: none; }
 .esc-panel.active { display: block; }
-.esc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-.esc-card { background: var(--esc-bg-card); border: 1px solid var(--esc-border); border-radius: 8px; padding: 20px; }
-.esc-card-header { font-size: 12px; text-transform: uppercase; color: var(--esc-text-muted); margin-bottom: 8px; }
-.esc-card-value { font-size: 28px; font-weight: bold; color: var(--esc-text); }
-.esc-card-value.success { color: var(--esc-success); }
-.esc-card-value.warning { color: var(--esc-warning); }
-.esc-card-value.danger { color: var(--esc-danger); }
-.esc-card-icon { float: right; font-size: 32px; opacity: 0.3; margin-top: -10px; }
-.esc-table-wrapper { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 15px; }
-.esc-table { width: 100%; border-collapse: collapse; background: var(--esc-bg-card); border-radius: 8px; overflow: hidden; min-width: 500px; }
-.esc-table th, .esc-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--esc-border); }
-.esc-table th { background: #333; color: var(--esc-primary); font-weight: 600; text-transform: uppercase; font-size: 11px; white-space: nowrap; }
-.esc-table tr:hover { background: #2a2a2a; }
-.esc-table .filename { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.esc-table .truncate { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Dashboard status colors */
-.success, .esc-text-success { color: var(--esc-success) !important; }
-.danger, .esc-text-danger { color: var(--esc-danger) !important; }
-.warning, .esc-text-warning { color: var(--esc-warning) !important; }
-.info, .esc-text-info { color: var(--esc-info) !important; }
-.esc-btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
-.esc-btn-primary { background: var(--esc-primary); color: #fff; }
-.esc-btn-primary:hover { background: #e07b00; }
-.esc-btn-danger { background: var(--esc-danger); color: #fff; }
-.esc-btn-danger:hover { background: #d32f2f; }
-.esc-btn-small { padding: 4px 10px; font-size: 11px; }
-.esc-log-box { background: #111; color: #0f0; font-family: 'Courier New', monospace; font-size: 12px; padding: 15px; border-radius: 8px; height: 400px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; user-select: text; -webkit-user-select: text; -moz-user-select: text; cursor: text; }
-.esc-form-group { margin-bottom: 15px; }
-.esc-form-group label { display: block; margin-bottom: 5px; color: var(--esc-text); font-weight: 500; }
-.esc-form-group input, .esc-form-group select { padding: 8px 12px; border: 1px solid var(--esc-border); border-radius: 4px; background: #222; color: var(--esc-text); }
-.esc-form-group input[type="text"], .esc-form-group input[type="number"] { width: 300px; }
-.esc-form-group .help { font-size: 11px; color: var(--esc-text-muted); margin-top: 3px; }
-.esc-section { background: var(--esc-bg-card); border: 1px solid var(--esc-border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
-.esc-section-title { color: var(--esc-primary); font-size: 14px; font-weight: bold; text-transform: uppercase; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid var(--esc-border); }
+/* Stats Grid */
+.esc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+/* Stat Cards */
+.esc-stat-card {
+    background: var(--esc-card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid var(--esc-border);
+    text-align: center;
+}
+
+.esc-stat-icon {
+    font-size: 2em;
+    margin-bottom: 10px;
+    color: var(--esc-primary);
+}
+
+.esc-stat-value {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: var(--esc-text);
+}
+
+.esc-stat-label {
+    color: var(--esc-text-muted);
+    font-size: 0.9em;
+    margin-top: 5px;
+}
+
+/* Cards - matches ATP Backup */
+.esc-card {
+    background: var(--esc-card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid var(--esc-border);
+}
+
+.esc-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--esc-border);
+}
+
+.esc-card-title {
+    margin: 0;
+    font-size: 1.1em;
+    color: var(--esc-primary);
+}
+
+.esc-card-title i {
+    margin-right: 8px;
+}
+
+/* Buttons - matches ATP Backup */
+.esc-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+
+.esc-btn-primary { background: var(--esc-primary); color: white; }
+.esc-btn-primary:hover { background: var(--esc-primary-dark); }
+.esc-btn-success { background: var(--esc-success); color: white; }
+.esc-btn-danger { background: var(--esc-danger); color: white; }
+.esc-btn-secondary { background: var(--esc-border); color: var(--esc-text); }
+.esc-btn-sm { padding: 5px 10px; font-size: 0.85em; }
+.esc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Tables - Responsive with wrapper */
+.esc-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 15px;
+}
+
+.esc-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+}
+
+.esc-table th,
+.esc-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--esc-border);
+}
+
+.esc-table th {
+    color: var(--esc-primary);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    background: rgba(0,0,0,0.2);
+}
+
+.esc-table tr:hover {
+    background: rgba(255,255,255,0.02);
+}
+
+.esc-table .filename,
+.esc-table .truncate {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Forms - matches ATP Backup */
+.esc-form-group {
+    margin-bottom: 15px;
+}
+
+.esc-form-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--esc-text);
+    font-weight: 500;
+}
+
+.esc-form-group input,
+.esc-form-group select,
+.esc-form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--esc-border);
+    border-radius: 4px;
+    background: var(--esc-bg);
+    color: var(--esc-text);
+    font-size: 0.95em;
+}
+
+.esc-form-group input:focus,
+.esc-form-group select:focus,
+.esc-form-group textarea:focus {
+    outline: none;
+    border-color: var(--esc-primary);
+}
+
+.esc-form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.esc-form-hint {
+    font-size: 0.85em;
+    color: var(--esc-text-muted);
+    margin-top: 4px;
+}
+
+/* Status colors */
+.esc-text-success, .success { color: var(--esc-success) !important; }
+.esc-text-danger, .danger { color: var(--esc-danger) !important; }
+.esc-text-warning, .warning { color: var(--esc-warning) !important; }
+.esc-text-info, .info { color: var(--esc-info) !important; }
+
+/* Status badges */
+.esc-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+}
+
+.esc-badge-success { background: rgba(39, 174, 96, 0.2); color: #27ae60; }
+.esc-badge-danger { background: rgba(192, 57, 43, 0.2); color: #e74c3c; }
+.esc-badge-warning { background: rgba(243, 156, 18, 0.2); color: #f39c12; }
+.esc-badge-info { background: rgba(52, 152, 219, 0.2); color: #3498db; }
+
+/* Log viewer */
+.esc-log-viewer {
+    background: #1a1a1a;
+    border: 1px solid var(--esc-border);
+    border-radius: 4px;
+    padding: 15px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.85em;
+    line-height: 1.5;
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #0f0;
+}
+
+/* Section (old esc-section) */
+.esc-section {
+    background: var(--esc-card-bg);
+    border: 1px solid var(--esc-border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.esc-section-title {
+    color: var(--esc-primary);
+    font-size: 14px;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--esc-border);
+}
+
+.esc-section-title i {
+    margin-right: 8px;
+}
+
+/* Activity */
 .esc-activity { max-height: 300px; overflow-y: auto; }
 .esc-activity-item { padding: 10px; border-bottom: 1px solid var(--esc-border); display: flex; align-items: center; gap: 10px; }
 .esc-activity-item:last-child { border-bottom: none; }
-.esc-activity-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.esc-activity-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; }
 .esc-activity-icon.copy { background: var(--esc-info); }
 .esc-activity-icon.cleanup { background: var(--esc-warning); }
 .esc-activity-icon.error { background: var(--esc-danger); }
-.esc-spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #333; border-top-color: var(--esc-primary); border-radius: 50%; animation: esc-spin 1s linear infinite; }
+
+/* Spinner */
 @keyframes esc-spin { to { transform: rotate(360deg); } }
+.esc-spin { animation: esc-spin 1s linear infinite; }
+
+/* Misc */
 .esc-countdown { font-family: monospace; color: var(--esc-warning); }
 .esc-refresh-indicator { font-size: 11px; color: var(--esc-text-muted); }
-.esc-toolbar { display: flex; gap: 10px; margin-bottom: 15px; align-items: center; }
+.esc-toolbar { display: flex; gap: 10px; margin-bottom: 15px; align-items: center; flex-wrap: wrap; }
 
 /* Health indicators */
 .esc-health-item { display: flex; flex-direction: column; gap: 5px; }
@@ -341,43 +636,75 @@ if (file_exists($pidFile)) {
 .esc-progress-fill.warning { background: var(--esc-warning); }
 .esc-progress-fill.danger { background: var(--esc-danger); }
 
-/* Mobile responsive - only affects small screens */
+/* Responsive */
 @media (max-width: 768px) {
-    .esc-tabs { flex-wrap: wrap; gap: 3px; }
-    .esc-tab { padding: 8px 12px; font-size: 12px; flex: 1 1 auto; text-align: center; min-width: 80px; }
-    .esc-tab i { margin-right: 5px; display: none; }
-    .esc-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-    .esc-card { padding: 15px; }
-    .esc-card-value { font-size: 22px; }
-    .esc-card-icon { font-size: 24px; }
+    .esc-header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+    }
+
+    .esc-tabs { gap: 3px; }
+
+    .esc-tab {
+        padding: 8px 12px;
+        font-size: 12px;
+        flex: 1 1 auto;
+        text-align: center;
+        min-width: 70px;
+    }
+
+    .esc-tab i { margin-right: 5px; }
+
+    .esc-form-row { grid-template-columns: 1fr; }
+
+    .esc-grid { grid-template-columns: repeat(2, 1fr); }
+
+    .esc-stat-card { padding: 15px; }
+    .esc-stat-value { font-size: 1.5em; }
+
     .esc-table { font-size: 12px; }
     .esc-table th, .esc-table td { padding: 8px 10px; }
-    .esc-table .filename { max-width: 150px; }
-    .esc-header { flex-direction: column; gap: 10px; text-align: center; }
-    .esc-header h1 { font-size: 20px; }
-    .esc-form-group input[type="text"], .esc-form-group input[type="number"] { width: 100%; max-width: 300px; }
+    .esc-table .filename, .esc-table .truncate { max-width: 120px; }
+
     .esc-section { padding: 15px; }
-    .esc-toolbar { flex-wrap: wrap; }
+
     div[style*="grid-template-columns: 1fr 1fr"] { grid-template-columns: 1fr !important; }
 }
+
 @media (max-width: 480px) {
     .esc-tabs { gap: 2px; }
-    .esc-tab { padding: 6px 8px; font-size: 11px; min-width: 60px; }
+
+    .esc-tab {
+        padding: 6px 8px;
+        font-size: 11px;
+        min-width: 50px;
+    }
+
+    .esc-tab i { margin-right: 0; }
+
     .esc-grid { grid-template-columns: 1fr 1fr; }
-    .esc-card-value { font-size: 18px; }
-    .esc-log-box { height: 250px; font-size: 10px; }
+
+    .esc-stat-value { font-size: 1.2em; }
+
+    .esc-table { font-size: 11px; }
+    .esc-table th, .esc-table td { padding: 6px 8px; }
+
+    .esc-log-viewer { max-height: 300px; font-size: 10px; }
 }
 </style>
 
 <div class="esc-container">
     <div class="esc-header">
-        <h1><i class="fa fa-bolt"></i> ATP Emby Smart Cache</h1>
-        <div>
+        <div class="esc-title">
+            <h1><i class="fa fa-bolt"></i> ATP Emby Smart Cache</h1>
+        </div>
+        <div class="esc-header-right">
             <span class="esc-status-badge <?php echo $running ? 'running' : 'stopped'; ?>" id="statusBadge">
-                <i class="fa <?php echo $running ? 'fa-check-circle' : 'fa-times-circle'; ?>"></i>
-                <span id="statusText"><?php echo $running ? "Running (PID {$pid})" : "Stopped"; ?></span>
+                <i class="fa <?php echo $running ? 'fa-circle' : 'fa-circle'; ?>"></i>
+                <span id="statusText"><?php echo $running ? "Running" : "Stopped"; ?></span>
             </span>
-            <span style="margin-left:15px; color:#888;"><?php echo $version; ?></span>
+            <span class="esc-version"><?php echo $version; ?></span>
         </div>
     </div>
 
@@ -393,35 +720,35 @@ if (file_exists($pidFile)) {
     <!-- DASHBOARD PANEL -->
     <div class="esc-panel active" id="panel-dashboard">
         <div class="esc-grid">
-            <div class="esc-card">
-                <i class="fa fa-power-off esc-card-icon"></i>
-                <div class="esc-card-header">Service Status</div>
-                <div class="esc-card-value" id="dash-service">-</div>
+            <div class="esc-stat-card">
+                <div class="esc-stat-icon"><i class="fa fa-power-off"></i></div>
+                <div class="esc-stat-value" id="dash-service">-</div>
+                <div class="esc-stat-label">Service Status</div>
             </div>
-            <div class="esc-card">
-                <i class="fa fa-clock esc-card-icon"></i>
-                <div class="esc-card-header">Uptime</div>
-                <div class="esc-card-value" id="dash-uptime">-</div>
+            <div class="esc-stat-card">
+                <div class="esc-stat-icon"><i class="fa fa-clock"></i></div>
+                <div class="esc-stat-value" id="dash-uptime">-</div>
+                <div class="esc-stat-label">Uptime</div>
             </div>
-            <div class="esc-card">
-                <i class="fa fa-sync esc-card-icon"></i>
-                <div class="esc-card-header">Active Transfers</div>
-                <div class="esc-card-value" id="dash-active">0</div>
+            <div class="esc-stat-card">
+                <div class="esc-stat-icon"><i class="fa fa-sync"></i></div>
+                <div class="esc-stat-value" id="dash-active">0</div>
+                <div class="esc-stat-label">Active Transfers</div>
             </div>
-            <div class="esc-card">
-                <i class="fa fa-hourglass-half esc-card-icon"></i>
-                <div class="esc-card-header">Pending Cleanup</div>
-                <div class="esc-card-value" id="dash-queue">0</div>
+            <div class="esc-stat-card">
+                <div class="esc-stat-icon"><i class="fa fa-hourglass-half"></i></div>
+                <div class="esc-stat-value" id="dash-queue">0</div>
+                <div class="esc-stat-label">Pending Cleanup</div>
             </div>
-            <div class="esc-card">
-                <i class="fa fa-file-video esc-card-icon"></i>
-                <div class="esc-card-header">Managed Files</div>
-                <div class="esc-card-value" id="dash-managed">0</div>
+            <div class="esc-stat-card">
+                <div class="esc-stat-icon"><i class="fa fa-file-video"></i></div>
+                <div class="esc-stat-value" id="dash-managed">0</div>
+                <div class="esc-stat-label">Managed Files</div>
             </div>
-            <div class="esc-card">
-                <i class="fa fa-database esc-card-icon"></i>
-                <div class="esc-card-header">Total Cached</div>
-                <div class="esc-card-value" id="dash-total">0 GB</div>
+            <div class="esc-stat-card">
+                <div class="esc-stat-icon"><i class="fa fa-database"></i></div>
+                <div class="esc-stat-value" id="dash-total">0 GB</div>
+                <div class="esc-stat-label">Total Cached</div>
             </div>
         </div>
 
@@ -479,25 +806,25 @@ if (file_exists($pidFile)) {
     <!-- STATISTICS PANEL -->
     <div class="esc-panel" id="panel-stats">
         <div class="esc-grid">
-            <div class="esc-card">
-                <i class="fa fa-exchange-alt esc-card-icon"></i>
-                <div class="esc-card-header">Total Moves</div>
-                <div class="esc-card-value" id="stats-total-moves">0</div>
+            <div class="esc-stat-card">
+                <div class="esc-stat-icon"><i class="fa fa-exchange-alt"></i></div>
+                <div class="esc-stat-value" id="stats-total-moves">0</div>
+                <div class="esc-stat-label">Total Moves</div>
             </div>
-            <div class="esc-card">
-                <i class="fa fa-hdd esc-card-icon"></i>
-                <div class="esc-card-header">Total GB Moved</div>
-                <div class="esc-card-value" id="stats-total-gb">0 GB</div>
+            <div class="esc-stat-card">
+                <div class="esc-stat-icon"><i class="fa fa-hdd"></i></div>
+                <div class="esc-stat-value" id="stats-total-gb">0 GB</div>
+                <div class="esc-stat-label">Total GB Moved</div>
             </div>
-            <div class="esc-card">
-                <i class="fa fa-calendar esc-card-icon"></i>
-                <div class="esc-card-header">Last Move</div>
-                <div class="esc-card-value" id="stats-last-move">-</div>
+            <div class="esc-stat-card">
+                <div class="esc-stat-icon"><i class="fa fa-calendar"></i></div>
+                <div class="esc-stat-value" id="stats-last-move">-</div>
+                <div class="esc-stat-label">Last Move</div>
             </div>
-            <div class="esc-card">
-                <i class="fa fa-chart-line esc-card-icon"></i>
-                <div class="esc-card-header">Avg File Size</div>
-                <div class="esc-card-value" id="stats-avg-size">-</div>
+            <div class="esc-stat-card">
+                <div class="esc-stat-icon"><i class="fa fa-chart-line"></i></div>
+                <div class="esc-stat-value" id="stats-avg-size">-</div>
+                <div class="esc-stat-label">Avg File Size</div>
             </div>
         </div>
 
@@ -602,137 +929,200 @@ if (file_exists($pidFile)) {
     <!-- SETTINGS PANEL -->
     <div class="esc-panel" id="panel-settings">
         <form id="settings-form">
-            <div class="esc-section">
-                <div class="esc-section-title"><i class="fa fa-server"></i> Main Settings</div>
-                <div class="esc-form-group">
-                    <label>Enable Service</label>
-                    <select name="ENABLED">
-                        <option value="true" <?php echo $settings['ENABLED'] ? 'selected' : ''; ?>>Yes</option>
-                        <option value="false" <?php echo !$settings['ENABLED'] ? 'selected' : ''; ?>>No</option>
-                    </select>
-                </div>
-                <div class="esc-form-group">
-                    <label>Emby Server URL</label>
-                    <input type="text" name="EMBY_HOST" value="<?php echo htmlspecialchars($settings['EMBY_HOST']); ?>">
-                </div>
-                <div class="esc-form-group">
-                    <label>Emby API Key</label>
-                    <input type="text" name="EMBY_API_KEY" value="<?php echo htmlspecialchars($settings['EMBY_API_KEY']); ?>">
-                </div>
-                <div class="esc-form-group">
-                    <label>Discord Webhook URL</label>
-                    <input type="text" name="DISCORD_WEBHOOK_URL" value="<?php echo htmlspecialchars($settings['DISCORD_WEBHOOK_URL']); ?>" style="width:500px;">
-                </div>
-                <div class="esc-form-group">
-                    <label>Local Webhook Port</label>
-                    <input type="number" name="SERVER_PORT" value="<?php echo $settings['SERVER_PORT']; ?>" style="width:100px;">
-                </div>
-            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <!-- Left Column -->
+                <div>
+                    <div class="esc-card">
+                        <div class="esc-card-header">
+                            <h3 class="esc-card-title"><i class="fa fa-server"></i> Emby Connection</h3>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Enable Service</label>
+                            <select name="ENABLED">
+                                <option value="true" <?php echo $settings['ENABLED'] ? 'selected' : ''; ?>>Yes</option>
+                                <option value="false" <?php echo !$settings['ENABLED'] ? 'selected' : ''; ?>>No</option>
+                            </select>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Emby Server URL</label>
+                            <input type="text" name="EMBY_HOST" value="<?php echo htmlspecialchars($settings['EMBY_HOST']); ?>" placeholder="192.168.0.30:8096">
+                            <div class="esc-form-hint">IP:Port of your Emby server</div>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Emby API Key</label>
+                            <input type="text" name="EMBY_API_KEY" value="<?php echo htmlspecialchars($settings['EMBY_API_KEY']); ?>" placeholder="Your Emby API key">
+                            <div class="esc-form-hint">Found in Emby Dashboard > API Keys</div>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Local Webhook Port</label>
+                            <input type="number" name="SERVER_PORT" value="<?php echo $settings['SERVER_PORT']; ?>">
+                            <div class="esc-form-hint">Port for internal API (default: 9999)</div>
+                        </div>
+                    </div>
 
-            <div class="esc-section">
-                <div class="esc-section-title"><i class="fa fa-sliders-h"></i> Performance & Logic</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-                    <div class="esc-form-group">
-                        <label>Movie Cooldown (sec)</label>
-                        <input type="number" name="COOLDOWN_MOVIE_SEC" value="<?php echo $settings['COOLDOWN_MOVIE_SEC']; ?>" style="width:100px;">
-                        <div class="help">Wait time before caching a movie</div>
+                    <div class="esc-card">
+                        <div class="esc-card-header">
+                            <h3 class="esc-card-title"><i class="fa fa-clock"></i> Timing & Cooldowns</h3>
+                        </div>
+                        <div class="esc-form-row">
+                            <div class="esc-form-group">
+                                <label>Movie Cooldown (sec)</label>
+                                <input type="number" name="COOLDOWN_MOVIE_SEC" value="<?php echo $settings['COOLDOWN_MOVIE_SEC']; ?>">
+                                <div class="esc-form-hint">Wait before caching movie</div>
+                            </div>
+                            <div class="esc-form-group">
+                                <label>Episode Cooldown (sec)</label>
+                                <input type="number" name="COOLDOWN_EPISODE_SEC" value="<?php echo $settings['COOLDOWN_EPISODE_SEC']; ?>">
+                                <div class="esc-form-hint">Wait before caching episode</div>
+                            </div>
+                        </div>
+                        <div class="esc-form-row">
+                            <div class="esc-form-group">
+                                <label>Pre-cache Episodes</label>
+                                <input type="number" name="PRECACHE_EPISODES" value="<?php echo $settings['PRECACHE_EPISODES'] ?? 1; ?>" min="0" max="5">
+                                <div class="esc-form-hint">Next episodes to pre-cache (0=off)</div>
+                            </div>
+                            <div class="esc-form-group">
+                                <label>Cleanup Delay (Hours)</label>
+                                <input type="number" step="0.5" name="CLEANUP_DELAY_HOURS" value="<?php echo $settings['CLEANUP_DELAY_HOURS']; ?>">
+                                <div class="esc-form-hint">Hours before cleanup after stop</div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="esc-form-group">
-                        <label>Episode Cooldown (sec)</label>
-                        <input type="number" name="COOLDOWN_EPISODE_SEC" value="<?php echo $settings['COOLDOWN_EPISODE_SEC']; ?>" style="width:100px;">
-                        <div class="help">Wait time before caching an episode</div>
-                    </div>
-                    <div class="esc-form-group">
-                        <label>Pre-cache Next Episodes</label>
-                        <input type="number" name="PRECACHE_EPISODES" value="<?php echo $settings['PRECACHE_EPISODES'] ?? 1; ?>" style="width:100px;" min="0" max="5">
-                        <div class="help">How many next episodes to pre-cache (0=disabled)</div>
-                    </div>
-                    <div class="esc-form-group">
-                        <label>Rsync Retries</label>
-                        <input type="number" name="RSYNC_RETRIES" value="<?php echo $settings['RSYNC_RETRIES'] ?? 3; ?>" style="width:100px;" min="1" max="10">
-                        <div class="help">Retry count on copy failure</div>
-                    </div>
-                    <div class="esc-form-group">
-                        <label>Rsync Speed Limit (KBps)</label>
-                        <input type="number" name="RSYNC_BWLIMIT" value="<?php echo $settings['RSYNC_BWLIMIT']; ?>" style="width:120px;">
-                    </div>
-                    <div class="esc-form-group">
-                        <label>Min Free Space (GB)</label>
-                        <input type="number" name="MIN_FREE_SPACE_GB" value="<?php echo $settings['MIN_FREE_SPACE_GB']; ?>" style="width:100px;">
-                    </div>
-                    <div class="esc-form-group">
-                        <label>Max File Size (GB, 0=unlimited)</label>
-                        <input type="number" step="0.1" name="MAX_FILE_SIZE_GB" value="<?php echo $settings['MAX_FILE_SIZE_GB']; ?>" style="width:100px;">
-                    </div>
-                    <div class="esc-form-group">
-                        <label>Cleanup Delay (Hours)</label>
-                        <input type="number" step="0.5" name="CLEANUP_DELAY_HOURS" value="<?php echo $settings['CLEANUP_DELAY_HOURS']; ?>" style="width:100px;">
-                    </div>
-                    <div class="esc-form-group">
-                        <label>Cleanup Strategy</label>
-                        <select name="DELETE_ON_STOP">
-                            <option value="true" <?php echo $settings['DELETE_ON_STOP'] ? 'selected' : ''; ?>>Delete & Restore Original</option>
-                            <option value="false" <?php echo !$settings['DELETE_ON_STOP'] ? 'selected' : ''; ?>>Keep on Cache</option>
-                        </select>
-                    </div>
-                    <div class="esc-form-group">
-                        <label>Hardlink Safety</label>
-                        <select name="SKIP_HARDLINKS">
-                            <option value="true" <?php echo $settings['SKIP_HARDLINKS'] ? 'selected' : ''; ?>>Skip Hardlinked Files (Safe)</option>
-                            <option value="false" <?php echo !$settings['SKIP_HARDLINKS'] ? 'selected' : ''; ?>>Cache Anyway (Fast)</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
 
-            <div class="esc-section">
-                <div class="esc-section-title"><i class="fa fa-folder"></i> Paths & Mappings</div>
-                <div class="esc-form-group">
-                    <label>User Share Path</label>
-                    <input type="text" name="UNRAID_USER_PATH" value="<?php echo htmlspecialchars($settings['UNRAID_USER_PATH']); ?>" style="width:400px;">
+                    <div class="esc-card">
+                        <div class="esc-card-header">
+                            <h3 class="esc-card-title"><i class="fa fa-tachometer-alt"></i> Performance</h3>
+                        </div>
+                        <div class="esc-form-row">
+                            <div class="esc-form-group">
+                                <label>Rsync Speed Limit (KB/s)</label>
+                                <input type="number" name="RSYNC_BWLIMIT" value="<?php echo $settings['RSYNC_BWLIMIT']; ?>">
+                                <div class="esc-form-hint">0 = unlimited</div>
+                            </div>
+                            <div class="esc-form-group">
+                                <label>Rsync Retries</label>
+                                <input type="number" name="RSYNC_RETRIES" value="<?php echo $settings['RSYNC_RETRIES'] ?? 3; ?>" min="1" max="10">
+                                <div class="esc-form-hint">Retry count on failure</div>
+                            </div>
+                        </div>
+                        <div class="esc-form-row">
+                            <div class="esc-form-group">
+                                <label>Min Free Space (GB)</label>
+                                <input type="number" name="MIN_FREE_SPACE_GB" value="<?php echo $settings['MIN_FREE_SPACE_GB']; ?>">
+                                <div class="esc-form-hint">Required free space on cache</div>
+                            </div>
+                            <div class="esc-form-group">
+                                <label>Max File Size (GB)</label>
+                                <input type="number" step="0.1" name="MAX_FILE_SIZE_GB" value="<?php echo $settings['MAX_FILE_SIZE_GB']; ?>">
+                                <div class="esc-form-hint">0 = unlimited</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="esc-form-group">
-                    <label>Cache Pool Path</label>
-                    <input type="text" name="CACHE_PATH" value="<?php echo htmlspecialchars($settings['CACHE_PATH']); ?>" style="width:400px;">
-                </div>
-                <div class="esc-form-group">
-                    <label>Array Only Path</label>
-                    <input type="text" name="ARRAY_ONLY_PATH" value="<?php echo htmlspecialchars($settings['ARRAY_ONLY_PATH']); ?>" style="width:400px;">
-                </div>
-                <div class="esc-form-group">
-                    <label>Log File Path</label>
-                    <input type="text" name="LOG_FILE_PATH" value="<?php echo htmlspecialchars($settings['LOG_FILE_PATH']); ?>" style="width:500px;">
-                </div>
-                <div class="esc-form-group">
-                    <label>Mover Ignore File</label>
-                    <input type="text" name="MOVER_IGNORE_FILE" value="<?php echo htmlspecialchars($settings['MOVER_IGNORE_FILE']); ?>" style="width:500px;">
-                </div>
-                <div class="esc-form-group">
-                    <label>Docker Path Mappings</label>
-                    <input type="text" name="DOCKER_PATH_MAP" value="<?php echo htmlspecialchars($settings['DOCKER_PATH_MAP']); ?>" style="width:500px;">
-                    <div class="help">Format: docker_path:host_path (comma separated for multiple)</div>
-                </div>
-                <div class="esc-form-group">
-                    <label>Allowed Extensions</label>
-                    <input type="text" name="ALLOWED_EXTS" value="<?php echo htmlspecialchars($settings['ALLOWED_EXTS']); ?>" style="width:400px;">
-                </div>
-                <div class="esc-form-group">
-                    <label>Exclude Paths (comma separated)</label>
-                    <input type="text" name="EXCLUDE_PATHS" value="<?php echo htmlspecialchars($settings['EXCLUDE_PATHS']); ?>" style="width:500px;">
-                </div>
-                <div class="esc-form-group">
-                    <label>Log Retention (files)</label>
-                    <input type="number" name="LOG_RETENTION" value="<?php echo $settings['LOG_RETENTION']; ?>" style="width:80px;">
-                </div>
-                <div class="esc-form-group">
-                    <label>Log Level</label>
-                    <select name="LOG_LEVEL" style="width:120px;">
-                        <option value="DEBUG" <?php echo $settings['LOG_LEVEL'] === 'DEBUG' ? 'selected' : ''; ?>>DEBUG</option>
-                        <option value="INFO" <?php echo $settings['LOG_LEVEL'] === 'INFO' ? 'selected' : ''; ?>>INFO</option>
-                        <option value="WARNING" <?php echo $settings['LOG_LEVEL'] === 'WARNING' ? 'selected' : ''; ?>>WARNING</option>
-                        <option value="ERROR" <?php echo $settings['LOG_LEVEL'] === 'ERROR' ? 'selected' : ''; ?>>ERROR</option>
-                    </select>
-                    <span style="color:#888;font-size:12px;margin-left:10px;">DEBUG shows most detail</span>
+
+                <!-- Right Column -->
+                <div>
+                    <div class="esc-card">
+                        <div class="esc-card-header">
+                            <h3 class="esc-card-title"><i class="fa fa-folder"></i> Paths</h3>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>User Share Path</label>
+                            <input type="text" name="UNRAID_USER_PATH" value="<?php echo htmlspecialchars($settings['UNRAID_USER_PATH']); ?>">
+                            <div class="esc-form-hint">Default: /mnt/user</div>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Cache Pool Path</label>
+                            <input type="text" name="CACHE_PATH" value="<?php echo htmlspecialchars($settings['CACHE_PATH']); ?>">
+                            <div class="esc-form-hint">Your cache pool mount point</div>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Array Only Path</label>
+                            <input type="text" name="ARRAY_ONLY_PATH" value="<?php echo htmlspecialchars($settings['ARRAY_ONLY_PATH']); ?>">
+                            <div class="esc-form-hint">Default: /mnt/user0</div>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Mover Ignore File</label>
+                            <input type="text" name="MOVER_IGNORE_FILE" value="<?php echo htmlspecialchars($settings['MOVER_IGNORE_FILE']); ?>">
+                            <div class="esc-form-hint">Path to .mover_ignore file</div>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Docker Path Mappings</label>
+                            <input type="text" name="DOCKER_PATH_MAP" value="<?php echo htmlspecialchars($settings['DOCKER_PATH_MAP']); ?>">
+                            <div class="esc-form-hint">Format: docker_path:host_path (comma separated)</div>
+                        </div>
+                    </div>
+
+                    <div class="esc-card">
+                        <div class="esc-card-header">
+                            <h3 class="esc-card-title"><i class="fa fa-cog"></i> Behavior</h3>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Cleanup Strategy</label>
+                            <select name="DELETE_ON_STOP">
+                                <option value="true" <?php echo $settings['DELETE_ON_STOP'] ? 'selected' : ''; ?>>Delete & Restore Original</option>
+                                <option value="false" <?php echo !$settings['DELETE_ON_STOP'] ? 'selected' : ''; ?>>Keep on Cache</option>
+                            </select>
+                            <div class="esc-form-hint">What to do when playback stops</div>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Hardlink Safety</label>
+                            <select name="SKIP_HARDLINKS">
+                                <option value="true" <?php echo $settings['SKIP_HARDLINKS'] ? 'selected' : ''; ?>>Skip Hardlinked Files (Safe)</option>
+                                <option value="false" <?php echo !$settings['SKIP_HARDLINKS'] ? 'selected' : ''; ?>>Cache Anyway (Fast)</option>
+                            </select>
+                            <div class="esc-form-hint">Protects files with multiple hardlinks</div>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Allowed Extensions</label>
+                            <input type="text" name="ALLOWED_EXTS" value="<?php echo htmlspecialchars($settings['ALLOWED_EXTS']); ?>">
+                            <div class="esc-form-hint">Comma separated (e.g. .mkv,.mp4)</div>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Exclude Paths</label>
+                            <input type="text" name="EXCLUDE_PATHS" value="<?php echo htmlspecialchars($settings['EXCLUDE_PATHS']); ?>">
+                            <div class="esc-form-hint">Paths to never cache (comma separated)</div>
+                        </div>
+                    </div>
+
+                    <div class="esc-card">
+                        <div class="esc-card-header">
+                            <h3 class="esc-card-title"><i class="fab fa-discord"></i> Notifications</h3>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Discord Webhook URL</label>
+                            <input type="text" name="DISCORD_WEBHOOK_URL" value="<?php echo htmlspecialchars($settings['DISCORD_WEBHOOK_URL']); ?>" placeholder="https://discord.com/api/webhooks/...">
+                            <div class="esc-form-hint">Leave empty to disable notifications</div>
+                        </div>
+                    </div>
+
+                    <div class="esc-card">
+                        <div class="esc-card-header">
+                            <h3 class="esc-card-title"><i class="fa fa-file-alt"></i> Logging</h3>
+                        </div>
+                        <div class="esc-form-group">
+                            <label>Log File Path</label>
+                            <input type="text" name="LOG_FILE_PATH" value="<?php echo htmlspecialchars($settings['LOG_FILE_PATH']); ?>">
+                        </div>
+                        <div class="esc-form-row">
+                            <div class="esc-form-group">
+                                <label>Log Level</label>
+                                <select name="LOG_LEVEL">
+                                    <option value="DEBUG" <?php echo $settings['LOG_LEVEL'] === 'DEBUG' ? 'selected' : ''; ?>>DEBUG</option>
+                                    <option value="INFO" <?php echo $settings['LOG_LEVEL'] === 'INFO' ? 'selected' : ''; ?>>INFO</option>
+                                    <option value="WARNING" <?php echo $settings['LOG_LEVEL'] === 'WARNING' ? 'selected' : ''; ?>>WARNING</option>
+                                    <option value="ERROR" <?php echo $settings['LOG_LEVEL'] === 'ERROR' ? 'selected' : ''; ?>>ERROR</option>
+                                </select>
+                                <div class="esc-form-hint">DEBUG = most verbose</div>
+                            </div>
+                            <div class="esc-form-group">
+                                <label>Log Retention (files)</label>
+                                <input type="number" name="LOG_RETENTION" value="<?php echo $settings['LOG_RETENTION']; ?>">
+                                <div class="esc-form-hint">Old log files to keep</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
