@@ -1,0 +1,50 @@
+# ============================================
+# Tegenett Unraid Plugins - .gitattributes
+# ============================================
+# Unraid runs Linux, so all scripts must use LF line endings
+
+# Default: auto-detect but normalize to LF on commit
+* text=auto eol=lf
+
+# Shell scripts - always LF
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Python - always LF
+*.py text eol=lf
+
+# PHP - always LF
+*.php text eol=lf
+
+# Plugin files - always LF (these run on Linux)
+*.plg text eol=lf
+*.page text eol=lf
+
+# Web files
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+
+# Config files
+*.xml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+*.conf text eol=lf
+
+# Documentation
+*.md text eol=lf
+*.txt text eol=lf
+
+# Binary files - don't touch
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary

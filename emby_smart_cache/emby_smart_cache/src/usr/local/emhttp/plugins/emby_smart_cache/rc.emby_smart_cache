@@ -1,0 +1,88 @@
+#!/bin/bash
+PLUGIN="emby_smart_cache"
+SCRIPT="/boot/config/plugins/$PLUGIN/$PLUGIN.py"
+PIDFILE="/var/run/$PLUGIN.pid"
+STARTUP_LOG="/var/log/emby_smart_cache_startup.log"
+DATA_DIR="/mnt/user/appdata/emby_smart_cache"
+
+start() {
+    # Check if already running
+    if [ -f "$PIDFILE" ] && ps -p $(cat "$PIDFILE") > /dev/null 2>&1; then
+        echo "Already running (PID $(cat $PIDFILE))"
+        return 0
+    fi
+    
+    # Clean stale PID file
+    rm -f "$PIDFILE"
+    
+    # Ensure data directory exists
+    mkdir -p "$DATA_DIR/logs"
+    
+    # Start the daemon
+    echo "Starting Emby Smart Cache v3.2.0..."
+    nohup python3 -u "$SCRIPT" > "$STARTUP_LOG" 2>&1 &
+    echo $! > "$PIDFILE"
+    
+    # Wait and verify
+    sleep 2
+    if ps -p $(cat "$PIDFILE") > /dev/null 2>&1; then
+        echo "Started successfully (PID $(cat $PIDFILE))"
+    else
+        echo "Failed to start - check $STARTUP_LOG"
+        rm -f "$PIDFILE"
+        return 1
+    fi
+}
+
+stop() {
+    if [ -f "$PIDFILE" ]; then
+        PID=$(cat "$PIDFILE")
+        echo "Stopping (PID $PID)..."
+        kill -TERM "$PID" 2>/dev/null
+        
+        # Wait for graceful shutdown
+        for i in {1..10}; do
+            if ! ps -p "$PID" > /dev/null 2>&1; then
+                break
+            fi
+            sleep 1
+        done
+        
+        # Force kill if still running
+        if ps -p "$PID" > /dev/null 2>&1; then
+            kill -9 "$PID" 2>/dev/null
+        fi
+        
+        rm -f "$PIDFILE"
+        echo "Stopped"
+    else
+        # Try to find and kill by process name
+        pkill -f "$PLUGIN.py" 2>/dev/null
+        echo "Stopped (no PID file)"
+    fi
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}
+
+status() {
+    if [ -f "$PIDFILE" ] && ps -p $(cat "$PIDFILE") > /dev/null 2>&1; then
+        echo "Running (PID $(cat $PIDFILE))"
+        return 0
+    else
+        echo "Stopped"
+        return 1
+    fi
+}
+
+case "$1" in
+    start)   start ;;
+    stop)    stop ;;
+    restart) restart ;;
+    status)  status ;;
+    *)       echo "Usage: $0 {start|stop|restart|status}" ;;
+esac
+]]>

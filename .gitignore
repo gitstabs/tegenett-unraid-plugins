@@ -1,0 +1,83 @@
+# ============================================
+# Tegenett Unraid Plugins - .gitignore
+# ============================================
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# Temporary and backup files
+*.tmp
+*.temp
+*.log
+*.bak
+*.backup
+*.orig
+*.old
+
+# Local test files
+test/
+tests/local/
+*.test.local
+local_*.py
+local_*.sh
+
+# Build artifacts (if any)
+dist/
+build/
+*.egg-info/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.pyo
+
+# Sensitive files - NEVER commit these
+*.env
+.env.*
+secrets.json
+credentials.json
+*.key
+*.pem
+*.p12
+
+# Database files (local testing)
+*.db
+*.sqlite
+*.sqlite3
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Node (if using any JS tooling)
+node_modules/
+
+# Logs
+logs/
+*.log.*
+
+# Personal notes
+NOTES.md
+notes/
+TODO.local.md
