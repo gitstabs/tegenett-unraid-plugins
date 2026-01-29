@@ -113,6 +113,64 @@ def validate_python(py_path: Path) -> bool:
         return False
 
 
+def inject_shared_resources(page_content: str, prefix: str = 'esc') -> str:
+    """
+    Inject shared CSS/JS into a .page file.
+    Creates CSS variable aliases from atp-* to plugin-specific prefix (esc-*, tb-*).
+    """
+    shared_css = get_shared_css()
+    shared_js = get_shared_js()
+
+    if not shared_css and not shared_js:
+        return page_content
+
+    # Create CSS variable aliases for backwards compatibility
+    # This maps --atp-* variables to --{prefix}-* so existing CSS still works
+    css_aliases = f"""
+/* ============================================
+   ATP SHARED CSS - Injected by build.py
+   Variable aliases for backwards compatibility
+   ============================================ */
+:root {{
+    /* Alias atp-* to {prefix}-* for backwards compatibility */
+    --{prefix}-primary: var(--atp-primary);
+    --{prefix}-primary-dark: var(--atp-primary-dark);
+    --{prefix}-success: var(--atp-success);
+    --{prefix}-danger: var(--atp-danger);
+    --{prefix}-warning: var(--atp-warning);
+    --{prefix}-info: var(--atp-info);
+    --{prefix}-bg: var(--atp-bg);
+    --{prefix}-card-bg: var(--atp-card-bg);
+    --{prefix}-text: var(--atp-text);
+    --{prefix}-text-muted: var(--atp-text-muted);
+    --{prefix}-border: var(--atp-border);
+}}
+
+{shared_css}
+"""
+
+    # Find the <style> tag and inject shared CSS at the beginning
+    style_match = re.search(r'(<style[^>]*>)', page_content)
+    if style_match:
+        insert_pos = style_match.end()
+        page_content = page_content[:insert_pos] + '\n' + css_aliases + '\n' + page_content[insert_pos:]
+
+    # Inject shared JS before closing </script> tag (at the end)
+    if shared_js:
+        js_injection = f"""
+/* ============================================
+   ATP SHARED JS - Injected by build.py
+   ============================================ */
+{shared_js}
+"""
+        # Find the last </script> and inject before it
+        last_script_end = page_content.rfind('</script>')
+        if last_script_end != -1:
+            page_content = page_content[:last_script_end] + '\n' + js_injection + '\n' + page_content[last_script_end:]
+
+    return page_content
+
+
 def build_atp_emby_smart_cache() -> bool:
     """Build ATP Emby Smart Cache plugin."""
     plugin = PLUGINS['emby']
@@ -131,6 +189,10 @@ def build_atp_emby_smart_cache() -> bool:
         print(f"  Error: Missing source file - {e}")
         return False
 
+    # Inject shared CSS/JS into page content
+    page_content = inject_shared_resources(page_content, prefix='esc')
+    print("  Injected shared CSS/JS")
+
     # Get version from page content
     version_match = re.search(r'\$version\s*=\s*["\']v?(\d{4}\.\d{2}\.\d{2}\w*)["\']', page_content)
     version = version_match.group(1) if version_match else datetime.now().strftime('%Y.%m.%d')
@@ -147,6 +209,10 @@ def build_atp_emby_smart_cache() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30a
+- BUILD: Shared CSS/JS now injected automatically from shared/ folder
+- BUILD: CSS variable aliases for backwards compatibility (--esc-* maps to --atp-*)
+
 ##2026.01.30
 - SECURITY: Added CSRF token validation for all modifying AJAX requests
 - SECURITY: Improved exception handling with specific exception types
@@ -362,15 +428,80 @@ echo "Data preserved at: /mnt/user/appdata/${{PLUGIN_NAME}}"
 
 
 def build_atp_backup() -> bool:
-    """Build ATP Backup plugin (already in single PLG, just validate)."""
+    """Build ATP Backup plugin with shared CSS/JS injection."""
     plugin = PLUGINS['backup']
     plg_path = plugin['dir'] / 'atp_backup.plg'
 
-    print(f"\nValidating {plugin['display_name']}...")
+    print(f"\nBuilding {plugin['display_name']}...")
 
     if not plg_path.exists():
         print(f"  Error: PLG file not found at {plg_path}")
         return False
+
+    # Read the PLG file
+    plg_content = read_file(plg_path)
+
+    # Check if shared CSS is already injected
+    if 'ATP SHARED CSS - Injected by build.py' in plg_content:
+        print("  Shared CSS/JS already injected, validating only...")
+    else:
+        # Inject shared CSS/JS
+        shared_css = get_shared_css()
+        shared_js = get_shared_js()
+
+        if shared_css:
+            # Create CSS variable aliases for tb-* prefix
+            css_aliases = """
+/* ============================================
+   ATP SHARED CSS - Injected by build.py
+   Variable aliases for backwards compatibility
+   ============================================ */
+:root {
+    /* Alias atp-* to tb-* for backwards compatibility */
+    --tb-primary: var(--atp-primary);
+    --tb-primary-dark: var(--atp-primary-dark);
+    --tb-success: var(--atp-success);
+    --tb-danger: var(--atp-danger);
+    --tb-warning: var(--atp-warning);
+    --tb-info: var(--atp-info);
+    --tb-bg: var(--atp-bg);
+    --tb-card-bg: var(--atp-card-bg);
+    --tb-text: var(--atp-text);
+    --tb-text-muted: var(--atp-text-muted);
+    --tb-border: var(--atp-border);
+}
+
+""" + shared_css
+
+            # Find <style> tag in PLG and inject after it
+            style_match = re.search(r'(<style[^>]*>)', plg_content)
+            if style_match:
+                insert_pos = style_match.end()
+                plg_content = plg_content[:insert_pos] + '\n' + css_aliases + '\n' + plg_content[insert_pos:]
+                print("  Injected shared CSS")
+
+        if shared_js:
+            js_injection = """
+/* ============================================
+   ATP SHARED JS - Injected by build.py
+   ============================================ */
+""" + shared_js
+
+            # Find the last </script> in the PLG and inject before it
+            last_script_end = plg_content.rfind('</script>')
+            if last_script_end != -1:
+                plg_content = plg_content[:last_script_end] + '\n' + js_injection + '\n' + plg_content[last_script_end:]
+                print("  Injected shared JS")
+
+        # Update version in CHANGES
+        if '##2026.01.30a' not in plg_content and '##2026.01.30' in plg_content:
+            plg_content = plg_content.replace(
+                '##2026.01.30\n',
+                '##2026.01.30a\n- BUILD: Shared CSS/JS now injected automatically from shared/ folder\n- BUILD: CSS variable aliases for backwards compatibility (--tb-* maps to --atp-*)\n\n##2026.01.30\n'
+            )
+
+        # Write back
+        write_file(plg_path, plg_content)
 
     xml_valid = validate_xml(plg_path)
 
