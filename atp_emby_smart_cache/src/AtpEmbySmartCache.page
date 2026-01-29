@@ -8,7 +8,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.01.29d";
+$version = "v2026.01.29e";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -927,7 +927,7 @@ if (file_exists($pidFile)) {
             <button class="esc-btn esc-btn-danger" onclick="clearLog()"><i class="fa fa-trash"></i> Clear Log</button>
             <button class="esc-btn esc-btn-primary" id="refresh-logs-btn" onclick="refreshLogs(true)"><i class="fa fa-sync" id="refresh-logs-icon"></i> <span id="refresh-logs-text">Refresh</span></button>
         </div>
-        <div class="esc-log-box" id="log-content">Loading...</div>
+        <div class="esc-log-viewer" id="log-content">Loading...</div>
     </div>
 
     <!-- SETTINGS PANEL -->

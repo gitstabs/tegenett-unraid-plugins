@@ -12,7 +12,7 @@
 <CHANGES>
 ##2026.01.29c
 - UI: Version moved to far right (consistent with ATP Emby Smart Cache)
-- UI: Tab styling matches ATP Emby Smart Cache design
+- UI: Tab buttons reset margin for consistent gap spacing
 
 ##2026.01.29b
 - UI: New tab styling (full button highlight instead of underline)
@@ -202,6 +202,7 @@ if (file_exists($pidFile)) {
 
 .tb-tab {
     padding: 10px 20px;
+    margin: 0;
     background: var(--tb-card-bg);
     border: 1px solid var(--tb-border);
     border-radius: 5px 5px 0 0;
@@ -210,6 +211,7 @@ if (file_exists($pidFile)) {
     font-size: 13px;
     font-weight: 500;
     transition: all 0.2s ease;
+    font-family: inherit;
 }
 
 .tb-tab:hover {
