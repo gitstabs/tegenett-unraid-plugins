@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "atp_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.29d">
+<!ENTITY version   "2026.01.30">
 <!ENTITY launch    "Settings/AtpBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>
@@ -10,6 +10,11 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30
+- SECURITY: Added CSRF token validation for all modifying AJAX requests
+- SECURITY: Improved exception handling with specific exception types
+- CODE: PHP handler now validates Unraid 7.x CSRF tokens
+
 ##2026.01.29d
 - UI: Tab buttons margin/font reset for consistent spacing (reversion bump)
 
@@ -728,7 +733,7 @@ if (file_exists($pidFile)) {
                 <i class="fas fa-<?=$isRunning ? 'stop' : 'play'?>" id="serviceToggleIcon"></i>
                 <span id="serviceToggleText"><?=$isRunning ? 'Stop' : 'Start'?></span>
             </button>
-            <span class="tb-version">v2026.01.29c</span>
+            <span class="tb-version">v2026.01.30</span>
         </div>
     </div>
     
@@ -4128,8 +4133,10 @@ esac
 <![CDATA[
 <?php
 /**
- * ATP Backup - AJAX Handler v2026.01.28
+ * ATP Backup - AJAX Handler v2026.01.30
  * Proxies requests to Python daemon API
+ *
+ * SECURITY: CSRF validation for Unraid 7.x
  */
 
 // Read port from settings
@@ -4144,18 +4151,51 @@ if (file_exists($CONFIG_FILE)) {
     }
 }
 
+// ============================================
+// CSRF VALIDATION (Unraid 7.x Security)
+// ============================================
+// Actions that modify state require CSRF validation
+$modifying_actions = [
+    'create_job', 'update_job', 'toggle_job', 'delete_job', 'run_job',
+    'save_settings', 'service', 'abort',
+    'clear_history', 'reset_statistics', 'reset_database'
+];
+
+$action = $_REQUEST['action'] ?? '';
+
+// Validate CSRF token for modifying operations
+if (in_array($action, $modifying_actions)) {
+    $csrf_token = $_POST['csrf_token'] ?? $_GET['csrf_token'] ?? $_REQUEST['csrf_token'] ?? '';
+    $valid_csrf = false;
+
+    // Read Unraid's CSRF token from var.ini
+    $var_file = '/var/local/emhttp/var.ini';
+    if (file_exists($var_file)) {
+        $var = @parse_ini_file($var_file);
+        if ($var && isset($var['csrf_token'])) {
+            $valid_csrf = hash_equals($var['csrf_token'], $csrf_token);
+        }
+    }
+
+    if (!$valid_csrf) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Invalid or missing CSRF token']);
+        exit;
+    }
+}
+
 // Helper function to make API requests
 function apiCall($endpoint, $method = 'GET', $data = null) {
     global $API_PORT, $API_HOST;
-    
+
     $url = "http://{$API_HOST}:{$API_PORT}{$endpoint}";
-    
+
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-    
+
     if ($method === 'POST') {
         curl_setopt($ch, CURLOPT_POST, true);
         if ($data) {
@@ -4171,58 +4211,55 @@ function apiCall($endpoint, $method = 'GET', $data = null) {
     } elseif ($method === 'DELETE') {
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
     }
-    
+
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlError = curl_error($ch);
     curl_close($ch);
-    
+
     if ($curlError) {
         return ['success' => false, 'error' => "API unavailable: {$curlError}"];
     }
-    
+
     if (empty($response)) {
         return ['success' => false, 'error' => 'Empty response from API'];
     }
-    
+
     $decoded = json_decode($response, true);
     if ($decoded === null) {
         return ['success' => false, 'error' => 'Invalid API response: ' . substr($response, 0, 100)];
     }
-    
+
     return $decoded;
 }
 
 // Get POST data - handles both JSON and form-urlencoded
 function getPostData() {
     $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
-    
+
     if (strpos($contentType, 'application/json') !== false) {
         return json_decode(file_get_contents('php://input'), true) ?: [];
     }
-    
+
     // Form-urlencoded data (from URLSearchParams)
     $data = $_POST;
-    
+
     // Remove csrf_token from data sent to API
     unset($data['csrf_token']);
-    
+
     // Convert string booleans
     foreach ($data as $key => $value) {
         if ($value === 'true') $data[$key] = true;
         if ($value === 'false') $data[$key] = false;
     }
-    
+
     return $data;
 }
-
-// Get action from request
-$action = $_REQUEST['action'] ?? '';
 
 header('Content-Type: application/json');
 
 switch ($action) {
-    
+
     case 'status':
         echo json_encode(apiCall('/api/status'));
         break;

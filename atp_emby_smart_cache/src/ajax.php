@@ -1,7 +1,9 @@
 <?php
 /**
- * ATP Emby Smart Cache - AJAX Handler v2026.01.29
+ * ATP Emby Smart Cache - AJAX Handler v2026.01.30
  * Standalone AJAX handler - bypasses Unraid's page template system
+ *
+ * SECURITY: CSRF validation for Unraid 7.x
  */
 error_reporting(0);
 ini_set('display_errors', 0);
@@ -9,6 +11,37 @@ header('Content-Type: application/json');
 
 $plugin = "atp_emby_smart_cache";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
+
+// ============================================
+// CSRF VALIDATION (Unraid 7.x Security)
+// ============================================
+// Actions that modify state require CSRF validation
+$modifying_actions = [
+    'force_cleanup', 'rebuild_state', 'reset_stats', 'clear_log',
+    'save_settings', 'service_start', 'service_stop'
+];
+
+$action = isset($_POST['ajax']) ? $_POST['ajax'] : (isset($_GET['ajax']) ? $_GET['ajax'] : '');
+
+// Validate CSRF token for modifying operations
+if (in_array($action, $modifying_actions)) {
+    $csrf_token = $_POST['csrf_token'] ?? $_GET['csrf_token'] ?? '';
+    $valid_csrf = false;
+
+    // Read Unraid's CSRF token from var.ini
+    $var_file = '/var/local/emhttp/var.ini';
+    if (file_exists($var_file)) {
+        $var = @parse_ini_file($var_file);
+        if ($var && isset($var['csrf_token'])) {
+            $valid_csrf = hash_equals($var['csrf_token'], $csrf_token);
+        }
+    }
+
+    if (!$valid_csrf) {
+        echo json_encode(['success' => false, 'error' => 'Invalid or missing CSRF token']);
+        exit;
+    }
+}
 
 // Auto-detect server IP from HTTP_HOST (strips port if present)
 $serverIp = isset($_SERVER['HTTP_HOST']) ? preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST']) : '127.0.0.1';
@@ -85,7 +118,7 @@ function apiCall($endpoint, $method = 'GET', $data = null, $timeout = 5) {
     return ['success' => false, 'error' => 'Connection failed'];
 }
 
-$action = isset($_POST['ajax']) ? $_POST['ajax'] : (isset($_GET['ajax']) ? $_GET['ajax'] : '');
+// Action already parsed above for CSRF validation
 
 if (empty($action)) {
     echo json_encode(['success' => false, 'error' => 'No action specified']);
@@ -164,7 +197,10 @@ switch ($action) {
     case 'clear_log':
         $logPath = $settings['LOG_FILE_PATH'];
         if (file_exists($logPath)) {
-            file_put_contents($logPath, "");
+            // Audit log: record who cleared the log and when
+            $timestamp = date('Y-m-d H:i:s');
+            $audit_msg = "[{$timestamp}] [AUDIT] Log cleared by user via web interface\n";
+            file_put_contents($logPath, $audit_msg);
             echo json_encode(['success' => true, 'message' => 'Log cleared']);
         } else {
             echo json_encode(['success' => false, 'error' => 'Log file not found']);

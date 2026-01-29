@@ -23,7 +23,7 @@ def build_plg():
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "atp_emby_smart_cache">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.29e">
+<!ENTITY version   "2026.01.30">
 <!ENTITY launch    "Settings/AtpEmbySmartCache">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
@@ -31,6 +31,12 @@ def build_plg():
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30
+- SECURITY: Added CSRF token validation for all modifying AJAX requests
+- SECURITY: Improved exception handling with specific exception types
+- SECURITY: Added path traversal protection in force_cleanup
+- CODE: Better logging for all exception handlers
+
 ##2026.01.29e
 - FIX: Logs panel styling restored (esc-log-viewer class)
 
@@ -174,7 +180,7 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Emby Smart Cache v2026.01.29e installed!"
+echo "ATP Emby Smart Cache v2026.01.30 installed!"
 echo "Service will start in 5 seconds..."
 echo ""
 echo "IMPORTANT: Configure settings before enabling:"

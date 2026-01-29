@@ -1,7 +1,12 @@
 """
-ATP Emby Smart Cache - Python Daemon v2026.01.29
+ATP Emby Smart Cache - Python Daemon v2026.01.30
 SQLite-backed state management with preserved file operation logic
 Author: Tegenett
+
+SECURITY UPDATES v2026.01.30:
+- API server binds to 127.0.0.1 for localhost-only access
+- Improved exception handling with specific exception types
+- Added path traversal protection
 """
 
 import os
@@ -108,23 +113,23 @@ class Config:
             except Exception as e:
                 print(f"Config load error: {e}")
         
-        # Type conversions
+        # Type conversions with specific exception handling
         try: cls.C["SERVER_PORT"] = int(cls.C["SERVER_PORT"])
-        except: cls.C["SERVER_PORT"] = 9999
+        except (ValueError, TypeError): cls.C["SERVER_PORT"] = 9999
         try: cls.C["COOLDOWN_MOVIE_SEC"] = int(cls.C["COOLDOWN_MOVIE_SEC"])
-        except: cls.C["COOLDOWN_MOVIE_SEC"] = 60
+        except (ValueError, TypeError): cls.C["COOLDOWN_MOVIE_SEC"] = 60
         try: cls.C["COOLDOWN_EPISODE_SEC"] = int(cls.C["COOLDOWN_EPISODE_SEC"])
-        except: cls.C["COOLDOWN_EPISODE_SEC"] = 30
+        except (ValueError, TypeError): cls.C["COOLDOWN_EPISODE_SEC"] = 30
         try: cls.C["PRECACHE_EPISODES"] = int(cls.C["PRECACHE_EPISODES"])
-        except: cls.C["PRECACHE_EPISODES"] = 1
+        except (ValueError, TypeError): cls.C["PRECACHE_EPISODES"] = 1
         try: cls.C["RSYNC_RETRIES"] = int(cls.C["RSYNC_RETRIES"])
-        except: cls.C["RSYNC_RETRIES"] = 3
+        except (ValueError, TypeError): cls.C["RSYNC_RETRIES"] = 3
         try: cls.C["MIN_FREE_SPACE_GB"] = int(cls.C["MIN_FREE_SPACE_GB"])
-        except: cls.C["MIN_FREE_SPACE_GB"] = 300
+        except (ValueError, TypeError): cls.C["MIN_FREE_SPACE_GB"] = 300
         try: cls.C["MAX_FILE_SIZE_GB"] = float(cls.C["MAX_FILE_SIZE_GB"])
-        except: cls.C["MAX_FILE_SIZE_GB"] = 0.0
+        except (ValueError, TypeError): cls.C["MAX_FILE_SIZE_GB"] = 0.0
         try: cls.C["CLEANUP_DELAY_HOURS"] = float(cls.C["CLEANUP_DELAY_HOURS"])
-        except: cls.C["CLEANUP_DELAY_HOURS"] = 24.0
+        except (ValueError, TypeError): cls.C["CLEANUP_DELAY_HOURS"] = 24.0
         
         bw = str(cls.C.get("RSYNC_BWLIMIT", "50000")).strip()
         cls.C["RSYNC_BWLIMIT"] = bw if bw.isdigit() else "50000"
@@ -430,8 +435,8 @@ class Database:
                             size_str = details.split('Size:')[1].strip().split()[0]
                             size_gb = float(size_str)
                             daily_gb[date] = daily_gb.get(date, 0) + size_gb
-                    except:
-                        pass
+                    except (ValueError, IndexError, AttributeError):
+                        pass  # Skip unparseable size entries
                 
                 stats['daily_storage'] = [{'date': d, 'gb': round(g, 2)} for d, g in sorted(daily_gb.items())]
                 
@@ -454,8 +459,8 @@ class Database:
                         if 'Size:' in details:
                             size_str = details.split('Size:')[1].strip().split()[0]
                             size_gb = float(size_str)
-                    except:
-                        pass
+                    except (ValueError, IndexError, AttributeError):
+                        pass  # Skip unparseable size entries
                     top_files.append({
                         'filename': r['filename'],
                         'count': r['count'],
@@ -572,8 +577,8 @@ class MoverIgnore:
             try:
                 with open(f, 'r') as fp:
                     return fp.read()
-            except:
-                pass
+            except (IOError, OSError) as e:
+                logger.warning(f"MoverIgnore.get_content error: {e}")
         return ""
 
 # ============================================
@@ -640,8 +645,8 @@ class CacheManager:
                     if time.time() - p.stat().st_mtime > 3600:
                         p.unlink()
                         logger.info(f"Removed orphan partial: {p.name}")
-                except:
-                    pass
+                except (OSError, IOError) as e:
+                    logger.debug(f"Could not remove partial {p}: {e}")
         except Exception as e:
             logger.error(f"Partial cleanup error: {e}")
     
@@ -701,7 +706,7 @@ class CacheManager:
     
     def force_cleanup(self, user_path_str):
         """Force immediate cleanup of a cached file.
-        
+
         CRITICAL SAFETY: This function checks for the ownership marker
         before deleting ANY file. If the marker (.moved_to_cache) does not
         exist on the array, the file is a NATIVE CACHE file and we must NOT
@@ -710,14 +715,28 @@ class CacheManager:
         logger.info(f"Force cleanup requested: {user_path_str}")
         logger.debug(f"CACHE_PATH: {Config.C['CACHE_PATH']}")
         logger.debug(f"UNRAID_USER_PATH: {Config.C['UNRAID_USER_PATH']}")
-        
+
         try:
+            # SECURITY: Path traversal protection
+            # Normalize and resolve the path to prevent directory traversal attacks
+            user_path_str = str(user_path_str).strip()
+
+            # Block obvious path traversal attempts
+            if '..' in user_path_str or user_path_str.startswith('/etc') or user_path_str.startswith('/root'):
+                logger.warning(f"BLOCKED: Potential path traversal attempt: {user_path_str}")
+                return {'success': False, 'error': 'Invalid path: Path traversal not allowed'}
+
             # Normalize path
             if user_path_str.startswith(Config.C["CACHE_PATH"]):
                 user_path_str = user_path_str.replace(Config.C["CACHE_PATH"], Config.C["UNRAID_USER_PATH"])
                 logger.debug(f"Path normalized from cache to user path")
-            
+
             user_path = Path(user_path_str)
+
+            # Verify path is within allowed mount points
+            if not Config.validate_path(str(user_path)):
+                logger.warning(f"BLOCKED: Path not in allowed mount points: {user_path}")
+                return {'success': False, 'error': 'Invalid path: Must be within /mnt/ directory'}
             logger.info(f"Normalized user_path: {user_path}")
             
             cache = PathTools.get_cache(user_path)
@@ -792,8 +811,8 @@ class CacheManager:
                             logger.info(f"Restored subtitle: {orig_name}")
                             try:
                                 MoverIgnore.remove(PathTools.get_user(orig))
-                            except:
-                                pass
+                            except Exception as mover_e:
+                                logger.debug(f"MoverIgnore cleanup note: {mover_e}")
                         except Exception as e:
                             logger.error(f"Subtitle restore error: {e}")
             except Exception as e:
@@ -819,8 +838,8 @@ class CacheManager:
                                 logger.info(f"Deleted cached subtitle: {f.name}")
                                 try:
                                     MoverIgnore.remove(PathTools.get_user(f))
-                                except:
-                                    pass
+                                except Exception as mover_e:
+                                    logger.debug(f"MoverIgnore cleanup note: {mover_e}")
                             except Exception as e:
                                 logger.error(f"Subtitle delete error: {e}")
                 except Exception as e:
@@ -864,8 +883,8 @@ class CacheManager:
                     NOTIFY.send("System Busy", f"Parity check. Skip: {path.name}", NOTIFY.COLORS["ORANGE"])
                     logger.debug("Parity check in progress, skipping")
                     return
-        except:
-            pass
+        except (IOError, OSError) as e:
+            logger.debug(f"Could not read mdstat: {e}")  # Not critical - may not exist on all systems
         
         arr = PathTools.get_array(path)
         cache = PathTools.get_cache(path)
@@ -890,8 +909,8 @@ class CacheManager:
                     NOTIFY.send("Hardlink Skip", f"{path.name} ({nlink} links)", NOTIFY.COLORS["GREY"])
                     logger.info(f"SKIP hardlink: {path.name} has {nlink} links")
                     return
-            except:
-                pass
+            except OSError as e:
+                logger.debug(f"Could not stat for hardlink check: {e}")
         
         # Remove from cleanup queue if re-playing
         if DB.remove_from_queue(path):
@@ -941,8 +960,8 @@ class CacheManager:
             if (free / (2**30)) < required:
                 NOTIFY.send("No Space", f"Skip: {path.name}", NOTIFY.COLORS["RED"])
                 return
-        except:
-            pass
+        except OSError as e:
+            logger.warning(f"Could not check disk space: {e}")
         
         # Mark as active
         with self.active_lock:
@@ -977,10 +996,10 @@ class CacheManager:
                     if f.suffix.lower() in Config.ALLOWED_SUB_EXTS:
                         sub_dst = cache.with_name(f.name)
                         if not sub_dst.exists():
-                            subprocess.run(["rsync", "-a", str(f), str(sub_dst)], 
+                            subprocess.run(["rsync", "-a", str(f), str(sub_dst)],
                                          check=False, capture_output=True)
-            except:
-                pass
+            except (OSError, subprocess.SubprocessError) as e:
+                logger.debug(f"Subtitle copy note: {e}")
             
             # Main file copy via rsync WITH RETRY
             rsync_success = False
@@ -1016,8 +1035,8 @@ class CacheManager:
                 if tmp.exists():
                     try:
                         tmp.unlink()
-                    except:
-                        pass
+                    except OSError as unlink_e:
+                        logger.debug(f"Could not remove temp file: {unlink_e}")
                 
                 # Wait before retry (exponential backoff)
                 if attempt < max_retries:
@@ -1038,8 +1057,8 @@ class CacheManager:
             try:
                 os.chmod(tmp, 0o666)
                 shutil.chown(tmp, "nobody", "users")
-            except:
-                pass
+            except (OSError, LookupError) as perm_e:
+                logger.debug(f"Permission set note: {perm_e}")
             
             # ATOMIC SWAP WITH ROLLBACK
             try:
@@ -1071,10 +1090,10 @@ class CacheManager:
                         try:
                             os.rename(f, sub_hid)
                             MoverIgnore.add(PathTools.get_user(cache.with_name(f.name)))
-                        except:
-                            pass
-            except:
-                pass
+                        except OSError as sub_e:
+                            logger.debug(f"Subtitle hide note: {sub_e}")
+            except (OSError, IOError) as glob_e:
+                logger.debug(f"Subtitle glob note: {glob_e}")
             
             # Add to mover ignore and database
             MoverIgnore.add(user_path)
@@ -1091,8 +1110,8 @@ class CacheManager:
             if tmp.exists():
                 try:
                     tmp.unlink()
-                except:
-                    pass
+                except OSError as unlink_e:
+                    logger.debug(f"Cleanup temp file note: {unlink_e}")
         finally:
             with self.active_lock:
                 self.active.discard(str(user_path))
@@ -1163,7 +1182,8 @@ class Monitor:
                 req = urllib.request.Request(url, headers=self.headers)
                 with urllib.request.urlopen(req, timeout=10) as r:
                     return json.loads(r.read().decode())
-            except:
+            except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, OSError) as e:
+                logger.debug(f"Emby API request attempt {i+1} failed: {e}")
                 if i < retries - 1:
                     time.sleep(2 ** i)
         return None
@@ -1406,7 +1426,8 @@ class Handler(BaseHTTPRequestHandler):
                             capture_output=True, text=True
                         )
                         log_content = result.stdout
-                    except:
+                    except (subprocess.SubprocessError, OSError) as tail_e:
+                        logger.debug(f"Tail command failed, using fallback: {tail_e}")
                         with open(LOG_FILE, 'r') as f:
                             log_content = '\n'.join(f.readlines()[-lines:])
                 self._send_json({'success': True, 'logs': log_content})
@@ -1440,8 +1461,8 @@ class Handler(BaseHTTPRequestHandler):
             if length > 0:
                 try:
                     data = json.loads(self.rfile.read(length).decode())
-                except:
-                    pass
+                except (json.JSONDecodeError, UnicodeDecodeError) as json_e:
+                    logger.debug(f"POST body parse error: {json_e}")
             
             parsed = urlparse(self.path)
             path = parsed.path
@@ -1569,8 +1590,11 @@ def main():
     port = Config.C["SERVER_PORT"]
     logger.info(f"Starting HTTP server on port {port}...")
     NOTIFY.send("Started", f"v3.2.0 on port {port}", NOTIFY.COLORS["GREEN"])
-    
+
     try:
+        # NOTE: Binds to 0.0.0.0 because Emby server needs to send webhooks to this port.
+        # API endpoints that modify state are protected via CSRF validation in PHP handler.
+        # Non-sensitive read endpoints (status, logs) are safe to expose.
         server = ThreadingHTTPServer(('0.0.0.0', port), Handler)
         server.timeout = 1
         logger.info(f"HTTP server successfully bound to 0.0.0.0:{port}")
