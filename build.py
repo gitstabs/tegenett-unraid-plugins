@@ -209,6 +209,9 @@ def build_atp_emby_smart_cache() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30f
+- FIX: Added Markdown="false" to page header to prevent Unraid from parsing script as Markdown
+
 ##2026.01.30e
 - FIX: Moved Chart.js script to head section (fixes JS showing as text after container)
 
