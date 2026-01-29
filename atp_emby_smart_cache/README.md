@@ -100,6 +100,20 @@ If you previously had `emby_smart_cache` installed:
 
 ## Changelog
 
+### v2026.01.30
+- SECURITY: Added CSRF token validation for all modifying AJAX requests
+- SECURITY: Improved exception handling with specific exception types (replaced bare `except:` blocks)
+- SECURITY: Added path traversal protection in force_cleanup
+- CODE: Better logging for all exception handlers
+
+### v2026.01.29e
+- FIX: Logs panel styling restored (esc-log-viewer class)
+
+### v2026.01.29d
+- UI: Added PID display in Running status badge
+- UI: Added Start/Stop button in header (consistent with ATP Backup)
+- FIX: Service control via AJAX (start/stop)
+
 ### v2026.01.29c
 - UI: Complete visual overhaul to match ATP Backup design system
 - UI: New card-based Settings layout with organized sections

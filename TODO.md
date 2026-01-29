@@ -88,7 +88,9 @@ All plugins must match ATP Backup's visual design:
 
 ### 🔴 Critical
 - [x] ~~Rename to ATP Backup (see Phase 1)~~ ✅ Done 2026.01.29
-- [ ] Code audit and review.
+- [x] Code audit and review. ✅ Done 2026.01.30
+  - CSRF validation for all modifying AJAX requests
+  - Improved exception handling
 
 ### 🟠 High Priority
 - [ ] Bandwidth scheduling (different limits at different times)
@@ -110,17 +112,20 @@ All plugins must match ATP Backup's visual design:
 ## emby_smart_cache (→ ATP Emby Smart Cache)
 
 ### 🔴 Critical (see Phase 1.2 for details)
-- [ ] Audit current code for hardcoded values
-- [ ] Create configuration schema
-- [ ] Implement settings UI for all configurable options
-- [ ] Convert to GitHub-installable plugin
-- [ ] Document data backup/restore procedure
-- [ ] Code audit and review.
+- [x] ~~Audit current code for hardcoded values~~ ✅ Done 2026.01.29
+- [x] ~~Create configuration schema~~ ✅ Done 2026.01.29
+- [x] ~~Implement settings UI for all configurable options~~ ✅ Done 2026.01.29
+- [x] ~~Convert to GitHub-installable plugin~~ ✅ Done 2026.01.29
+- [x] ~~Document data backup/restore procedure~~ ✅ Done 2026.01.29
+- [x] Code audit and review. ✅ Done 2026.01.30
+  - CSRF validation for all modifying AJAX requests
+  - Replaced bare `except:` with specific exception types
+  - Added path traversal protection in force_cleanup
 
 ### 🟠 High Priority
-- [ ] Match visual style with ATP Backup
-- [ ] Add CSRF token support (Unraid 7 requirement)
-- [ ] Modernize to responsive design
+- [x] ~~Match visual style with ATP Backup~~ ✅ Done 2026.01.29c
+- [x] ~~Add CSRF token support (Unraid 7 requirement)~~ ✅ Done 2026.01.30
+- [x] ~~Modernize to responsive design~~ ✅ Done 2026.01.29b
 
 ### 🟡 Medium Priority
 - [ ] Improve logging and statistics
@@ -173,9 +178,17 @@ All plugins must match ATP Backup's visual design:
 - [x] Added CSRF token support
 - [x] Updated colors to ATP theme
 - [x] Tested on Unraid (2026.01.29)
+- [x] **Security Audit v2026.01.30:**
+  - CSRF validation for all modifying AJAX requests
+  - Replaced ~20 bare `except:` with specific exception types
+  - Added path traversal protection in force_cleanup
+  - Better logging for exception handlers
 
 ### atp_backup (ATP Backup)
 - [x] Rename from tegenett_backup to atp_backup (2026.01.29)
+- [x] **Security Audit v2026.01.30:**
+  - CSRF validation for all modifying AJAX requests
+  - Improved exception handling
 
 ### tegenett_backup (→ ATP Backup) - Legacy
 - [x] Core backup functionality (local, remote SMB)

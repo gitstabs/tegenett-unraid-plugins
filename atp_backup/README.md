@@ -77,6 +77,11 @@ If you previously had `tegenett_backup` installed, see the migration guide below
 
 ## Changelog
 
+### v2026.01.30
+- SECURITY: Added CSRF token validation for all modifying AJAX requests
+- SECURITY: Improved exception handling with specific exception types
+- CODE: Better logging for all exception handlers
+
 ### v2026.01.29a
 - RENAME: Plugin renamed from tegenett_backup to atp_backup
 - All paths updated to use atp_backup prefix
