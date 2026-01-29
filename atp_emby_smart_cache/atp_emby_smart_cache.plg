@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "atp_emby_smart_cache">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.29c">
+<!ENTITY version   "2026.01.29d">
 <!ENTITY launch    "Settings/AtpEmbySmartCache">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
@@ -10,6 +10,11 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.29d
+- UI: Added PID display in Running status badge
+- UI: Added Start/Stop button in header (consistent with ATP Backup)
+- FIX: Service control via AJAX (start/stop)
+
 ##2026.01.29c
 - UI: Complete visual overhaul to match ATP Backup design system
 - UI: New card-based Settings layout with organized sections
@@ -85,7 +90,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.01.29c";
+$version = "v2026.01.29d";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -778,9 +783,13 @@ if (file_exists($pidFile)) {
         </div>
         <div class="esc-header-right">
             <span class="esc-status-badge <?php echo $running ? 'running' : 'stopped'; ?>" id="statusBadge">
-                <i class="fa <?php echo $running ? 'fa-circle' : 'fa-circle'; ?>"></i>
-                <span id="statusText"><?php echo $running ? "Running" : "Stopped"; ?></span>
+                <i class="fa fa-circle"></i>
+                <span id="statusText"><?php echo $running ? "Running" : "Stopped"; ?><?php if ($running && $pid): ?> (PID <?php echo $pid; ?>)<?php endif; ?></span>
             </span>
+            <button class="esc-btn <?php echo $running ? 'esc-btn-danger' : 'esc-btn-success'; ?>" onclick="toggleService()" id="serviceToggleBtn">
+                <i class="fa fa-<?php echo $running ? 'stop' : 'play'; ?>" id="serviceToggleIcon"></i>
+                <span id="serviceToggleText"><?php echo $running ? 'Stop' : 'Start'; ?></span>
+            </button>
             <span class="esc-version"><?php echo $version; ?></span>
         </div>
     </div>
@@ -1753,6 +1762,50 @@ function escEscape(str) {
     var div = document.createElement('div');
     div.appendChild(document.createTextNode(str));
     return div.innerHTML;
+}
+
+function toggleService() {
+    var $btn = $('#serviceToggleBtn');
+    var $icon = $('#serviceToggleIcon');
+    var $text = $('#serviceToggleText');
+    var isRunning = $icon.hasClass('fa-stop');
+    var action = isRunning ? 'stop' : 'start';
+
+    $btn.prop('disabled', true);
+    $icon.removeClass('fa-stop fa-play').addClass('fa-spinner fa-spin');
+    $text.text(isRunning ? 'Stopping...' : 'Starting...');
+
+    $.post(escAjaxUrl, {ajax: 'service_' + action}, function(r) {
+        if (r && r.success) {
+            // Update UI based on new state
+            var nowRunning = (action === 'start');
+            $icon.removeClass('fa-spinner fa-spin').addClass(nowRunning ? 'fa-stop' : 'fa-play');
+            $text.text(nowRunning ? 'Stop' : 'Start');
+            $btn.removeClass('esc-btn-danger esc-btn-success').addClass(nowRunning ? 'esc-btn-danger' : 'esc-btn-success');
+
+            // Update status badge
+            var $badge = $('#statusBadge');
+            $badge.removeClass('running stopped').addClass(nowRunning ? 'running' : 'stopped');
+            $('#statusText').text(nowRunning ? 'Running' + (r.pid ? ' (PID ' + r.pid + ')' : '') : 'Stopped');
+
+            // Refresh data
+            escRefreshData();
+        } else {
+            $icon.removeClass('fa-spinner fa-spin').addClass(isRunning ? 'fa-stop' : 'fa-play');
+            $text.text(isRunning ? 'Stop' : 'Start');
+            if (typeof swal !== 'undefined') {
+                swal({title: 'Error', text: (r && r.error) || 'Action failed', type: 'error'});
+            } else {
+                alert('Error: ' + ((r && r.error) || 'Action failed'));
+            }
+        }
+        $btn.prop('disabled', false);
+    }, 'json').fail(function() {
+        $icon.removeClass('fa-spinner fa-spin').addClass(isRunning ? 'fa-stop' : 'fa-play');
+        $text.text(isRunning ? 'Stop' : 'Start');
+        $btn.prop('disabled', false);
+        alert('Request failed');
+    });
 }
 </script>
 
@@ -3687,6 +3740,19 @@ switch ($action) {
         echo json_encode(['success' => true, 'debug' => $debug]);
         break;
 
+    case 'service_start':
+        exec("/usr/local/emhttp/plugins/{$plugin}/rc.atp_emby_smart_cache start 2>&1", $out, $ret);
+        sleep(1); // Wait for service to start
+        $pidFile = "/var/run/{$plugin}.pid";
+        $pid = file_exists($pidFile) ? trim(file_get_contents($pidFile)) : null;
+        echo json_encode(['success' => $ret === 0, 'message' => implode("\n", $out), 'pid' => $pid]);
+        break;
+
+    case 'service_stop':
+        exec("/usr/local/emhttp/plugins/{$plugin}/rc.atp_emby_smart_cache stop 2>&1", $out, $ret);
+        echo json_encode(['success' => $ret === 0, 'message' => implode("\n", $out)]);
+        break;
+
     default:
         echo json_encode(['success' => false, 'error' => 'Unknown action: ' . $action]);
 }
@@ -3733,7 +3799,7 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Emby Smart Cache v2026.01.29c installed!"
+echo "ATP Emby Smart Cache v2026.01.29d installed!"
 echo "Service will start in 5 seconds..."
 echo ""
 echo "IMPORTANT: Configure settings before enabling:"

@@ -23,7 +23,7 @@ def build_plg():
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "atp_emby_smart_cache">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.29c">
+<!ENTITY version   "2026.01.29d">
 <!ENTITY launch    "Settings/AtpEmbySmartCache">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
@@ -31,6 +31,11 @@ def build_plg():
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.29d
+- UI: Added PID display in Running status badge
+- UI: Added Start/Stop button in header (consistent with ATP Backup)
+- FIX: Service control via AJAX (start/stop)
+
 ##2026.01.29c
 - UI: Complete visual overhaul to match ATP Backup design system
 - UI: New card-based Settings layout with organized sections
@@ -166,7 +171,7 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Emby Smart Cache v2026.01.29c installed!"
+echo "ATP Emby Smart Cache v2026.01.29d installed!"
 echo "Service will start in 5 seconds..."
 echo ""
 echo "IMPORTANT: Configure settings before enabling:"

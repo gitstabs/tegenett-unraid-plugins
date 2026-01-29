@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "atp_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.29b">
+<!ENTITY version   "2026.01.29c">
 <!ENTITY launch    "Settings/AtpBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>
@@ -10,6 +10,10 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.29c
+- UI: Version moved to far right (consistent with ATP Emby Smart Cache)
+- UI: Tab styling matches ATP Emby Smart Cache design
+
 ##2026.01.29b
 - UI: New tab styling (full button highlight instead of underline)
 - UI: Improved mobile responsiveness for all tables
@@ -179,6 +183,11 @@ if (file_exists($pidFile)) {
     line-height: 20px;
     padding: 8px 16px;
     border-radius: 4px;
+}
+
+.tb-version {
+    color: var(--tb-text-muted);
+    font-size: 0.85em;
 }
 
 /* Tabs - ESC style (full button highlight) */
@@ -704,10 +713,7 @@ if (file_exists($pidFile)) {
     <div class="tb-header">
         <div class="tb-title">
             <i class="fas fa-shield-alt fa-2x" style="color: var(--tb-primary)"></i>
-            <div>
-                <h1>ATP Backup</h1>
-                <small style="color: var(--tb-text-muted)">v2026.01.29b</small>
-            </div>
+            <h1>ATP Backup</h1>
         </div>
         <div class="tb-header-actions">
             <span id="serviceStatus" class="tb-status-badge <?=$isRunning ? 'tb-status-running' : 'tb-status-stopped'?>">
@@ -717,6 +723,7 @@ if (file_exists($pidFile)) {
                 <i class="fas fa-<?=$isRunning ? 'stop' : 'play'?>" id="serviceToggleIcon"></i>
                 <span id="serviceToggleText"><?=$isRunning ? 'Stop' : 'Start'?></span>
             </button>
+            <span class="tb-version">v2026.01.29c</span>
         </div>
     </div>
     

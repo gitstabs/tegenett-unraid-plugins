@@ -214,6 +214,19 @@ switch ($action) {
         echo json_encode(['success' => true, 'debug' => $debug]);
         break;
 
+    case 'service_start':
+        exec("/usr/local/emhttp/plugins/{$plugin}/rc.atp_emby_smart_cache start 2>&1", $out, $ret);
+        sleep(1); // Wait for service to start
+        $pidFile = "/var/run/{$plugin}.pid";
+        $pid = file_exists($pidFile) ? trim(file_get_contents($pidFile)) : null;
+        echo json_encode(['success' => $ret === 0, 'message' => implode("\n", $out), 'pid' => $pid]);
+        break;
+
+    case 'service_stop':
+        exec("/usr/local/emhttp/plugins/{$plugin}/rc.atp_emby_smart_cache stop 2>&1", $out, $ret);
+        echo json_encode(['success' => $ret === 0, 'message' => implode("\n", $out)]);
+        break;
+
     default:
         echo json_encode(['success' => false, 'error' => 'Unknown action: ' . $action]);
 }
