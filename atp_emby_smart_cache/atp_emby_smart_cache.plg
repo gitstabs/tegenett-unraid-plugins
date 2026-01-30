@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "atp_emby_smart_cache">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.30i">
+<!ENTITY version   "2026.01.30j">
 <!ENTITY launch    "Settings/AtpEmbySmartCache">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
@@ -10,6 +10,11 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30j
+- REFACTOR: Removed inline PHP AJAX handler, now uses ajax.php only (like ATP Backup)
+- REFACTOR: Cleaner architecture with proper separation of concerns
+- FIX: All AJAX calls now go through ajax.php with CSRF validation
+
 ##2026.01.30i
 - FIX: Added missing AJAX handlers (get_stats, get_health, reset_stats, service_start/stop, debug)
 - FIX: Debug API now works correctly
@@ -130,7 +135,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.01.30i";
+$version = "v2026.01.30j";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -169,220 +174,6 @@ $settings = $defaults;
 if (file_exists($configFile)) {
     $loaded = json_decode(file_get_contents($configFile), true);
     if ($loaded) $settings = array_merge($defaults, $loaded);
-}
-
-// Get PID from PIDFILE (more reliable than pgrep which can match multiple processes)
-$pidFile = "/var/run/{$plugin}.pid";
-$pid = '';
-$running = false;
-if (file_exists($pidFile)) {
-    $pid = trim(file_get_contents($pidFile));
-    // Verify process is actually running
-    if (!empty($pid) && file_exists("/proc/{$pid}")) {
-        $running = true;
-    } else {
-        $pid = ''; // Stale PID file
-    }
-}
-
-function apiCall($endpoint, $method = 'GET', $data = null) {
-    global $settings;
-    $port = isset($settings['SERVER_PORT']) ? intval($settings['SERVER_PORT']) : 9999;
-    $url = "http://127.0.0.1:{$port}{$endpoint}";
-    
-    // Try curl first
-    if (function_exists('curl_init')) {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
-        if ($method === 'POST' && $data !== null) {
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        }
-        $resp = curl_exec($ch);
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $err = curl_error($ch);
-        $errno = curl_errno($ch);
-        curl_close($ch);
-        
-        if (!$err && $resp !== false && $code >= 200 && $code < 300) {
-            $decoded = json_decode($resp, true);
-            if ($decoded !== null) return $decoded;
-        }
-        // Log curl error for debugging
-        $curlError = $err ?: "HTTP {$code}, errno {$errno}";
-    } else {
-        $curlError = "curl not available";
-    }
-    
-    // Fallback to file_get_contents with stream context
-    $context = stream_context_create([
-        'http' => [
-            'method' => $method,
-            'header' => "Content-Type: application/json\r\n",
-            'content' => ($method === 'POST' && $data) ? json_encode($data) : '',
-            'timeout' => 5,
-            'ignore_errors' => true
-        ]
-    ]);
-    
-    $resp = @file_get_contents($url, false, $context);
-    if ($resp !== false) {
-        $decoded = json_decode($resp, true);
-        if ($decoded !== null) return $decoded;
-    }
-    
-    return ['success' => false, 'error' => "API unavailable ({$curlError})", 'url' => $url];
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) {
-    header('Content-Type: application/json');
-    $action = $_POST['ajax'];
-    
-    // Raw test to see what PHP actually outputs
-    if ($action === 'raw_test') {
-        die(json_encode(['success' => true, 'test' => 'OK', 'pid' => $pid, 'running' => $running]));
-    }
-    
-    if ($action === 'get_status') {
-        $result = apiCall('/api/status');
-        // If API call failed but PID exists, show offline status
-        if (!$result['success'] && $running) {
-            $result = [
-                'success' => true,
-                'data' => [
-                    'running' => false,
-                    'uptime' => 0,
-                    'active' => [],
-                    'active_count' => 0,
-                    'queue_count' => 0,
-                    'managed_count' => 0,
-                    'total_gb' => 0,
-                    'api_error' => $result['error'] ?? 'API not responding'
-                ]
-            ];
-        }
-        echo json_encode($result);
-    } elseif ($action === 'get_managed') {
-        echo json_encode(apiCall('/api/managed'));
-    } elseif ($action === 'get_queue') {
-        echo json_encode(apiCall('/api/queue'));
-    } elseif ($action === 'get_logs') {
-        $lines = isset($_POST['lines']) ? intval($_POST['lines']) : 100;
-        $result = apiCall("/api/logs?lines={$lines}");
-        // Fallback: read log file directly if API fails
-        if (!$result['success']) {
-            $logPath = $settings['LOG_FILE_PATH'];
-            if (is_dir($logPath)) $logPath = rtrim($logPath, '/') . "/atp_emby_smart_cache.log";
-            if (file_exists($logPath)) {
-                $logLines = file($logPath, FILE_IGNORE_NEW_LINES);
-                $logLines = array_slice($logLines, -$lines);
-                $result = ['success' => true, 'logs' => implode("\n", $logLines) . "\n[Read directly - API offline]"];
-            }
-        }
-        echo json_encode($result);
-    } elseif ($action === 'get_mover') {
-        $result = apiCall('/api/mover_ignore');
-        // Fallback: read mover ignore file directly if API fails
-        if (!$result['success']) {
-            $moverFile = $settings['MOVER_IGNORE_FILE'];
-            if (!empty($moverFile) && file_exists($moverFile)) {
-                $result = ['success' => true, 'content' => file_get_contents($moverFile) . "\n[Read directly - API offline]"];
-            } else {
-                $result = ['success' => true, 'content' => '(empty or not configured)'];
-            }
-        }
-        echo json_encode($result);
-    } elseif ($action === 'get_history') {
-        echo json_encode(apiCall('/api/history'));
-    } elseif ($action === 'force_cleanup') {
-        $path = isset($_POST['path']) ? $_POST['path'] : '';
-        echo json_encode(apiCall('/api/cleanup', 'POST', ['path' => $path]));
-    } elseif ($action === 'rebuild_state') {
-        echo json_encode(apiCall('/api/rebuild', 'POST', []));
-    } elseif ($action === 'clear_log') {
-        $logPath = $settings['LOG_FILE_PATH'];
-        if (is_dir($logPath)) $logPath = rtrim($logPath, '/') . "/atp_emby_smart_cache.log";
-        file_put_contents($logPath, "");
-        echo json_encode(['success' => true, 'message' => 'Log cleared']);
-    } elseif ($action === 'debug_api' || $action === 'debug') {
-        // Debug endpoint to test API connectivity
-        $port = isset($settings['SERVER_PORT']) ? intval($settings['SERVER_PORT']) : 9999;
-        $url = "http://127.0.0.1:{$port}/api/status";
-        $debug = [
-            'php_version' => PHP_VERSION,
-            'port' => $port,
-            'api_url' => $url,
-            'server_ip' => '127.0.0.1',
-            'curl_available' => function_exists('curl_init'),
-            'allow_url_fopen' => ini_get('allow_url_fopen'),
-            'config_exists' => file_exists($configFile)
-        ];
-
-        // Test curl
-        if (function_exists('curl_init')) {
-            $ch = curl_init($url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 3);
-            $resp = curl_exec($ch);
-            $debug['curl_response'] = substr($resp ?: '', 0, 200);
-            $debug['curl_error'] = curl_error($ch);
-            $debug['curl_errno'] = curl_errno($ch);
-            $debug['curl_http_code'] = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-        }
-
-        // Test file_get_contents
-        $ctx = stream_context_create(['http' => ['timeout' => 3]]);
-        $resp2 = @file_get_contents($url, false, $ctx);
-        $debug['fgc_response'] = substr($resp2 ?: '', 0, 200);
-        $debug['fgc_error'] = $resp2 === false ? error_get_last()['message'] ?? 'unknown' : 'none';
-
-        echo json_encode(['success' => true, 'debug' => $debug]);
-    } elseif ($action === 'get_stats') {
-        echo json_encode(apiCall('/api/stats'));
-    } elseif ($action === 'get_health') {
-        echo json_encode(apiCall('/api/health'));
-    } elseif ($action === 'reset_stats') {
-        echo json_encode(apiCall('/api/reset_stats', 'POST', []));
-    } elseif ($action === 'service_start') {
-        $out = [];
-        exec("/usr/local/emhttp/plugins/{$plugin}/rc.{$plugin} start 2>&1", $out, $ret);
-        sleep(2); // Wait for service to start
-        // Get new PID
-        $newPid = '';
-        if (file_exists($pidFile)) {
-            $newPid = trim(file_get_contents($pidFile));
-        }
-        echo json_encode(['success' => $ret === 0, 'message' => implode(' ', $out), 'pid' => $newPid]);
-    } elseif ($action === 'service_stop') {
-        $out = [];
-        exec("/usr/local/emhttp/plugins/{$plugin}/rc.{$plugin} stop 2>&1", $out, $ret);
-        echo json_encode(['success' => $ret === 0, 'message' => implode(' ', $out)]);
-    } elseif ($action === 'save_settings') {
-        ob_start(); // Capture any stray output
-        $new = $defaults;
-        foreach ($defaults as $k => $v) {
-            if (isset($_POST[$k])) {
-                if (is_bool($v) || in_array($k, ['ENABLED','SKIP_HARDLINKS','DELETE_ON_STOP'])) {
-                    $new[$k] = ($_POST[$k] === 'true' || $_POST[$k] === '1');
-                } else {
-                    $new[$k] = trim($_POST[$k]);
-                }
-            }
-        }
-        $saved = file_put_contents($configFile, json_encode($new, JSON_PRETTY_PRINT));
-        $out = [];
-        exec("/usr/local/emhttp/plugins/{$plugin}/rc.atp_emby_smart_cache restart 2>&1", $out, $ret);
-        ob_end_clean(); // Discard any stray output
-        $msg = $saved !== false ? 'Settings saved' : 'Failed to save settings';
-        if (!empty($out)) $msg .= ', restart: ' . implode(' ', $out);
-        echo json_encode(['success' => $saved !== false, 'message' => $msg]);
-    }
-    exit;
 }
 
 // Get PID from PIDFILE for page rendering
@@ -2050,8 +1841,8 @@ if (file_exists($pidFile)) {
 </div>
 
 <script>
-// AJAX endpoint - use separate PHP file to bypass Unraid page template
-var escAjaxUrl = '/Settings/AtpEmbySmartCache';
+// AJAX endpoint - uses separate PHP file with CSRF validation
+var escAjaxUrl = '/plugins/atp_emby_smart_cache/include/ajax.php';
 var escRefreshTimer = null;
 var escCountdown = 3;
 var escCurrentTab = 'dashboard';
@@ -5147,7 +4938,7 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Emby Smart Cache v2026.01.30i installed!"
+echo "ATP Emby Smart Cache v2026.01.30j installed!"
 echo "Service will start in 5 seconds..."
 echo ""
 echo "IMPORTANT: Configure settings before enabling:"
