@@ -209,6 +209,9 @@ def build_atp_emby_smart_cache() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30h
+- FIX: AJAX URL changed from ajax.php to page URL (inline PHP handler doesn't require CSRF)
+
 ##2026.01.30g
 - FIX: CSRF token now sent with all modifying AJAX requests (save, cleanup, service control, etc.)
 - FIX: Logs tab now auto-refreshes like other tabs
@@ -484,6 +487,10 @@ def build_atp_backup() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30g
+- FIX: Dashboard cards (Upcoming Jobs, Recent Activity) now stack vertically on tablet/mobile
+- FIX: Improved responsive layout for smaller screens
+
 ##2026.01.30f
 - FIX: Recent Activity table scrollbar now stays within card on mobile/tablet
 

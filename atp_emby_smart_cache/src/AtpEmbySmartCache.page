@@ -9,7 +9,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.01.30g";
+$version = "v2026.01.30h";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -1144,7 +1144,7 @@ if (file_exists($pidFile)) {
 
 <script>
 // AJAX endpoint - use separate PHP file to bypass Unraid page template
-var escAjaxUrl = '/plugins/atp_emby_smart_cache/include/ajax.php';
+var escAjaxUrl = '/Settings/AtpEmbySmartCache';
 var escRefreshTimer = null;
 var escCountdown = 3;
 var escCurrentTab = 'dashboard';

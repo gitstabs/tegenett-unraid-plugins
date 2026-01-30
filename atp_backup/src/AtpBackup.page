@@ -4,7 +4,7 @@ Icon="shield"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.01.30f";
+$version = "v2026.01.30g";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 
@@ -190,6 +190,13 @@ if (file_exists($pidFile)) {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 15px;
     margin-bottom: 20px;
+}
+
+/* Dashboard two-column grid (Upcoming Jobs / Recent Activity) */
+.tb-dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
 }
 
 .tb-stat-card {
@@ -494,6 +501,11 @@ if (file_exists($pidFile)) {
         grid-template-columns: repeat(2, 1fr);
     }
 
+    /* Stack Upcoming Jobs and Recent Activity vertically on tablet/mobile */
+    .tb-dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
     .tb-table-wrapper {
         margin-left: -20px;
         margin-right: -20px;
@@ -718,7 +730,7 @@ if (file_exists($pidFile)) {
             </div>
         </div>
         
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div class="tb-dashboard-grid">
             <div class="tb-card">
                 <div class="tb-card-header">
                     <h3 class="tb-card-title"><i class="fas fa-calendar-alt"></i> Upcoming Jobs</h3>
@@ -727,7 +739,7 @@ if (file_exists($pidFile)) {
                     <p style="color: var(--tb-text-muted)">Loading...</p>
                 </div>
             </div>
-            
+
             <div class="tb-card">
                 <div class="tb-card-header">
                     <h3 class="tb-card-title"><i class="fas fa-clock"></i> Recent Activity</h3>
