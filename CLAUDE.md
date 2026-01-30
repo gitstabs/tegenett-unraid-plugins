@@ -15,8 +15,8 @@ This monorepo contains personal Unraid plugins developed by Tegenett:
 
 | Plugin | Status | Version | Description |
 |--------|--------|---------|-------------|
-| `atp_backup` | ✅ Active | v2026.01.30e | Backup solution with local/remote SMB, WOL, Discord notifications |
-| `atp_emby_smart_cache` | ✅ Active | v2026.01.30f | Media cache management for Emby |
+| `atp_backup` | ✅ Active | v2026.01.30g | Backup solution with local/remote SMB, WOL, Discord notifications |
+| `atp_emby_smart_cache` | ✅ Active | v2026.01.30l | Media cache management for Emby |
 | Future plugins | Planned | - | TBD |
 
 ## Critical Requirements
@@ -98,6 +98,12 @@ fetch(url, {
 - Use shared CSS from `shared/css/tegenett-common.css`
 - Icons: Font Awesome 6.x
 
+**Auto-refresh Guidelines:**
+- Dashboard/status tabs: Auto-refresh every 3-30 seconds ✅
+- Logs tab: NO auto-refresh (makes it hard to copy text) ❌
+- Settings tab: NO auto-refresh (user is editing) ❌
+- Load data once when switching to a tab, then manual refresh button
+
 ### Plugin Architecture
 
 **File Structure (per plugin):**
@@ -105,10 +111,9 @@ fetch(url, {
 plugin_name/
 ├── src/
 │   ├── plugin_name.py          # Python daemon (if needed)
-│   ├── PluginName.page         # Main UI page
+│   ├── PluginName.page         # Main UI page (UI only, no AJAX handler)
 │   ├── rc.plugin_name          # Service control script
-│   └── include/
-│       └── ajax.php            # AJAX handler with CSRF
+│   └── ajax.php                # AJAX handler with CSRF (ALL AJAX goes here)
 ├── plugin_name.plg             # Plugin definition (built by build.py)
 └── README.md
 ```
@@ -195,6 +200,42 @@ Title="ATP Backup"    <!-- This shows in the UI -->
 
 If `&name;` contains spaces (like "ATP Backup"), the path becomes invalid.
 
+### CRITICAL: AJAX Architecture
+
+**Use ONE AJAX handler per plugin - NOT inline PHP in .page files!**
+
+```
+CORRECT:
+.page file → UI only (HTML, CSS, JS)
+ajax.php   → ALL AJAX handlers with CSRF validation
+
+WRONG:
+.page file → UI + inline PHP AJAX handler (causes confusion, dual systems)
+ajax.php   → Another AJAX handler (which one is used?)
+```
+
+**Why this matters:**
+- Inline PHP in .page files can conflict with Unraid's page template system
+- AJAX to `/Settings/PageName` returns full HTML page, not JSON
+- Separate `ajax.php` bypasses the template system and returns clean JSON
+
+**JavaScript AJAX URL:**
+```javascript
+// CORRECT - goes to separate PHP file
+var ajaxUrl = '/plugins/plugin_name/include/ajax.php';
+
+// WRONG - goes through Unraid's page system, returns HTML
+var ajaxUrl = '/Settings/PluginPage';
+```
+
+**CSRF Validation in ajax.php:**
+```php
+// Read CSRF from var.ini (not $var which is only in page context)
+$var_file = '/var/local/emhttp/var.ini';
+$var = @parse_ini_file($var_file);
+$valid = hash_equals($var['csrf_token'], $_POST['csrf_token']);
+```
+
 ### CDATA Section Rules
 
 **Never use these inside CDATA sections (even in comments):**
@@ -274,6 +315,9 @@ include 'plugins/atp_backup/AtpBackup.page';
 | chmod errors on install | FILE paths use `&name;` | Hardcode all paths |
 | CSS/JS shows as raw text | HTML tags in CDATA comments | Remove `<style>`, `<script>` from comments |
 | Plugin says "not installed" | ENTITY name mismatch | Ensure PLG filename matches `&name;` |
+| AJAX returns HTML instead of JSON | Using `/Settings/Page` URL | Use `/plugins/name/include/ajax.php` |
+| CSRF token invalid | Reading from wrong source | Use `parse_ini_file('/var/local/emhttp/var.ini')` in ajax.php |
+| Buttons/forms do nothing | Missing AJAX handler in ajax.php | Add handler for that action |
 
 ## Reference Documentation
 
@@ -335,15 +379,17 @@ After installing update on Unraid:
 
 ## Current State
 
-**atp_backup v2026.01.30e:**
+**atp_backup v2026.01.30g:**
 - Features: Local/Remote SMB backup, WOL, Discord, retry logic
 - Status: ✅ Fully working
-- Pending: Cloud backup (rclone integration)
+- Recent fixes: Mobile responsive dashboard (cards stack vertically)
+- Pending: Cloud backup (rclone integration), bandwidth scheduling
 
-**atp_emby_smart_cache v2026.01.30f:**
+**atp_emby_smart_cache v2026.01.30l:**
 - Features: Emby media caching, auto-cleanup, statistics
 - Status: ✅ Fully working
-- Recent fixes: Markdown="false" for JS rendering
+- Recent fixes: Refactored to use ajax.php only (like ATP Backup), logs no auto-refresh
+- Data path: `/mnt/user/appdata/atp_emby_smart_cache/`
 
 ## Known Issues & TODO
 
