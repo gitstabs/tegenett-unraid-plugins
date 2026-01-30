@@ -209,6 +209,10 @@ def build_atp_emby_smart_cache() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30k
+- FIX: CSRF validation now checks $_REQUEST as fallback
+- FIX: Added debug info to CSRF errors for troubleshooting
+
 ##2026.01.30j
 - REFACTOR: Removed inline PHP AJAX handler, now uses ajax.php only (like ATP Backup)
 - REFACTOR: Cleaner architecture with proper separation of concerns

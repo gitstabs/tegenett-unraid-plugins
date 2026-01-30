@@ -25,7 +25,7 @@ $action = isset($_POST['ajax']) ? $_POST['ajax'] : (isset($_GET['ajax']) ? $_GET
 
 // Validate CSRF token for modifying operations
 if (in_array($action, $modifying_actions)) {
-    $csrf_token = $_POST['csrf_token'] ?? $_GET['csrf_token'] ?? '';
+    $csrf_token = $_POST['csrf_token'] ?? $_GET['csrf_token'] ?? $_REQUEST['csrf_token'] ?? '';
     $valid_csrf = false;
 
     // Read Unraid's CSRF token from var.ini
@@ -38,7 +38,14 @@ if (in_array($action, $modifying_actions)) {
     }
 
     if (!$valid_csrf) {
-        echo json_encode(['success' => false, 'error' => 'Invalid or missing CSRF token']);
+        // Debug info for troubleshooting
+        $debug = [
+            'received' => substr($csrf_token, 0, 8) . '...',
+            'var_file_exists' => file_exists($var_file),
+            'var_parsed' => isset($var) && is_array($var),
+            'expected_exists' => isset($var['csrf_token'])
+        ];
+        echo json_encode(['success' => false, 'error' => 'Invalid or missing CSRF token', 'debug' => $debug]);
         exit;
     }
 }
