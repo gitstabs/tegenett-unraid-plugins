@@ -209,6 +209,10 @@ def build_atp_emby_smart_cache() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30i
+- FIX: Added missing AJAX handlers (get_stats, get_health, reset_stats, service_start/stop, debug)
+- FIX: Debug API now works correctly
+
 ##2026.01.30h
 - FIX: AJAX URL changed from ajax.php to page URL (inline PHP handler doesn't require CSRF)
 
