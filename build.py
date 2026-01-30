@@ -209,6 +209,10 @@ def build_atp_emby_smart_cache() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30l
+- FIX: Logs tab no longer auto-refreshes (easier to copy text)
+- FIX: Logs load once when switching to tab
+
 ##2026.01.30k
 - FIX: CSRF validation now checks $_REQUEST as fallback
 - FIX: Added debug info to CSRF errors for troubleshooting
