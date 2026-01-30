@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "atp_emby_smart_cache">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.30f">
+<!ENTITY version   "2026.01.30g">
 <!ENTITY launch    "Settings/AtpEmbySmartCache">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
@@ -10,6 +10,10 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30g
+- FIX: CSRF token now sent with all modifying AJAX requests (save, cleanup, service control, etc.)
+- FIX: Logs tab now auto-refreshes like other tabs
+
 ##2026.01.30f
 - FIX: Added Markdown="false" to page header to prevent Unraid from parsing script as Markdown
 
@@ -119,7 +123,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.01.30f";
+$version = "v2026.01.30g";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -365,6 +369,7 @@ if (file_exists($pidFile)) {
 }
 ?>
 
+<script>var csrf_token = "<?=$csrf_token?>";</script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
@@ -2043,7 +2048,7 @@ $(function() {
         $icon.removeClass('fa-save').addClass('fa-spinner fa-spin');
         $text.text('Saving...');
         
-        var fd = $(this).serialize() + '&ajax=save_settings';
+        var fd = $(this).serialize() + '&ajax=save_settings&csrf_token=' + encodeURIComponent(csrf_token);
         $.post(escAjaxUrl, fd, function(r) {
             if (r && r.success) {
                 $icon.removeClass('fa-spinner fa-spin').addClass('fa-check');
@@ -2109,9 +2114,9 @@ function escRefreshData() {
         escRefreshMover();
     } else if (escCurrentTab === 'queue') {
         escRefreshQueue();
+    } else if (escCurrentTab === 'logs') {
+        refreshLogs(false);
     }
-    // Note: Logs tab does NOT auto-refresh (allows text selection)
-    // User must click Refresh button manually
 }
 
 function escRefreshDashboard() {
@@ -2410,7 +2415,7 @@ function clearLog() {
         confirmButtonColor: '#f44336'
     }, function(confirmed) {
         if (confirmed) {
-            $.post(escAjaxUrl, {ajax: 'clear_log'}, function(d) {
+            $.post(escAjaxUrl, {ajax: 'clear_log', csrf_token: csrf_token}, function(d) {
                 swal({title: 'Done', text: d.message, type: 'success'});
                 refreshLogs();
             }, 'json');
@@ -2433,7 +2438,7 @@ function forceCleanup(path) {
             $.ajax({
                 url: escAjaxUrl,
                 method: 'POST',
-                data: {ajax: 'force_cleanup', path: path},
+                data: {ajax: 'force_cleanup', path: path, csrf_token: csrf_token},
                 dataType: 'json',
                 timeout: 120000  // 2 minute timeout for large files
             }).done(function(d) {
@@ -2491,7 +2496,7 @@ function rebuildState() {
             $.ajax({
                 url: escAjaxUrl,
                 method: 'POST',
-                data: {ajax: 'rebuild_state'},
+                data: {ajax: 'rebuild_state', csrf_token: csrf_token},
                 dataType: 'json',
                 timeout: 60000  // 1 minute timeout
             }).done(function(d) {
@@ -2519,7 +2524,7 @@ function resetStatistics() {
             $.ajax({
                 url: escAjaxUrl,
                 method: 'POST',
-                data: {ajax: 'reset_stats'},
+                data: {ajax: 'reset_stats', csrf_token: csrf_token},
                 dataType: 'json',
                 timeout: 30000
             }).done(function(d) {
@@ -2567,7 +2572,7 @@ function toggleService() {
     $icon.removeClass('fa-stop fa-play').addClass('fa-spinner fa-spin');
     $text.text(isRunning ? 'Stopping...' : 'Starting...');
 
-    $.post(escAjaxUrl, {ajax: 'service_' + action}, function(r) {
+    $.post(escAjaxUrl, {ajax: 'service_' + action, csrf_token: csrf_token}, function(r) {
         if (r && r.success) {
             // Update UI based on new state
             var nowRunning = (action === 'start');
@@ -5112,7 +5117,7 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Emby Smart Cache v2026.01.30f installed!"
+echo "ATP Emby Smart Cache v2026.01.30g installed!"
 echo "Service will start in 5 seconds..."
 echo ""
 echo "IMPORTANT: Configure settings before enabling:"

@@ -4,7 +4,7 @@ Icon="shield"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.01.30e";
+$version = "v2026.01.30f";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 
@@ -166,6 +166,7 @@ if (file_exists($pidFile)) {
     padding: 20px;
     margin-bottom: 20px;
     border: 1px solid var(--tb-border);
+    overflow: hidden; /* Ensures scrollbar stays within card on mobile */
 }
 
 .tb-card-header {
@@ -491,6 +492,14 @@ if (file_exists($pidFile)) {
 
     .tb-stats-grid {
         grid-template-columns: repeat(2, 1fr);
+    }
+
+    .tb-table-wrapper {
+        margin-left: -20px;
+        margin-right: -20px;
+        padding-left: 20px;
+        padding-right: 20px;
+        width: calc(100% + 40px);
     }
 }
 

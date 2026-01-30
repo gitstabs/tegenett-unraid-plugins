@@ -209,6 +209,10 @@ def build_atp_emby_smart_cache() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30g
+- FIX: CSRF token now sent with all modifying AJAX requests (save, cleanup, service control, etc.)
+- FIX: Logs tab now auto-refreshes like other tabs
+
 ##2026.01.30f
 - FIX: Added Markdown="false" to page header to prevent Unraid from parsing script as Markdown
 
@@ -480,6 +484,9 @@ def build_atp_backup() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.30f
+- FIX: Recent Activity table scrollbar now stays within card on mobile/tablet
+
 ##2026.01.30e
 - FIX: ENTITY name restored to snake_case (atp_backup) for Unraid plugin ID
 
