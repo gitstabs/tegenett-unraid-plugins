@@ -4,6 +4,16 @@ All notable changes to Tegenett Unraid Plugins.
 
 ---
 
+## [2026.01.31f] - Short Plugin Description
+
+### Plugin List Display
+- **FIX**: Plugin description in "Installed Plugins" now shows short 2-line summary
+- **NEW**: `PLUGIN_INFO.md` - short description for Unraid plugin list (installed as README.md)
+- **KEPT**: `README.md` - full documentation stays on GitHub
+- Matches how other Unraid plugins (Community Applications, Nvidia, etc.) handle this
+
+---
+
 ## [2026.01.31e] - Improved Install/Remove Scripts
 
 ### Install Script Improvements

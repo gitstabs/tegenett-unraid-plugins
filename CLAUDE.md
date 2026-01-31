@@ -115,8 +115,15 @@ plugin_name/
 │   ├── rc.plugin_name          # Service control script
 │   └── ajax.php                # AJAX handler with CSRF (ALL AJAX goes here)
 ├── plugin_name.plg             # Plugin definition (built by build.py)
-└── README.md
+├── PLUGIN_INFO.md              # Short description for Unraid plugin list (2 lines)
+└── README.md                   # Full documentation for GitHub
 ```
+
+**PLUGIN_INFO.md vs README.md:**
+- `PLUGIN_INFO.md` - Installed as README.md in Unraid, shows in "Installed Plugins" list
+  - Keep it SHORT: 2-3 lines max (title + one-line description)
+  - Uses `####` for h4 heading (consistent with other plugins)
+- `README.md` - Full documentation, stays on GitHub only
 
 **Shared Resources:**
 ```
