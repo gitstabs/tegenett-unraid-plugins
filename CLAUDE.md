@@ -331,6 +331,8 @@ include 'plugins/atp_backup/AtpBackup.page';
 | AJAX returns HTML instead of JSON | Using `/Settings/Page` URL | Use `/plugins/name/include/ajax.php` |
 | CSRF token invalid | Reading from wrong source | Use `parse_ini_file('/var/local/emhttp/var.ini')` in ajax.php |
 | Buttons/forms do nothing | Missing AJAX handler in ajax.php | Add handler for that action |
+| Plugin name too big in list | Full README.md used | Use short PLUGIN_INFO.md (2 lines, `####` heading) |
+| Plugin shows raw name (atp_backup) | No README.md in plugin | Include PLUGIN_INFO.md as README.md in PLG |
 
 ## Reference Documentation
 
@@ -392,24 +394,19 @@ After installing update on Unraid:
 
 ## Current State
 
-**atp_backup v2026.01.30g:**
-- Features: Local/Remote SMB backup, WOL, Discord, retry logic
+**atp_backup v2026.01.31e:**
+- Features: Local/Remote SMB backup, WOL, Discord, retry logic, bandwidth scheduling, export/import, weekly/monthly summaries
 - Status: ✅ Fully working
-- Recent fixes: Mobile responsive dashboard (cards stack vertically)
-- Pending: Cloud backup (rclone integration), bandwidth scheduling
+- Recent fixes: Plugin display name, improved install/remove scripts
+- Pending: Cloud backup (rclone integration)
 
-**atp_emby_smart_cache v2026.01.30l:**
+**atp_emby_smart_cache v2026.01.31d:**
 - Features: Emby media caching, auto-cleanup, statistics
 - Status: ✅ Fully working
-- Recent fixes: Refactored to use ajax.php only (like ATP Backup), logs no auto-refresh
+- Recent fixes: Plugin display name, improved install/remove scripts
 - Data path: `/mnt/user/appdata/atp_emby_smart_cache/`
 
 ## Known Issues & TODO
-
-**Display Names in Plugin List:**
-- Currently shows `atp_backup` instead of "ATP Backup" in Unraid Plugins page
-- Need to research how other plugins achieve nice display names
-- Must NOT break the "checking" status (caused by spaces in `&name;`)
 
 **Version Bumping:**
 - ALWAYS bump version on ANY change, even small fixes
