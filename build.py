@@ -262,6 +262,7 @@ def build_atp_emby_smart_cache() -> bool:
         python_content = read_file(src_dir / 'atp_emby_smart_cache.py')
         rc_content = read_file(src_dir / 'rc.atp_emby_smart_cache')
         ajax_content = read_file(src_dir / 'ajax.php')
+        readme_content = read_file(plugin['dir'] / 'README.md')
     except FileNotFoundError as e:
         print(f"  Error: Missing source file - {e}")
         return False
@@ -441,6 +442,15 @@ echo "$(date): Pre-install complete" >> "$LOG"
 </INLINE>
 </FILE>
 
+<!-- README for plugin description display -->
+<FILE Name="/usr/local/emhttp/plugins/atp_emby_smart_cache/README.md">
+<INLINE>
+<![CDATA[
+{readme_content}
+]]>
+</INLINE>
+</FILE>
+
 <!-- Post-install: Set up directories and auto-start -->
 <FILE Run="/bin/bash">
 <INLINE>
@@ -558,6 +568,7 @@ def build_atp_backup() -> bool:
         python_content = read_file(src_dir / 'atp_backup.py')
         rc_content = read_file(src_dir / 'rc.atp_backup')
         ajax_content = read_file(src_dir / 'ajax.php')
+        readme_content = read_file(plugin['dir'] / 'README.md')
     except FileNotFoundError as e:
         print(f"  Error: Missing source file - {e}")
         return False
@@ -715,6 +726,15 @@ echo "$(date): Pre-install complete" >> "$LOG"
 <INLINE>
 <![CDATA[
 {ajax_content}
+]]>
+</INLINE>
+</FILE>
+
+<!-- README for plugin description display -->
+<FILE Name="/usr/local/emhttp/plugins/atp_backup/README.md">
+<INLINE>
+<![CDATA[
+{readme_content}
 ]]>
 </INLINE>
 </FILE>

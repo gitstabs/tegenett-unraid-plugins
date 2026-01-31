@@ -4,13 +4,27 @@ All notable changes to Tegenett Unraid Plugins.
 
 ---
 
-## [2026.01.31c] - Plugin Display Names
+## [2026.01.31d] - Plugin Display Names (Fixed!)
 
 ### Display Names
-- **FIX**: Added `displayName` ENTITY to PLG files for proper display in Unraid Plugins list
-- ATP Backup now shows as "ATP Backup" instead of "atp_backup"
-- ATP Emby Smart Cache now shows as "ATP Emby Smart Cache" instead of "atp_emby_smart_cache"
+- **FIX**: README.md now included in PLG files for proper display in Unraid Plugins list
+- Plugin description in "Installed Plugins" now shows markdown from README.md
+- ATP Backup shows as "**ATP Backup**" with full description
+- ATP Emby Smart Cache shows as "**ATP Emby Smart Cache**" with full description
 - Technical ID (`name`) unchanged - no breaking changes to existing installations
+
+### Technical Details
+- Unraid's `ShowPlugins.php` reads `plugins/{name}/README.md` for plugin descriptions
+- If README.md doesn't exist, it displays the raw plugin name (e.g., "atp_backup")
+- Now build.py includes README.md in the PLG file installation
+
+---
+
+## [2026.01.31c] - Plugin Display Names (Attempt 1)
+
+### Display Names
+- **PARTIAL**: Added `displayName` ENTITY to PLG files
+- Note: This alone didn't fix the display - README.md inclusion was needed (fixed in v2026.01.31d)
 
 ---
 
