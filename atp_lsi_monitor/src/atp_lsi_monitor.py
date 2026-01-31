@@ -40,7 +40,7 @@ import hashlib
 
 PLUGIN_NAME = "atp_lsi_monitor"
 DEFAULT_PORT = 39800
-VERSION = "2026.01.31a"
+VERSION = "2026.01.31b"
 
 # Paths
 DATA_DIR = f"/mnt/user/appdata/{PLUGIN_NAME}"
@@ -1256,6 +1256,36 @@ class APIHandler(BaseHTTPRequestHandler):
                     conn.commit()
                     conn.close()
                 self.send_json({'success': True, 'message': 'Alerts cleared'})
+
+            # Import legacy temperature data
+            elif path == '/api/import':
+                records = data.get('records', [])
+                if not records:
+                    self.send_json({'success': False, 'error': 'No records to import'})
+                    return
+
+                imported = 0
+                with db_lock:
+                    conn = get_db()
+                    cursor = conn.cursor()
+                    for record in records:
+                        try:
+                            timestamp = record.get('timestamp')
+                            ioc_temp = record.get('ioc_temp')
+                            if timestamp and ioc_temp is not None:
+                                # Convert timestamp format if needed
+                                cursor.execute(
+                                    "INSERT OR IGNORE INTO temperature_history (timestamp, ioc_temp, board_temp) VALUES (?, ?, ?)",
+                                    (timestamp, ioc_temp, None)
+                                )
+                                imported += 1
+                        except Exception as e:
+                            logging.warning(f"Failed to import record: {e}")
+                    conn.commit()
+                    conn.close()
+
+                logging.info(f"Imported {imported} temperature records from legacy data")
+                self.send_json({'success': True, 'imported': imported})
 
             else:
                 self.send_json({'success': False, 'error': 'Unknown endpoint'}, 404)

@@ -3,7 +3,7 @@
 <!ENTITY name        "atp_lsi_monitor">
 <!ENTITY displayName "ATP LSI Monitor">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.01.31a">
+<!ENTITY version     "2026.01.31b">
 <!ENTITY launch      "Settings/AtpLsiMonitor">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_lsi_monitor/atp_lsi_monitor.plg">
 ]>
@@ -11,6 +11,17 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="hdd-o" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31b
+- UI: Tab styling now matches ATP Emby Smart Cache (orange active tabs)
+- UI: Running/Healthy badges moved to right side with Stop button and Version
+- UI: Settings panel redesigned with 2-column layout
+- UI: Font Awesome icons added to all tabs and sections
+- NEW: Log level setting (DEBUG, INFO, WARNING, ERROR)
+- NEW: Log rotation settings (retention count, max file size)
+- NEW: Import legacy temperature history from lsi_temp_history.log
+- NEW: Raw lsiutil output shown in expandable details section
+- FIX: Connected devices parsing improved
+
 ##2026.01.31a
 - NEW: Initial release
 - NEW: IOC temperature monitoring for LSI SAS HBA cards
@@ -83,10 +94,60 @@ Icon="atp-lsi-monitor.png"
 Markdown="false"
 ---
 <?php
+// MUST be first - suppress ALL errors before anything else runs
+error_reporting(0);
+ini_set('display_errors', 0);
+
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31a";
-$docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
-$pluginDir = "{$docroot}/plugins/{$plugin}";
+$version = "v2026.01.31b";
+$configFile = "/boot/config/plugins/{$plugin}/settings.json";
+$dataDir = "/mnt/user/appdata/{$plugin}";
+
+// CSRF token for Unraid 7 security
+$csrf_token = $var['csrf_token'] ?? '';
+
+// Default settings
+$defaults = [
+    "ENABLED" => true,
+    "SERVER_PORT" => 39800,
+    "LOG_LEVEL" => "INFO",
+    "LOG_RETENTION" => 5,
+    "LOG_MAX_SIZE_MB" => 10,
+    "LSIUTIL_PATH" => "/usr/local/emhttp/plugins/{$plugin}/lsiutil",
+    "LSI_PORT" => 1,
+    "POLL_INTERVAL" => 300,
+    "TEMP_WARNING" => 50,
+    "TEMP_CRITICAL" => 65,
+    "TEMP_SHUTDOWN_ENABLED" => false,
+    "ALERT_ON_WARNING" => true,
+    "ALERT_ON_CRITICAL" => true,
+    "ALERT_ON_PHY_ERRORS" => true,
+    "ALERT_COOLDOWN" => 3600,
+    "NOTIFICATION_SERVICE" => "none",
+    "DISCORD_WEBHOOK" => "",
+    "NOTIFIARR_API_KEY" => "",
+    "NOTIFIARR_CHANNEL" => "",
+    "GOTIFY_URL" => "",
+    "GOTIFY_TOKEN" => "",
+    "NTFY_URL" => "https://ntfy.sh",
+    "NTFY_TOPIC" => "",
+    "PUSHOVER_USER_KEY" => "",
+    "PUSHOVER_API_TOKEN" => "",
+    "DAILY_REPORT_ENABLED" => false,
+    "DAILY_REPORT_HOUR" => 8,
+    "WEEKLY_REPORT_ENABLED" => false,
+    "WEEKLY_REPORT_DAY" => 0,
+    "WEEKLY_REPORT_HOUR" => 9,
+    "MONTHLY_REPORT_ENABLED" => false,
+    "MONTHLY_REPORT_DAY" => 1,
+    "MONTHLY_REPORT_HOUR" => 10
+];
+
+$settings = $defaults;
+if (file_exists($configFile)) {
+    $loaded = json_decode(file_get_contents($configFile), true);
+    if ($loaded) $settings = array_merge($defaults, $loaded);
+}
 
 // Check if service is running
 $pidFile = "/var/run/{$plugin}.pid";
@@ -100,17 +161,13 @@ if (file_exists($pidFile)) {
         $pid = null;
     }
 }
-
-// CSRF token for Unraid 7 security
-$csrf_token = $var['csrf_token'] ?? '';
 ?>
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <style>
+
+<script>var csrf_token = "<?=$csrf_token?>";</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<style>
 
 /* ============================================
    ATP SHARED CSS - Injected by build.py
@@ -874,490 +931,536 @@ $csrf_token = $var['csrf_token'] ?? '';
 }
 
 
-    /* ============================================
-       ATP LSI Monitor Styles
-       ============================================ */
+/* ============================================
+   ATP LSI Monitor CSS - v2026.01.31b
+   Matches ATP Emby Smart Cache design system
+   ============================================ */
 
-    .lsi-container {
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 20px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+:root {
+    --lsi-primary: #e67e22;
+    --lsi-primary-dark: #d35400;
+    --lsi-success: #27ae60;
+    --lsi-warning: #f39c12;
+    --lsi-danger: #c0392b;
+    --lsi-info: #3498db;
+    --lsi-bg: var(--body-background, #1a1a1a);
+    --lsi-card-bg: var(--card-background, #262626);
+    --lsi-text: var(--text-color, #e0e0e0);
+    --lsi-text-muted: var(--text-muted, #888);
+    --lsi-border: var(--border-color, #3a3a3a);
+}
+
+/* Container */
+.lsi-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header - matches Emby Smart Cache (status on right) */
+.lsi-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--lsi-border);
+}
+
+.lsi-title {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.lsi-title h1 {
+    margin: 0;
+    color: var(--lsi-primary);
+    font-size: 1.8em;
+}
+
+.lsi-title h1 i {
+    margin-right: 10px;
+}
+
+/* Status badge - square like Emby */
+.lsi-status-badge {
+    padding: 0 16px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 600;
+    white-space: nowrap;
+    height: 36px;
+    line-height: 36px;
+    display: inline-block;
+}
+
+.lsi-status-badge i {
+    font-size: 0.6em;
+    margin-right: 6px;
+}
+
+.lsi-status-badge.running { background: var(--lsi-success); color: white; }
+.lsi-status-badge.stopped { background: var(--lsi-danger); color: white; }
+.lsi-status-badge.healthy { background: var(--lsi-success); color: white; }
+.lsi-status-badge.warning { background: var(--lsi-warning); color: white; }
+.lsi-status-badge.critical { background: var(--lsi-danger); color: white; }
+
+.lsi-header-right {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.lsi-version {
+    color: var(--lsi-text-muted);
+    font-size: 0.85em;
+}
+
+/* Tabs - ESC style (full button highlight) */
+.lsi-tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--lsi-border);
+    padding-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.lsi-tab {
+    padding: 10px 20px;
+    background: var(--lsi-card-bg);
+    border: 1px solid var(--lsi-border);
+    border-radius: 5px 5px 0 0;
+    color: var(--lsi-text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.lsi-tab:hover {
+    background: rgba(255,255,255,0.05);
+    color: var(--lsi-text);
+}
+
+.lsi-tab.active {
+    background: var(--lsi-primary);
+    color: #fff;
+    border-color: var(--lsi-primary);
+}
+
+.lsi-tab i {
+    margin-right: 8px;
+}
+
+/* Panels */
+.lsi-panel { display: none; }
+.lsi-panel.active { display: block; }
+
+/* Cards */
+.lsi-card {
+    background: var(--lsi-card-bg);
+    border: 1px solid var(--lsi-border);
+    border-radius: 8px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.lsi-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--lsi-border);
+    background: rgba(0,0,0,0.2);
+}
+
+.lsi-card-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: var(--lsi-text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.lsi-card-header h3 i {
+    color: var(--lsi-primary);
+}
+
+.lsi-card-body {
+    padding: 20px;
+}
+
+/* Grid */
+.lsi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+/* Stat cards - centered icons like Emby */
+.lsi-stat-card {
+    background: var(--lsi-card-bg);
+    border: 1px solid var(--lsi-border);
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+}
+
+.lsi-stat-icon {
+    font-size: 32px;
+    margin-bottom: 10px;
+    color: var(--lsi-primary);
+}
+
+.lsi-stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--lsi-text);
+    margin-bottom: 5px;
+}
+
+.lsi-stat-value.temp-ok { color: var(--lsi-success); }
+.lsi-stat-value.temp-warning { color: var(--lsi-warning); }
+.lsi-stat-value.temp-critical { color: var(--lsi-danger); }
+
+.lsi-stat-label {
+    font-size: 13px;
+    color: var(--lsi-text-muted);
+}
+
+/* Buttons */
+.lsi-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.lsi-btn i { font-size: 12px; }
+
+.lsi-btn-primary {
+    background: var(--lsi-primary);
+    color: #fff;
+}
+
+.lsi-btn-primary:hover {
+    background: var(--lsi-primary-dark);
+}
+
+.lsi-btn-success {
+    background: var(--lsi-success);
+    color: #fff;
+}
+
+.lsi-btn-success:hover {
+    background: #229954;
+}
+
+.lsi-btn-danger {
+    background: var(--lsi-danger);
+    color: #fff;
+}
+
+.lsi-btn-danger:hover {
+    background: #a93226;
+}
+
+.lsi-btn-secondary {
+    background: var(--lsi-border);
+    color: var(--lsi-text);
+}
+
+.lsi-btn-secondary:hover {
+    background: #4a4a4a;
+}
+
+.lsi-btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+/* Tables */
+.lsi-table-wrapper {
+    overflow-x: auto;
+}
+
+.lsi-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.lsi-table th,
+.lsi-table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--lsi-border);
+}
+
+.lsi-table th {
+    background: rgba(0,0,0,0.2);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    color: var(--lsi-text-muted);
+}
+
+.lsi-table tbody tr:hover {
+    background: rgba(255,255,255,0.02);
+}
+
+/* Forms - Settings layout matching Emby */
+.lsi-form-group {
+    margin-bottom: 15px;
+}
+
+.lsi-form-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--lsi-text);
+    font-size: 13px;
+}
+
+.lsi-form-group input[type="text"],
+.lsi-form-group input[type="number"],
+.lsi-form-group input[type="password"],
+.lsi-form-group select,
+.lsi-form-group textarea {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--lsi-bg);
+    border: 1px solid var(--lsi-border);
+    border-radius: 4px;
+    color: var(--lsi-text);
+    font-size: 13px;
+}
+
+.lsi-form-group input:focus,
+.lsi-form-group select:focus,
+.lsi-form-group textarea:focus {
+    border-color: var(--lsi-primary);
+    outline: none;
+}
+
+.lsi-form-group input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+.lsi-form-hint {
+    font-size: 11px;
+    color: var(--lsi-text-muted);
+    margin-top: 4px;
+}
+
+.lsi-form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+/* Settings grid - 2 columns like Emby */
+.lsi-settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+@media (max-width: 1000px) {
+    .lsi-settings-grid {
+        grid-template-columns: 1fr;
     }
+}
 
-    /* Header */
+/* Chart container */
+.lsi-chart-container {
+    position: relative;
+    height: 300px;
+    padding: 15px;
+}
+
+/* PHY Status Grid */
+.lsi-phy-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.lsi-phy-card {
+    background: var(--lsi-bg);
+    border: 1px solid var(--lsi-border);
+    border-radius: 6px;
+    padding: 12px;
+}
+
+.lsi-phy-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.lsi-phy-name {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.lsi-phy-status {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.lsi-phy-status.up { background: var(--lsi-success); }
+.lsi-phy-status.down { background: var(--lsi-danger); }
+
+.lsi-phy-stat {
+    font-size: 11px;
+    color: var(--lsi-text-muted);
+    display: flex;
+    justify-content: space-between;
+}
+
+.lsi-phy-stat.error span:last-child {
+    color: var(--lsi-danger);
+}
+
+/* Alerts */
+.lsi-alert {
+    padding: 12px 15px;
+    border-radius: 4px;
+    margin-bottom: 15px;
+}
+
+.lsi-alert-success {
+    background: rgba(39, 174, 96, 0.15);
+    border: 1px solid var(--lsi-success);
+    color: var(--lsi-success);
+}
+
+.lsi-alert-warning {
+    background: rgba(243, 156, 18, 0.15);
+    border: 1px solid var(--lsi-warning);
+    color: var(--lsi-warning);
+}
+
+.lsi-alert-danger {
+    background: rgba(192, 57, 43, 0.15);
+    border: 1px solid var(--lsi-danger);
+    color: var(--lsi-danger);
+}
+
+.lsi-alert-info {
+    background: rgba(52, 152, 219, 0.15);
+    border: 1px solid var(--lsi-info);
+    color: var(--lsi-info);
+}
+
+/* Log viewer */
+.lsi-log-viewer {
+    background: #0d0d0d;
+    color: #ccc;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 15px;
+    border-radius: 4px;
+    height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Hidden */
+.lsi-hidden {
+    display: none !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
     .lsi-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
+        flex-direction: column;
+        align-items: flex-start;
         gap: 15px;
-        margin-bottom: 20px;
-        padding-bottom: 15px;
-        border-bottom: 1px solid var(--border-color, #444);
-    }
-
-    .lsi-header-left {
-        display: flex;
-        align-items: center;
-        gap: 15px;
-    }
-
-    .lsi-header h1 {
-        margin: 0;
-        font-size: 24px;
-        color: var(--text-color, #fff);
     }
 
     .lsi-header-right {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-    }
-
-    /* Status badges */
-    .lsi-status-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 12px;
-        border-radius: 4px;
-        font-size: 13px;
-        font-weight: 500;
-    }
-
-    .lsi-status-badge.running {
-        background: rgba(39, 174, 96, 0.2);
-        color: #27ae60;
-        border: 1px solid #27ae60;
-    }
-
-    .lsi-status-badge.stopped {
-        background: rgba(192, 57, 43, 0.2);
-        color: #c0392b;
-        border: 1px solid #c0392b;
-    }
-
-    .lsi-status-badge.healthy {
-        background: rgba(39, 174, 96, 0.2);
-        color: #27ae60;
-        border: 1px solid #27ae60;
-    }
-
-    .lsi-status-badge.warning {
-        background: rgba(243, 156, 18, 0.2);
-        color: #f39c12;
-        border: 1px solid #f39c12;
-    }
-
-    .lsi-status-badge.critical {
-        background: rgba(192, 57, 43, 0.2);
-        color: #c0392b;
-        border: 1px solid #c0392b;
-    }
-
-    .lsi-version {
-        color: var(--text-muted, #888);
-        font-size: 12px;
-    }
-
-    /* Tabs */
-    .lsi-tabs {
-        display: flex;
-        gap: 5px;
-        margin-bottom: 20px;
-        border-bottom: 1px solid var(--border-color, #444);
-        padding-bottom: 0;
-        flex-wrap: wrap;
-    }
-
-    .lsi-tab {
-        padding: 10px 20px;
-        background: transparent;
-        border: none;
-        border-bottom: 3px solid transparent;
-        color: var(--text-muted, #888);
-        cursor: pointer;
-        font-size: 14px;
-        font-weight: 500;
-        transition: all 0.2s;
-        margin: 0;
-    }
-
-    .lsi-tab:hover {
-        color: var(--text-color, #fff);
-        background: rgba(242, 101, 34, 0.1);
-    }
-
-    .lsi-tab.active {
-        color: #F26522;
-        border-bottom-color: #F26522;
-        background: rgba(242, 101, 34, 0.1);
-    }
-
-    .lsi-panel {
-        display: none;
-    }
-
-    .lsi-panel.active {
-        display: block;
-    }
-
-    /* Cards */
-    .lsi-card {
-        background: var(--card-background, #1a1a1a);
-        border: 1px solid var(--border-color, #333);
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 20px;
-    }
-
-    .lsi-card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 15px;
-        padding-bottom: 10px;
-        border-bottom: 1px solid var(--border-color, #333);
-    }
-
-    .lsi-card-header h3 {
-        margin: 0;
-        font-size: 16px;
-        color: var(--text-color, #fff);
-    }
-
-    /* Grid */
-    .lsi-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 20px;
-    }
-
-    .lsi-grid-2 {
-        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-    }
-
-    /* Stat cards */
-    .lsi-stat-card {
-        background: var(--card-background, #1a1a1a);
-        border: 1px solid var(--border-color, #333);
-        border-radius: 8px;
-        padding: 20px;
-        text-align: center;
-    }
-
-    .lsi-stat-icon {
-        font-size: 32px;
-        margin-bottom: 10px;
-    }
-
-    .lsi-stat-value {
-        font-size: 28px;
-        font-weight: 700;
-        color: var(--text-color, #fff);
-        margin-bottom: 5px;
-    }
-
-    .lsi-stat-value.temp-ok { color: #27ae60; }
-    .lsi-stat-value.temp-warning { color: #f39c12; }
-    .lsi-stat-value.temp-critical { color: #c0392b; }
-
-    .lsi-stat-label {
-        font-size: 13px;
-        color: var(--text-muted, #888);
-    }
-
-    /* Buttons */
-    .lsi-btn {
-        padding: 8px 16px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 500;
-        transition: all 0.2s;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-    }
-
-    .lsi-btn-primary {
-        background: #F26522;
-        color: #fff;
-    }
-
-    .lsi-btn-primary:hover {
-        background: #d35400;
-    }
-
-    .lsi-btn-success {
-        background: #27ae60;
-        color: #fff;
-    }
-
-    .lsi-btn-success:hover {
-        background: #1e8449;
-    }
-
-    .lsi-btn-danger {
-        background: #c0392b;
-        color: #fff;
-    }
-
-    .lsi-btn-danger:hover {
-        background: #922b21;
-    }
-
-    .lsi-btn-secondary {
-        background: var(--border-color, #444);
-        color: var(--text-color, #fff);
-    }
-
-    .lsi-btn-secondary:hover {
-        background: #555;
-    }
-
-    .lsi-btn-sm {
-        padding: 5px 10px;
-        font-size: 12px;
-    }
-
-    /* Forms */
-    .lsi-form-group {
-        margin-bottom: 15px;
-    }
-
-    .lsi-form-group label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: 500;
-        color: var(--text-color, #fff);
-    }
-
-    .lsi-form-group input,
-    .lsi-form-group select,
-    .lsi-form-group textarea {
         width: 100%;
-        padding: 8px 12px;
-        border: 1px solid var(--border-color, #444);
-        border-radius: 4px;
-        background: var(--body-background, #1a1a1a);
-        color: var(--text-color, #fff);
-        font-size: 14px;
-        box-sizing: border-box;
+        justify-content: flex-start;
     }
 
-    .lsi-form-group input:focus,
-    .lsi-form-group select:focus {
-        outline: none;
-        border-color: #F26522;
+    .lsi-grid {
+        grid-template-columns: 1fr;
     }
 
-    .lsi-form-hint {
-        font-size: 12px;
-        color: var(--text-muted, #888);
-        margin-top: 4px;
+    .lsi-tabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
     }
 
     .lsi-form-row {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 15px;
+        grid-template-columns: 1fr;
     }
 
-    .lsi-section {
-        margin-bottom: 25px;
+    .lsi-settings-grid {
+        grid-template-columns: 1fr;
     }
+}
 
-    .lsi-section h4 {
-        margin: 0 0 15px 0;
-        font-size: 14px;
-        color: #F26522;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
+/* Section headers in settings */
+.lsi-section-header {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--lsi-primary);
+    margin: 20px 0 15px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--lsi-border);
+}
 
-    /* Tables */
-    .lsi-table-wrapper {
-        overflow-x: auto;
-    }
+.lsi-section-header:first-child {
+    margin-top: 0;
+}
+</style>
 
-    .lsi-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-
-    .lsi-table th,
-    .lsi-table td {
-        padding: 10px 12px;
-        text-align: left;
-        border-bottom: 1px solid var(--border-color, #333);
-    }
-
-    .lsi-table th {
-        background: rgba(242, 101, 34, 0.1);
-        font-weight: 600;
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: var(--text-muted, #888);
-    }
-
-    .lsi-table tr:hover {
-        background: rgba(255, 255, 255, 0.02);
-    }
-
-    /* Log viewer */
-    .lsi-log-viewer {
-        background: #0a0a0a;
-        border: 1px solid var(--border-color, #333);
-        border-radius: 4px;
-        padding: 15px;
-        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-        font-size: 12px;
-        line-height: 1.5;
-        max-height: 500px;
-        overflow: auto;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        color: #a0a0a0;
-    }
-
-    /* Chart container */
-    .lsi-chart-container {
-        position: relative;
-        height: 300px;
-    }
-
-    /* Alerts */
-    .lsi-alert {
-        padding: 12px 15px;
-        border-radius: 4px;
-        margin-bottom: 15px;
-    }
-
-    .lsi-alert-warning {
-        background: rgba(243, 156, 18, 0.15);
-        border: 1px solid #f39c12;
-        color: #f39c12;
-    }
-
-    .lsi-alert-danger {
-        background: rgba(192, 57, 43, 0.15);
-        border: 1px solid #c0392b;
-        color: #c0392b;
-    }
-
-    .lsi-alert-info {
-        background: rgba(52, 152, 219, 0.15);
-        border: 1px solid #3498db;
-        color: #3498db;
-    }
-
-    /* PHY Status */
-    .lsi-phy-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-        gap: 10px;
-    }
-
-    .lsi-phy-card {
-        background: var(--body-background, #1a1a1a);
-        border: 1px solid var(--border-color, #333);
-        border-radius: 6px;
-        padding: 12px;
-    }
-
-    .lsi-phy-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
-    }
-
-    .lsi-phy-name {
-        font-weight: 600;
-    }
-
-    .lsi-phy-status {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-    }
-
-    .lsi-phy-status.up { background: #27ae60; }
-    .lsi-phy-status.down { background: #c0392b; }
-
-    .lsi-phy-stat {
-        font-size: 11px;
-        color: var(--text-muted, #888);
-        display: flex;
-        justify-content: space-between;
-    }
-
-    .lsi-phy-stat.error span:last-child {
-        color: #e74c3c;
-    }
-
-    /* Hidden */
-    .lsi-hidden {
-        display: none !important;
-    }
-
-    /* Responsive */
-    @media (max-width: 768px) {
-        .lsi-header {
-            flex-direction: column;
-            align-items: flex-start;
-        }
-
-        .lsi-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .lsi-tabs {
-            overflow-x: auto;
-            flex-wrap: nowrap;
-        }
-
-        .lsi-form-row {
-            grid-template-columns: 1fr;
-        }
-    }
-    </style>
-</head>
-<body>
 <div class="lsi-container">
-    <!-- Header -->
+    <!-- Header - Status badges on RIGHT like Emby -->
     <div class="lsi-header">
-        <div class="lsi-header-left">
-            <h1>ATP LSI Monitor</h1>
-            <span class="lsi-status-badge <?=$isRunning ? 'running' : 'stopped'?>" id="serviceStatus">
-                <span id="statusDot">●</span>
-                <span id="statusText"><?=$isRunning ? "Running" . ($pid ? " (PID: $pid)" : "") : "Stopped"?></span>
-            </span>
-            <span class="lsi-status-badge" id="healthBadge">
-                <span>Health: <span id="healthStatus">--</span></span>
-            </span>
+        <div class="lsi-title">
+            <h1><i class="fa fa-microchip"></i> ATP LSI Monitor</h1>
         </div>
         <div class="lsi-header-right">
-            <button class="lsi-btn <?=$isRunning ? 'lsi-btn-danger' : 'lsi-btn-success'?>" id="serviceBtn" onclick="toggleService()">
-                <?=$isRunning ? '⏹ Stop' : '▶ Start'?>
+            <span class="lsi-status-badge <?php echo $isRunning ? 'running' : 'stopped'; ?>" id="statusBadge">
+                <i class="fa fa-circle"></i>
+                <span id="statusText"><?php echo $isRunning ? "Running" : "Stopped"; ?><?php if ($isRunning && $pid): ?> (PID <?php echo $pid; ?>)<?php endif; ?></span>
+            </span>
+            <span class="lsi-status-badge" id="healthBadge">
+                <i class="fa fa-heart-pulse"></i>
+                <span id="healthStatus">--</span>
+            </span>
+            <button class="lsi-btn <?php echo $isRunning ? 'lsi-btn-danger' : 'lsi-btn-success'; ?>" onclick="toggleService()" id="serviceToggleBtn">
+                <i class="fa fa-<?php echo $isRunning ? 'stop' : 'play'; ?>" id="serviceToggleIcon"></i>
+                <span id="serviceToggleText"><?php echo $isRunning ? 'Stop' : 'Start'; ?></span>
             </button>
             <span class="lsi-version"><?=$version?></span>
         </div>
     </div>
 
-    <!-- Tabs -->
+    <!-- Tabs - same style as Emby -->
     <div class="lsi-tabs">
-        <button class="lsi-tab active" data-tab="dashboard">Dashboard</button>
-        <button class="lsi-tab" data-tab="temperature">Temperature</button>
-        <button class="lsi-tab" data-tab="hardware">Hardware</button>
-        <button class="lsi-tab" data-tab="alerts">Alerts</button>
-        <button class="lsi-tab" data-tab="settings">Settings</button>
-        <button class="lsi-tab" data-tab="logs">Logs</button>
+        <button class="lsi-tab active" data-tab="dashboard"><i class="fa fa-gauge-high"></i> Dashboard</button>
+        <button class="lsi-tab" data-tab="temperature"><i class="fa fa-temperature-half"></i> Temperature</button>
+        <button class="lsi-tab" data-tab="hardware"><i class="fa fa-server"></i> Hardware</button>
+        <button class="lsi-tab" data-tab="alerts"><i class="fa fa-bell"></i> Alerts</button>
+        <button class="lsi-tab" data-tab="settings"><i class="fa fa-cog"></i> Settings</button>
+        <button class="lsi-tab" data-tab="logs"><i class="fa fa-file-lines"></i> Logs</button>
     </div>
 
     <!-- Dashboard Panel -->
@@ -1365,22 +1468,22 @@ $csrf_token = $var['csrf_token'] ?? '';
         <!-- Current Stats -->
         <div class="lsi-grid">
             <div class="lsi-stat-card">
-                <div class="lsi-stat-icon">🌡️</div>
+                <div class="lsi-stat-icon"><i class="fa fa-temperature-half"></i></div>
                 <div class="lsi-stat-value" id="currentTemp">--</div>
                 <div class="lsi-stat-label">Current Temperature</div>
             </div>
             <div class="lsi-stat-card">
-                <div class="lsi-stat-icon">📈</div>
+                <div class="lsi-stat-icon"><i class="fa fa-arrow-up"></i></div>
                 <div class="lsi-stat-value" id="maxTemp24h">--</div>
                 <div class="lsi-stat-label">Max (24h)</div>
             </div>
             <div class="lsi-stat-card">
-                <div class="lsi-stat-icon">📊</div>
+                <div class="lsi-stat-icon"><i class="fa fa-chart-line"></i></div>
                 <div class="lsi-stat-value" id="avgTemp24h">--</div>
                 <div class="lsi-stat-label">Avg (24h)</div>
             </div>
             <div class="lsi-stat-card">
-                <div class="lsi-stat-icon">⚠️</div>
+                <div class="lsi-stat-icon"><i class="fa fa-triangle-exclamation"></i></div>
                 <div class="lsi-stat-value" id="alertCount">--</div>
                 <div class="lsi-stat-label">Alerts (24h)</div>
             </div>
@@ -1389,9 +1492,9 @@ $csrf_token = $var['csrf_token'] ?? '';
         <!-- Temperature Chart -->
         <div class="lsi-card">
             <div class="lsi-card-header">
-                <h3>Temperature History (24h)</h3>
+                <h3><i class="fa fa-chart-area"></i> Temperature History (24h)</h3>
                 <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="refreshChart()">
-                    🔄 Refresh
+                    <i class="fa fa-sync"></i> Refresh
                 </button>
             </div>
             <div class="lsi-chart-container">
@@ -1402,13 +1505,15 @@ $csrf_token = $var['csrf_token'] ?? '';
         <!-- PHY Status -->
         <div class="lsi-card">
             <div class="lsi-card-header">
-                <h3>PHY Status</h3>
+                <h3><i class="fa fa-network-wired"></i> PHY Status</h3>
                 <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="refreshPhyStatus()">
-                    🔄 Refresh
+                    <i class="fa fa-sync"></i> Refresh
                 </button>
             </div>
-            <div class="lsi-phy-grid" id="phyGrid">
-                <div class="lsi-alert lsi-alert-info">Loading PHY status...</div>
+            <div class="lsi-card-body">
+                <div class="lsi-phy-grid" id="phyGrid">
+                    <div class="lsi-alert lsi-alert-info">Loading PHY status...</div>
+                </div>
             </div>
         </div>
     </div>
@@ -1417,15 +1522,15 @@ $csrf_token = $var['csrf_token'] ?? '';
     <div class="lsi-panel" id="panel-temperature">
         <div class="lsi-card">
             <div class="lsi-card-header">
-                <h3>Temperature History</h3>
-                <div>
-                    <select id="tempPeriod" onchange="loadTempHistory()">
+                <h3><i class="fa fa-chart-line"></i> Temperature History</h3>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="tempPeriod" onchange="loadTempHistory()" style="padding: 6px 10px; background: var(--lsi-bg); border: 1px solid var(--lsi-border); border-radius: 4px; color: var(--lsi-text);">
                         <option value="24">Last 24 hours</option>
                         <option value="168">Last 7 days</option>
                         <option value="720">Last 30 days</option>
                     </select>
                     <button class="lsi-btn lsi-btn-primary lsi-btn-sm" onclick="readTemperature()">
-                        📖 Read Now
+                        <i class="fa fa-thermometer"></i> Read Now
                     </button>
                 </div>
             </div>
@@ -1434,11 +1539,11 @@ $csrf_token = $var['csrf_token'] ?? '';
             </div>
         </div>
 
-        <div class="lsi-grid lsi-grid-2">
-            <div class="lsi-card">
-                <div class="lsi-card-header">
-                    <h3>Statistics</h3>
-                </div>
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3><i class="fa fa-table"></i> Statistics</h3>
+            </div>
+            <div class="lsi-card-body">
                 <div class="lsi-table-wrapper">
                     <table class="lsi-table">
                         <thead>
@@ -1456,47 +1561,52 @@ $csrf_token = $var['csrf_token'] ?? '';
                     </table>
                 </div>
             </div>
+        </div>
 
-            <div class="lsi-card">
-                <div class="lsi-card-header">
-                    <h3>Reports</h3>
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3><i class="fa fa-file-export"></i> Generate Report</h3>
+            </div>
+            <div class="lsi-card-body">
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button class="lsi-btn lsi-btn-secondary" onclick="generateReport('daily')">
+                        <i class="fa fa-calendar-day"></i> Daily
+                    </button>
+                    <button class="lsi-btn lsi-btn-secondary" onclick="generateReport('weekly')">
+                        <i class="fa fa-calendar-week"></i> Weekly
+                    </button>
+                    <button class="lsi-btn lsi-btn-secondary" onclick="generateReport('monthly')">
+                        <i class="fa fa-calendar"></i> Monthly
+                    </button>
                 </div>
-                <div class="lsi-form-group">
-                    <label>Generate Report</label>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <button class="lsi-btn lsi-btn-secondary" onclick="generateReport('daily')">Daily</button>
-                        <button class="lsi-btn lsi-btn-secondary" onclick="generateReport('weekly')">Weekly</button>
-                        <button class="lsi-btn lsi-btn-secondary" onclick="generateReport('monthly')">Monthly</button>
-                    </div>
-                </div>
-                <div id="reportOutput" class="lsi-log-viewer" style="max-height: 200px; margin-top: 15px; display: none;"></div>
+                <pre id="reportOutput" style="display: none; background: var(--lsi-bg); padding: 15px; border-radius: 4px; white-space: pre-wrap;"></pre>
             </div>
         </div>
     </div>
 
     <!-- Hardware Panel -->
     <div class="lsi-panel" id="panel-hardware">
-        <div class="lsi-grid lsi-grid-2">
+        <div class="lsi-grid" style="grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));">
             <div class="lsi-card">
                 <div class="lsi-card-header">
-                    <h3>Firmware Information</h3>
+                    <h3><i class="fa fa-microchip"></i> Firmware Information</h3>
                     <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadFirmwareInfo()">
-                        🔄 Refresh
+                        <i class="fa fa-sync"></i> Refresh
                     </button>
                 </div>
-                <div id="firmwareInfo">
+                <div class="lsi-card-body" id="firmwareInfo">
                     <div class="lsi-alert lsi-alert-info">Loading firmware info...</div>
                 </div>
             </div>
 
             <div class="lsi-card">
                 <div class="lsi-card-header">
-                    <h3>Connected Devices</h3>
+                    <h3><i class="fa fa-hard-drive"></i> Connected Devices</h3>
                     <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadDevices()">
-                        🔄 Refresh
+                        <i class="fa fa-sync"></i> Refresh
                     </button>
                 </div>
-                <div id="devicesInfo">
+                <div class="lsi-card-body" id="devicesInfo">
                     <div class="lsi-alert lsi-alert-info">Loading devices...</div>
                 </div>
             </div>
@@ -1504,28 +1614,30 @@ $csrf_token = $var['csrf_token'] ?? '';
 
         <div class="lsi-card">
             <div class="lsi-card-header">
-                <h3>PHY Link Errors</h3>
+                <h3><i class="fa fa-network-wired"></i> PHY Link Errors</h3>
                 <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadPhyErrors()">
-                    🔄 Refresh
+                    <i class="fa fa-sync"></i> Refresh
                 </button>
             </div>
-            <div class="lsi-table-wrapper">
-                <table class="lsi-table">
-                    <thead>
-                        <tr>
-                            <th>PHY</th>
-                            <th>Status</th>
-                            <th>Invalid DWord</th>
-                            <th>Running Disparity</th>
-                            <th>Loss of Sync</th>
-                            <th>Phy Reset</th>
-                            <th>Total</th>
-                        </tr>
-                    </thead>
-                    <tbody id="phyErrorsTable">
-                        <tr><td colspan="7">Loading...</td></tr>
-                    </tbody>
-                </table>
+            <div class="lsi-card-body">
+                <div class="lsi-table-wrapper">
+                    <table class="lsi-table">
+                        <thead>
+                            <tr>
+                                <th>PHY</th>
+                                <th>Status</th>
+                                <th>Invalid DWord</th>
+                                <th>Running Disparity</th>
+                                <th>Loss of Sync</th>
+                                <th>Phy Reset</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="phyErrorsTable">
+                            <tr><td colspan="7">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -1534,288 +1646,351 @@ $csrf_token = $var['csrf_token'] ?? '';
     <div class="lsi-panel" id="panel-alerts">
         <div class="lsi-card">
             <div class="lsi-card-header">
-                <h3>Alert History</h3>
-                <button class="lsi-btn lsi-btn-danger lsi-btn-sm" onclick="clearAlerts()">
-                    🗑️ Clear All
-                </button>
+                <h3><i class="fa fa-bell"></i> Alert History</h3>
+                <div style="display: flex; gap: 10px;">
+                    <button class="lsi-btn lsi-btn-danger lsi-btn-sm" onclick="clearAlerts()">
+                        <i class="fa fa-trash"></i> Clear All
+                    </button>
+                    <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadAlerts()">
+                        <i class="fa fa-sync"></i> Refresh
+                    </button>
+                </div>
             </div>
-            <div class="lsi-table-wrapper">
-                <table class="lsi-table">
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>Type</th>
-                            <th>Severity</th>
-                            <th>Message</th>
-                        </tr>
-                    </thead>
-                    <tbody id="alertsTable">
-                        <tr><td colspan="4">Loading...</td></tr>
-                    </tbody>
-                </table>
+            <div class="lsi-card-body">
+                <div class="lsi-table-wrapper">
+                    <table class="lsi-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Type</th>
+                                <th>Severity</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alertsTable">
+                            <tr><td colspan="4">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Settings Panel -->
+    <!-- Settings Panel - 2-column layout like Emby -->
     <div class="lsi-panel" id="panel-settings">
         <form id="settingsForm" onsubmit="saveSettings(event)">
             <input type="hidden" name="csrf_token" value="<?=$csrf_token?>">
 
-            <!-- General Settings -->
-            <div class="lsi-card">
-                <div class="lsi-card-header">
-                    <h3>General Settings</h3>
+            <div class="lsi-settings-grid">
+                <!-- Left Column -->
+                <div>
+                    <!-- LSI Configuration -->
+                    <div class="lsi-card">
+                        <div class="lsi-card-header">
+                            <h3><i class="fa fa-microchip"></i> LSI Configuration</h3>
+                        </div>
+                        <div class="lsi-card-body">
+                            <div class="lsi-form-group">
+                                <label>
+                                    <input type="checkbox" name="ENABLED" id="setting_ENABLED" <?php echo $settings['ENABLED'] ? 'checked' : ''; ?>>
+                                    Enable Monitoring
+                                </label>
+                                <div class="lsi-form-hint">Enable/disable automatic temperature polling</div>
+                            </div>
+
+                            <div class="lsi-form-row">
+                                <div class="lsi-form-group">
+                                    <label>Poll Interval (seconds)</label>
+                                    <input type="number" name="POLL_INTERVAL" id="setting_POLL_INTERVAL" value="<?php echo $settings['POLL_INTERVAL']; ?>" min="60" max="3600">
+                                    <div class="lsi-form-hint">How often to read temperature (60-3600s)</div>
+                                </div>
+                                <div class="lsi-form-group">
+                                    <label>LSI Port Number</label>
+                                    <input type="number" name="LSI_PORT" id="setting_LSI_PORT" value="<?php echo $settings['LSI_PORT']; ?>" min="1" max="8">
+                                    <div class="lsi-form-hint">lsiutil port number (usually 1)</div>
+                                </div>
+                            </div>
+
+                            <div class="lsi-form-group">
+                                <label>lsiutil Path</label>
+                                <input type="text" name="LSIUTIL_PATH" id="setting_LSIUTIL_PATH" value="<?php echo htmlspecialchars($settings['LSIUTIL_PATH']); ?>">
+                                <div class="lsi-form-hint">Path to lsiutil binary (default: bundled)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Temperature Thresholds -->
+                    <div class="lsi-card">
+                        <div class="lsi-card-header">
+                            <h3><i class="fa fa-temperature-half"></i> Temperature Thresholds</h3>
+                        </div>
+                        <div class="lsi-card-body">
+                            <div class="lsi-form-row">
+                                <div class="lsi-form-group">
+                                    <label>Warning Threshold (°C)</label>
+                                    <input type="number" name="TEMP_WARNING" id="setting_TEMP_WARNING" value="<?php echo $settings['TEMP_WARNING']; ?>" min="30" max="80">
+                                    <div class="lsi-form-hint">Temperature for warning alert (yellow)</div>
+                                </div>
+                                <div class="lsi-form-group">
+                                    <label>Critical Threshold (°C)</label>
+                                    <input type="number" name="TEMP_CRITICAL" id="setting_TEMP_CRITICAL" value="<?php echo $settings['TEMP_CRITICAL']; ?>" min="40" max="90">
+                                    <div class="lsi-form-hint">Temperature for critical alert (red)</div>
+                                </div>
+                            </div>
+                            <div class="lsi-form-group">
+                                <label>
+                                    <input type="checkbox" name="TEMP_SHUTDOWN_ENABLED" id="setting_TEMP_SHUTDOWN_ENABLED" <?php echo $settings['TEMP_SHUTDOWN_ENABLED'] ? 'checked' : ''; ?>>
+                                    Enable Emergency Shutdown
+                                </label>
+                                <div class="lsi-form-hint" style="color: var(--lsi-danger);">⚠️ Shutdown system on critical temperature (USE WITH CAUTION!)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Alert Settings -->
+                    <div class="lsi-card">
+                        <div class="lsi-card-header">
+                            <h3><i class="fa fa-bell"></i> Alert Settings</h3>
+                        </div>
+                        <div class="lsi-card-body">
+                            <div class="lsi-form-row">
+                                <div class="lsi-form-group">
+                                    <label>
+                                        <input type="checkbox" name="ALERT_ON_WARNING" id="setting_ALERT_ON_WARNING" <?php echo $settings['ALERT_ON_WARNING'] ? 'checked' : ''; ?>>
+                                        Alert on Warning
+                                    </label>
+                                </div>
+                                <div class="lsi-form-group">
+                                    <label>
+                                        <input type="checkbox" name="ALERT_ON_CRITICAL" id="setting_ALERT_ON_CRITICAL" <?php echo $settings['ALERT_ON_CRITICAL'] ? 'checked' : ''; ?>>
+                                        Alert on Critical
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="lsi-form-group">
+                                <label>
+                                    <input type="checkbox" name="ALERT_ON_PHY_ERRORS" id="setting_ALERT_ON_PHY_ERRORS" <?php echo $settings['ALERT_ON_PHY_ERRORS'] ? 'checked' : ''; ?>>
+                                    Alert on PHY Errors
+                                </label>
+                                <div class="lsi-form-hint">Alert when PHY error count exceeds threshold</div>
+                            </div>
+                            <div class="lsi-form-group">
+                                <label>Alert Cooldown (seconds)</label>
+                                <input type="number" name="ALERT_COOLDOWN" id="setting_ALERT_COOLDOWN" value="<?php echo $settings['ALERT_COOLDOWN']; ?>" min="300" max="86400">
+                                <div class="lsi-form-hint">Minimum time between repeated alerts</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Logging -->
+                    <div class="lsi-card">
+                        <div class="lsi-card-header">
+                            <h3><i class="fa fa-file-lines"></i> Logging</h3>
+                        </div>
+                        <div class="lsi-card-body">
+                            <div class="lsi-form-row">
+                                <div class="lsi-form-group">
+                                    <label>Log Level</label>
+                                    <select name="LOG_LEVEL" id="setting_LOG_LEVEL">
+                                        <option value="DEBUG" <?php echo $settings['LOG_LEVEL'] === 'DEBUG' ? 'selected' : ''; ?>>DEBUG</option>
+                                        <option value="INFO" <?php echo $settings['LOG_LEVEL'] === 'INFO' ? 'selected' : ''; ?>>INFO</option>
+                                        <option value="WARNING" <?php echo $settings['LOG_LEVEL'] === 'WARNING' ? 'selected' : ''; ?>>WARNING</option>
+                                        <option value="ERROR" <?php echo $settings['LOG_LEVEL'] === 'ERROR' ? 'selected' : ''; ?>>ERROR</option>
+                                    </select>
+                                    <div class="lsi-form-hint">DEBUG = most verbose</div>
+                                </div>
+                                <div class="lsi-form-group">
+                                    <label>Log Retention (files)</label>
+                                    <input type="number" name="LOG_RETENTION" id="setting_LOG_RETENTION" value="<?php echo $settings['LOG_RETENTION']; ?>" min="1" max="30">
+                                    <div class="lsi-form-hint">Number of old log files to keep</div>
+                                </div>
+                            </div>
+                            <div class="lsi-form-group">
+                                <label>Max Log Size (MB)</label>
+                                <input type="number" name="LOG_MAX_SIZE_MB" id="setting_LOG_MAX_SIZE_MB" value="<?php echo $settings['LOG_MAX_SIZE_MB']; ?>" min="1" max="100">
+                                <div class="lsi-form-hint">Rotate log when size exceeds this</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="lsi-section">
-                    <h4>Monitoring</h4>
-                    <div class="lsi-form-row">
-                        <div class="lsi-form-group">
-                            <label>
-                                <input type="checkbox" name="ENABLED" id="setting_ENABLED">
-                                Enable Monitoring
-                            </label>
-                            <div class="lsi-form-hint">Enable/disable automatic temperature polling</div>
+                <!-- Right Column -->
+                <div>
+                    <!-- Notifications -->
+                    <div class="lsi-card">
+                        <div class="lsi-card-header">
+                            <h3><i class="fa fa-paper-plane"></i> Notifications</h3>
+                            <button type="button" class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="testNotification()">
+                                <i class="fa fa-vial"></i> Test
+                            </button>
                         </div>
-                        <div class="lsi-form-group">
-                            <label>Poll Interval (seconds)</label>
-                            <input type="number" name="POLL_INTERVAL" id="setting_POLL_INTERVAL" min="60" max="3600">
-                            <div class="lsi-form-hint">How often to read temperature (60-3600s)</div>
+                        <div class="lsi-card-body">
+                            <div class="lsi-form-group">
+                                <label>Notification Service</label>
+                                <select name="NOTIFICATION_SERVICE" id="setting_NOTIFICATION_SERVICE" onchange="toggleNotificationFields()">
+                                    <option value="none" <?php echo $settings['NOTIFICATION_SERVICE'] === 'none' ? 'selected' : ''; ?>>None</option>
+                                    <option value="discord" <?php echo $settings['NOTIFICATION_SERVICE'] === 'discord' ? 'selected' : ''; ?>>Discord</option>
+                                    <option value="notifiarr" <?php echo $settings['NOTIFICATION_SERVICE'] === 'notifiarr' ? 'selected' : ''; ?>>Notifiarr</option>
+                                    <option value="gotify" <?php echo $settings['NOTIFICATION_SERVICE'] === 'gotify' ? 'selected' : ''; ?>>Gotify</option>
+                                    <option value="ntfy" <?php echo $settings['NOTIFICATION_SERVICE'] === 'ntfy' ? 'selected' : ''; ?>>ntfy</option>
+                                    <option value="pushover" <?php echo $settings['NOTIFICATION_SERVICE'] === 'pushover' ? 'selected' : ''; ?>>Pushover</option>
+                                </select>
+                            </div>
+
+                            <!-- Discord -->
+                            <div id="discord-settings" class="<?php echo $settings['NOTIFICATION_SERVICE'] !== 'discord' ? 'lsi-hidden' : ''; ?>">
+                                <div class="lsi-section-header">Discord Settings</div>
+                                <div class="lsi-form-group">
+                                    <label>Webhook URL</label>
+                                    <input type="text" name="DISCORD_WEBHOOK" id="setting_DISCORD_WEBHOOK" value="<?php echo htmlspecialchars($settings['DISCORD_WEBHOOK']); ?>" placeholder="https://discord.com/api/webhooks/...">
+                                </div>
+                            </div>
+
+                            <!-- Notifiarr -->
+                            <div id="notifiarr-settings" class="<?php echo $settings['NOTIFICATION_SERVICE'] !== 'notifiarr' ? 'lsi-hidden' : ''; ?>">
+                                <div class="lsi-section-header">Notifiarr Settings</div>
+                                <div class="lsi-form-group">
+                                    <label>API Key</label>
+                                    <input type="text" name="NOTIFIARR_API_KEY" id="setting_NOTIFIARR_API_KEY" value="<?php echo htmlspecialchars($settings['NOTIFIARR_API_KEY']); ?>">
+                                </div>
+                                <div class="lsi-form-group">
+                                    <label>Channel ID (optional)</label>
+                                    <input type="text" name="NOTIFIARR_CHANNEL" id="setting_NOTIFIARR_CHANNEL" value="<?php echo htmlspecialchars($settings['NOTIFIARR_CHANNEL']); ?>">
+                                </div>
+                            </div>
+
+                            <!-- Gotify -->
+                            <div id="gotify-settings" class="<?php echo $settings['NOTIFICATION_SERVICE'] !== 'gotify' ? 'lsi-hidden' : ''; ?>">
+                                <div class="lsi-section-header">Gotify Settings</div>
+                                <div class="lsi-form-group">
+                                    <label>Server URL</label>
+                                    <input type="text" name="GOTIFY_URL" id="setting_GOTIFY_URL" value="<?php echo htmlspecialchars($settings['GOTIFY_URL']); ?>" placeholder="https://gotify.example.com">
+                                </div>
+                                <div class="lsi-form-group">
+                                    <label>App Token</label>
+                                    <input type="text" name="GOTIFY_TOKEN" id="setting_GOTIFY_TOKEN" value="<?php echo htmlspecialchars($settings['GOTIFY_TOKEN']); ?>">
+                                </div>
+                            </div>
+
+                            <!-- ntfy -->
+                            <div id="ntfy-settings" class="<?php echo $settings['NOTIFICATION_SERVICE'] !== 'ntfy' ? 'lsi-hidden' : ''; ?>">
+                                <div class="lsi-section-header">ntfy Settings</div>
+                                <div class="lsi-form-group">
+                                    <label>Server URL</label>
+                                    <input type="text" name="NTFY_URL" id="setting_NTFY_URL" value="<?php echo htmlspecialchars($settings['NTFY_URL']); ?>" placeholder="https://ntfy.sh">
+                                </div>
+                                <div class="lsi-form-group">
+                                    <label>Topic</label>
+                                    <input type="text" name="NTFY_TOPIC" id="setting_NTFY_TOPIC" value="<?php echo htmlspecialchars($settings['NTFY_TOPIC']); ?>">
+                                </div>
+                            </div>
+
+                            <!-- Pushover -->
+                            <div id="pushover-settings" class="<?php echo $settings['NOTIFICATION_SERVICE'] !== 'pushover' ? 'lsi-hidden' : ''; ?>">
+                                <div class="lsi-section-header">Pushover Settings</div>
+                                <div class="lsi-form-group">
+                                    <label>User Key</label>
+                                    <input type="text" name="PUSHOVER_USER_KEY" id="setting_PUSHOVER_USER_KEY" value="<?php echo htmlspecialchars($settings['PUSHOVER_USER_KEY']); ?>">
+                                </div>
+                                <div class="lsi-form-group">
+                                    <label>API Token</label>
+                                    <input type="text" name="PUSHOVER_API_TOKEN" id="setting_PUSHOVER_API_TOKEN" value="<?php echo htmlspecialchars($settings['PUSHOVER_API_TOKEN']); ?>">
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="lsi-form-row">
-                        <div class="lsi-form-group">
-                            <label>lsiutil Path</label>
-                            <input type="text" name="LSIUTIL_PATH" id="setting_LSIUTIL_PATH">
-                            <div class="lsi-form-hint">Path to lsiutil binary (default: bundled)</div>
+                    <!-- Scheduled Reports -->
+                    <div class="lsi-card">
+                        <div class="lsi-card-header">
+                            <h3><i class="fa fa-calendar-check"></i> Scheduled Reports</h3>
                         </div>
-                        <div class="lsi-form-group">
-                            <label>LSI Port Number</label>
-                            <input type="number" name="LSI_PORT" id="setting_LSI_PORT" min="1" max="8">
-                            <div class="lsi-form-hint">lsiutil port number (usually 1)</div>
-                        </div>
-                    </div>
-                </div>
+                        <div class="lsi-card-body">
+                            <div class="lsi-section-header">Daily Report</div>
+                            <div class="lsi-form-row">
+                                <div class="lsi-form-group">
+                                    <label>
+                                        <input type="checkbox" name="DAILY_REPORT_ENABLED" id="setting_DAILY_REPORT_ENABLED" <?php echo $settings['DAILY_REPORT_ENABLED'] ? 'checked' : ''; ?>>
+                                        Enable Daily Report
+                                    </label>
+                                </div>
+                                <div class="lsi-form-group">
+                                    <label>Send at Hour</label>
+                                    <input type="number" name="DAILY_REPORT_HOUR" id="setting_DAILY_REPORT_HOUR" value="<?php echo $settings['DAILY_REPORT_HOUR']; ?>" min="0" max="23">
+                                </div>
+                            </div>
 
-                <div class="lsi-section">
-                    <h4>Temperature Thresholds</h4>
-                    <div class="lsi-form-row">
-                        <div class="lsi-form-group">
-                            <label>Warning Threshold (°C)</label>
-                            <input type="number" name="TEMP_WARNING" id="setting_TEMP_WARNING" min="30" max="80">
-                            <div class="lsi-form-hint">Temperature for warning alert</div>
-                        </div>
-                        <div class="lsi-form-group">
-                            <label>Critical Threshold (°C)</label>
-                            <input type="number" name="TEMP_CRITICAL" id="setting_TEMP_CRITICAL" min="40" max="90">
-                            <div class="lsi-form-hint">Temperature for critical alert</div>
-                        </div>
-                    </div>
-                    <div class="lsi-form-group">
-                        <label>
-                            <input type="checkbox" name="TEMP_SHUTDOWN_ENABLED" id="setting_TEMP_SHUTDOWN_ENABLED">
-                            Enable Emergency Shutdown
-                        </label>
-                        <div class="lsi-form-hint">Shutdown system on critical temperature (USE WITH CAUTION!)</div>
-                    </div>
-                </div>
+                            <div class="lsi-section-header">Weekly Report</div>
+                            <div class="lsi-form-row">
+                                <div class="lsi-form-group">
+                                    <label>
+                                        <input type="checkbox" name="WEEKLY_REPORT_ENABLED" id="setting_WEEKLY_REPORT_ENABLED" <?php echo $settings['WEEKLY_REPORT_ENABLED'] ? 'checked' : ''; ?>>
+                                        Enable Weekly Report
+                                    </label>
+                                </div>
+                                <div class="lsi-form-group">
+                                    <label>Day of Week</label>
+                                    <select name="WEEKLY_REPORT_DAY" id="setting_WEEKLY_REPORT_DAY">
+                                        <option value="0" <?php echo $settings['WEEKLY_REPORT_DAY'] == 0 ? 'selected' : ''; ?>>Monday</option>
+                                        <option value="1" <?php echo $settings['WEEKLY_REPORT_DAY'] == 1 ? 'selected' : ''; ?>>Tuesday</option>
+                                        <option value="2" <?php echo $settings['WEEKLY_REPORT_DAY'] == 2 ? 'selected' : ''; ?>>Wednesday</option>
+                                        <option value="3" <?php echo $settings['WEEKLY_REPORT_DAY'] == 3 ? 'selected' : ''; ?>>Thursday</option>
+                                        <option value="4" <?php echo $settings['WEEKLY_REPORT_DAY'] == 4 ? 'selected' : ''; ?>>Friday</option>
+                                        <option value="5" <?php echo $settings['WEEKLY_REPORT_DAY'] == 5 ? 'selected' : ''; ?>>Saturday</option>
+                                        <option value="6" <?php echo $settings['WEEKLY_REPORT_DAY'] == 6 ? 'selected' : ''; ?>>Sunday</option>
+                                    </select>
+                                </div>
+                                <div class="lsi-form-group">
+                                    <label>Send at Hour</label>
+                                    <input type="number" name="WEEKLY_REPORT_HOUR" id="setting_WEEKLY_REPORT_HOUR" value="<?php echo $settings['WEEKLY_REPORT_HOUR']; ?>" min="0" max="23">
+                                </div>
+                            </div>
 
-                <div class="lsi-section">
-                    <h4>Alert Settings</h4>
-                    <div class="lsi-form-row">
-                        <div class="lsi-form-group">
-                            <label>
-                                <input type="checkbox" name="ALERT_ON_WARNING" id="setting_ALERT_ON_WARNING">
-                                Alert on Warning
-                            </label>
-                        </div>
-                        <div class="lsi-form-group">
-                            <label>
-                                <input type="checkbox" name="ALERT_ON_CRITICAL" id="setting_ALERT_ON_CRITICAL">
-                                Alert on Critical
-                            </label>
-                        </div>
-                        <div class="lsi-form-group">
-                            <label>
-                                <input type="checkbox" name="ALERT_ON_PHY_ERRORS" id="setting_ALERT_ON_PHY_ERRORS">
-                                Alert on PHY Errors
-                            </label>
+                            <div class="lsi-section-header">Monthly Report</div>
+                            <div class="lsi-form-row">
+                                <div class="lsi-form-group">
+                                    <label>
+                                        <input type="checkbox" name="MONTHLY_REPORT_ENABLED" id="setting_MONTHLY_REPORT_ENABLED" <?php echo $settings['MONTHLY_REPORT_ENABLED'] ? 'checked' : ''; ?>>
+                                        Enable Monthly Report
+                                    </label>
+                                </div>
+                                <div class="lsi-form-group">
+                                    <label>Day of Month</label>
+                                    <input type="number" name="MONTHLY_REPORT_DAY" id="setting_MONTHLY_REPORT_DAY" value="<?php echo $settings['MONTHLY_REPORT_DAY']; ?>" min="1" max="28">
+                                </div>
+                                <div class="lsi-form-group">
+                                    <label>Send at Hour</label>
+                                    <input type="number" name="MONTHLY_REPORT_HOUR" id="setting_MONTHLY_REPORT_HOUR" value="<?php echo $settings['MONTHLY_REPORT_HOUR']; ?>" min="0" max="23">
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="lsi-form-group">
-                        <label>Alert Cooldown (seconds)</label>
-                        <input type="number" name="ALERT_COOLDOWN" id="setting_ALERT_COOLDOWN" min="300" max="86400">
-                        <div class="lsi-form-hint">Minimum time between repeated alerts</div>
+
+                    <!-- Data Management -->
+                    <div class="lsi-card">
+                        <div class="lsi-card-header">
+                            <h3><i class="fa fa-database"></i> Data Management</h3>
+                        </div>
+                        <div class="lsi-card-body">
+                            <div class="lsi-form-group">
+                                <label>Import Legacy Data</label>
+                                <div class="lsi-form-hint">Import temperature history from old lsi_temp_history.log file</div>
+                                <div style="margin-top: 10px;">
+                                    <input type="file" id="importFile" accept=".log,.txt" style="display: none;" onchange="importLegacyData(this)">
+                                    <button type="button" class="lsi-btn lsi-btn-secondary" onclick="document.getElementById('importFile').click()">
+                                        <i class="fa fa-upload"></i> Import Legacy Log
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Notification Settings -->
-            <div class="lsi-card">
-                <div class="lsi-card-header">
-                    <h3>Notifications</h3>
-                    <button type="button" class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="testNotification()">
-                        📤 Test Notification
-                    </button>
-                </div>
-
-                <div class="lsi-form-group">
-                    <label>Notification Service</label>
-                    <select name="NOTIFICATION_SERVICE" id="setting_NOTIFICATION_SERVICE" onchange="toggleNotificationFields()">
-                        <option value="none">None</option>
-                        <option value="discord">Discord</option>
-                        <option value="notifiarr">Notifiarr</option>
-                        <option value="gotify">Gotify</option>
-                        <option value="ntfy">ntfy</option>
-                        <option value="pushover">Pushover</option>
-                    </select>
-                </div>
-
-                <!-- Discord -->
-                <div id="discord-settings" class="lsi-section lsi-hidden">
-                    <h4>Discord Settings</h4>
-                    <div class="lsi-form-group">
-                        <label>Webhook URL</label>
-                        <input type="text" name="DISCORD_WEBHOOK" id="setting_DISCORD_WEBHOOK" placeholder="https://discord.com/api/webhooks/...">
-                    </div>
-                </div>
-
-                <!-- Notifiarr -->
-                <div id="notifiarr-settings" class="lsi-section lsi-hidden">
-                    <h4>Notifiarr Settings</h4>
-                    <div class="lsi-form-row">
-                        <div class="lsi-form-group">
-                            <label>API Key</label>
-                            <input type="text" name="NOTIFIARR_API_KEY" id="setting_NOTIFIARR_API_KEY">
-                        </div>
-                        <div class="lsi-form-group">
-                            <label>Channel ID (optional)</label>
-                            <input type="text" name="NOTIFIARR_CHANNEL" id="setting_NOTIFIARR_CHANNEL">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Gotify -->
-                <div id="gotify-settings" class="lsi-section lsi-hidden">
-                    <h4>Gotify Settings</h4>
-                    <div class="lsi-form-row">
-                        <div class="lsi-form-group">
-                            <label>Server URL</label>
-                            <input type="text" name="GOTIFY_URL" id="setting_GOTIFY_URL" placeholder="https://gotify.example.com">
-                        </div>
-                        <div class="lsi-form-group">
-                            <label>App Token</label>
-                            <input type="text" name="GOTIFY_TOKEN" id="setting_GOTIFY_TOKEN">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ntfy -->
-                <div id="ntfy-settings" class="lsi-section lsi-hidden">
-                    <h4>ntfy Settings</h4>
-                    <div class="lsi-form-row">
-                        <div class="lsi-form-group">
-                            <label>Server URL</label>
-                            <input type="text" name="NTFY_URL" id="setting_NTFY_URL" placeholder="https://ntfy.sh">
-                        </div>
-                        <div class="lsi-form-group">
-                            <label>Topic</label>
-                            <input type="text" name="NTFY_TOPIC" id="setting_NTFY_TOPIC">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Pushover -->
-                <div id="pushover-settings" class="lsi-section lsi-hidden">
-                    <h4>Pushover Settings</h4>
-                    <div class="lsi-form-row">
-                        <div class="lsi-form-group">
-                            <label>User Key</label>
-                            <input type="text" name="PUSHOVER_USER_KEY" id="setting_PUSHOVER_USER_KEY">
-                        </div>
-                        <div class="lsi-form-group">
-                            <label>API Token</label>
-                            <input type="text" name="PUSHOVER_API_TOKEN" id="setting_PUSHOVER_API_TOKEN">
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Scheduled Reports -->
-            <div class="lsi-card">
-                <div class="lsi-card-header">
-                    <h3>Scheduled Reports</h3>
-                </div>
-
-                <div class="lsi-section">
-                    <h4>Daily Report</h4>
-                    <div class="lsi-form-row">
-                        <div class="lsi-form-group">
-                            <label>
-                                <input type="checkbox" name="DAILY_REPORT_ENABLED" id="setting_DAILY_REPORT_ENABLED">
-                                Enable Daily Report
-                            </label>
-                        </div>
-                        <div class="lsi-form-group">
-                            <label>Send at Hour</label>
-                            <input type="number" name="DAILY_REPORT_HOUR" id="setting_DAILY_REPORT_HOUR" min="0" max="23">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="lsi-section">
-                    <h4>Weekly Report</h4>
-                    <div class="lsi-form-row">
-                        <div class="lsi-form-group">
-                            <label>
-                                <input type="checkbox" name="WEEKLY_REPORT_ENABLED" id="setting_WEEKLY_REPORT_ENABLED">
-                                Enable Weekly Report
-                            </label>
-                        </div>
-                        <div class="lsi-form-group">
-                            <label>Day of Week</label>
-                            <select name="WEEKLY_REPORT_DAY" id="setting_WEEKLY_REPORT_DAY">
-                                <option value="0">Monday</option>
-                                <option value="1">Tuesday</option>
-                                <option value="2">Wednesday</option>
-                                <option value="3">Thursday</option>
-                                <option value="4">Friday</option>
-                                <option value="5">Saturday</option>
-                                <option value="6">Sunday</option>
-                            </select>
-                        </div>
-                        <div class="lsi-form-group">
-                            <label>Send at Hour</label>
-                            <input type="number" name="WEEKLY_REPORT_HOUR" id="setting_WEEKLY_REPORT_HOUR" min="0" max="23">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="lsi-section">
-                    <h4>Monthly Report</h4>
-                    <div class="lsi-form-row">
-                        <div class="lsi-form-group">
-                            <label>
-                                <input type="checkbox" name="MONTHLY_REPORT_ENABLED" id="setting_MONTHLY_REPORT_ENABLED">
-                                Enable Monthly Report
-                            </label>
-                        </div>
-                        <div class="lsi-form-group">
-                            <label>Day of Month</label>
-                            <input type="number" name="MONTHLY_REPORT_DAY" id="setting_MONTHLY_REPORT_DAY" min="1" max="28">
-                        </div>
-                        <div class="lsi-form-group">
-                            <label>Send at Hour</label>
-                            <input type="number" name="MONTHLY_REPORT_HOUR" id="setting_MONTHLY_REPORT_HOUR" min="0" max="23">
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                <button type="submit" class="lsi-btn lsi-btn-primary">💾 Save Settings</button>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                <button type="submit" class="lsi-btn lsi-btn-primary">
+                    <i class="fa fa-save"></i> Save Settings
+                </button>
             </div>
         </form>
     </div>
@@ -1824,10 +1999,15 @@ $csrf_token = $var['csrf_token'] ?? '';
     <div class="lsi-panel" id="panel-logs">
         <div class="lsi-card">
             <div class="lsi-card-header">
-                <h3>Service Logs</h3>
-                <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadLogs()">
-                    🔄 Refresh
-                </button>
+                <h3><i class="fa fa-file-lines"></i> Service Logs</h3>
+                <div style="display: flex; gap: 10px;">
+                    <button class="lsi-btn lsi-btn-danger lsi-btn-sm" onclick="clearLogs()">
+                        <i class="fa fa-trash"></i> Clear
+                    </button>
+                    <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadLogs()">
+                        <i class="fa fa-sync"></i> Refresh
+                    </button>
+                </div>
             </div>
             <div class="lsi-log-viewer" id="logViewer">Loading logs...</div>
         </div>
@@ -1836,14 +2016,13 @@ $csrf_token = $var['csrf_token'] ?? '';
 
 <script>
 // ============================================
-// ATP LSI Monitor JavaScript
+// ATP LSI Monitor JavaScript - v2026.01.31b
 // ============================================
 
 const ajaxUrl = '/plugins/<?=$plugin?>/include/ajax.php';
 const csrfToken = '<?=$csrf_token?>';
 let tempChart = null;
 let tempHistoryChart = null;
-let refreshInterval = null;
 
 // ============================================
 // AJAX Helper
@@ -1855,7 +2034,11 @@ function ajax(action, data = {}, callback) {
 
     const formData = new URLSearchParams();
     for (const key in data) {
-        formData.append(key, data[key]);
+        if (typeof data[key] === 'object') {
+            formData.append(key, JSON.stringify(data[key]));
+        } else {
+            formData.append(key, data[key]);
+        }
     }
 
     fetch(ajaxUrl, {
@@ -1889,10 +2072,50 @@ document.querySelectorAll('.lsi-tab').forEach(tab => {
         else if (tabName === 'temperature') loadTemperatureTab();
         else if (tabName === 'hardware') loadHardwareTab();
         else if (tabName === 'alerts') loadAlerts();
-        else if (tabName === 'settings') loadSettings();
         else if (tabName === 'logs') loadLogs();
+        // Settings loads from PHP, no need to fetch
     });
 });
+
+// ============================================
+// Service Control
+// ============================================
+
+function toggleService() {
+    const btn = document.getElementById('serviceToggleBtn');
+    const icon = document.getElementById('serviceToggleIcon');
+    const text = document.getElementById('serviceToggleText');
+    const badge = document.getElementById('statusBadge');
+    const statusText = document.getElementById('statusText');
+
+    const isRunning = icon.classList.contains('fa-stop');
+    const action = isRunning ? 'service_stop' : 'service_start';
+
+    btn.disabled = true;
+    icon.className = 'fa fa-spinner fa-spin';
+    text.textContent = isRunning ? 'Stopping...' : 'Starting...';
+
+    ajax(action, {}, data => {
+        if (data.success) {
+            const nowRunning = (action === 'service_start');
+            icon.className = 'fa fa-' + (nowRunning ? 'stop' : 'play');
+            text.textContent = nowRunning ? 'Stop' : 'Start';
+            btn.className = 'lsi-btn ' + (nowRunning ? 'lsi-btn-danger' : 'lsi-btn-success');
+
+            badge.className = 'lsi-status-badge ' + (nowRunning ? 'running' : 'stopped');
+            statusText.textContent = nowRunning ? 'Running' + (data.pid ? ' (PID ' + data.pid + ')' : '') : 'Stopped';
+
+            if (nowRunning) {
+                setTimeout(loadDashboard, 2000);
+            }
+        } else {
+            icon.className = 'fa fa-' + (isRunning ? 'stop' : 'play');
+            text.textContent = isRunning ? 'Stop' : 'Start';
+            alert('Error: ' + (data.error || 'Action failed'));
+        }
+        btn.disabled = false;
+    });
+}
 
 // ============================================
 // Dashboard
@@ -1946,7 +2169,6 @@ function loadTempStats(period) {
 
     ajax('get_alerts', { limit: 100 }, data => {
         if (data.success) {
-            // Count alerts from last 24h
             const now = new Date();
             const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
             const count = data.alerts.filter(a => new Date(a.timestamp) > dayAgo).length;
@@ -1960,7 +2182,6 @@ function loadTempChart() {
         if (!data.success) return;
 
         const ctx = document.getElementById('tempChart').getContext('2d');
-
         if (tempChart) tempChart.destroy();
 
         const labels = data.history.map(h => {
@@ -1976,8 +2197,8 @@ function loadTempChart() {
                 datasets: [{
                     label: 'Temperature (°C)',
                     data: temps,
-                    borderColor: '#F26522',
-                    backgroundColor: 'rgba(242, 101, 34, 0.1)',
+                    borderColor: '#e67e22',
+                    backgroundColor: 'rgba(230, 126, 34, 0.1)',
                     tension: 0.3,
                     fill: true
                 }]
@@ -1985,15 +2206,9 @@ function loadTempChart() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false }
-                },
+                plugins: { legend: { display: false } },
                 scales: {
-                    y: {
-                        beginAtZero: false,
-                        suggestedMin: 20,
-                        suggestedMax: 80
-                    }
+                    y: { beginAtZero: false, suggestedMin: 20, suggestedMax: 80 }
                 }
             }
         });
@@ -2049,7 +2264,6 @@ function loadTempHistory() {
         if (!data.success) return;
 
         const ctx = document.getElementById('tempHistoryChart').getContext('2d');
-
         if (tempHistoryChart) tempHistoryChart.destroy();
 
         const labels = data.history.map(h => {
@@ -2065,8 +2279,8 @@ function loadTempHistory() {
                 datasets: [{
                     label: 'Temperature (°C)',
                     data: temps,
-                    borderColor: '#F26522',
-                    backgroundColor: 'rgba(242, 101, 34, 0.1)',
+                    borderColor: '#e67e22',
+                    backgroundColor: 'rgba(230, 126, 34, 0.1)',
                     tension: 0.3,
                     fill: true
                 }]
@@ -2074,9 +2288,7 @@ function loadTempHistory() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false }
-                }
+                plugins: { legend: { display: false } }
             }
         });
     });
@@ -2150,17 +2362,18 @@ function loadFirmwareInfo() {
         const el = document.getElementById('firmwareInfo');
 
         if (!data.success) {
-            el.innerHTML = `<div class="lsi-alert lsi-alert-danger">${data.error}</div>`;
+            el.innerHTML = `<div class="lsi-alert lsi-alert-danger">${data.error || 'Failed to get firmware info'}</div>`;
             return;
         }
 
         el.innerHTML = `
             <table class="lsi-table">
-                <tr><td><strong>Firmware</strong></td><td>${data.firmware_version || 'Unknown'}</td></tr>
+                <tr><td style="width: 150px;"><strong>Firmware</strong></td><td>${data.firmware_version || 'Unknown'}</td></tr>
                 <tr><td><strong>BIOS</strong></td><td>${data.bios_version || 'Unknown'}</td></tr>
                 <tr><td><strong>Chip</strong></td><td>${data.chip_name || 'Unknown'}</td></tr>
                 <tr><td><strong>Board</strong></td><td>${data.board_name || 'Unknown'}</td></tr>
             </table>
+            ${data.raw ? '<details style="margin-top: 15px;"><summary style="cursor: pointer; color: var(--lsi-text-muted);">Raw lsiutil output</summary><pre style="margin-top: 10px; background: var(--lsi-bg); padding: 10px; border-radius: 4px; font-size: 11px; white-space: pre-wrap;">' + escapeHtml(data.raw) + '</pre></details>' : ''}
         `;
     });
 }
@@ -2170,17 +2383,20 @@ function loadDevices() {
         const el = document.getElementById('devicesInfo');
 
         if (!data.success) {
-            el.innerHTML = `<div class="lsi-alert lsi-alert-danger">${data.error}</div>`;
+            el.innerHTML = `<div class="lsi-alert lsi-alert-danger">${data.error || 'Failed to get devices'}</div>`;
             return;
         }
 
         if (!data.devices || data.devices.length === 0) {
-            el.innerHTML = '<div class="lsi-alert lsi-alert-info">No devices detected</div>';
+            el.innerHTML = `
+                <div class="lsi-alert lsi-alert-info">No devices detected via lsiutil</div>
+                ${data.raw ? '<details style="margin-top: 15px;"><summary style="cursor: pointer; color: var(--lsi-text-muted);">Raw lsiutil output</summary><pre style="margin-top: 10px; background: var(--lsi-bg); padding: 10px; border-radius: 4px; font-size: 11px; white-space: pre-wrap;">' + escapeHtml(data.raw) + '</pre></details>' : ''}
+            `;
             return;
         }
 
         el.innerHTML = `
-            <p>Found ${data.device_count} device(s)</p>
+            <p style="margin-bottom: 10px;">Found <strong>${data.device_count}</strong> device(s)</p>
             <table class="lsi-table">
                 <thead>
                     <tr><th>SAS Address</th><th>Type</th></tr>
@@ -2217,7 +2433,7 @@ function loadPhyErrors() {
             return `
                 <tr>
                     <td>PHY ${phy.phy_number}</td>
-                    <td><span class="lsi-status-badge ${phy.link_up ? 'running' : 'stopped'}">${phy.link_up ? 'Up' : 'Down'}</span></td>
+                    <td><span class="lsi-status-badge ${phy.link_up ? 'running' : 'stopped'}" style="padding: 2px 8px; font-size: 11px; height: auto; line-height: 1.5;">${phy.link_up ? 'Up' : 'Down'}</span></td>
                     <td>${phy.invalid_dword.toLocaleString()}</td>
                     <td>${phy.running_disparity.toLocaleString()}</td>
                     <td>${phy.loss_of_sync.toLocaleString()}</td>
@@ -2238,7 +2454,7 @@ function loadAlerts() {
         const tbody = document.getElementById('alertsTable');
 
         if (!data.success || !data.alerts || data.alerts.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4">No alerts</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--lsi-text-muted);">No alerts</td></tr>';
             return;
         }
 
@@ -2246,8 +2462,8 @@ function loadAlerts() {
             <tr>
                 <td>${new Date(a.timestamp).toLocaleString()}</td>
                 <td>${a.alert_type}</td>
-                <td><span class="lsi-status-badge ${a.severity}">${a.severity}</span></td>
-                <td>${a.message}</td>
+                <td><span class="lsi-status-badge ${a.severity}" style="padding: 2px 8px; font-size: 11px; height: auto; line-height: 1.5;">${a.severity}</span></td>
+                <td>${escapeHtml(a.message)}</td>
             </tr>
         `).join('');
     });
@@ -2266,31 +2482,8 @@ function clearAlerts() {
 }
 
 // ============================================
-// Settings Tab
+// Settings
 // ============================================
-
-function loadSettings() {
-    ajax('get_settings', {}, data => {
-        if (!data.success) return;
-
-        // Populate form fields
-        for (const key in data) {
-            const el = document.getElementById('setting_' + key);
-            if (!el) continue;
-
-            if (el.type === 'checkbox') {
-                el.checked = data[key] === true || data[key] === 'true';
-            } else {
-                // Don't show masked values
-                if (data[key] !== '***configured***') {
-                    el.value = data[key];
-                }
-            }
-        }
-
-        toggleNotificationFields();
-    });
-}
 
 function toggleNotificationFields() {
     const service = document.getElementById('setting_NOTIFICATION_SERVICE').value;
@@ -2320,8 +2513,7 @@ function saveSettings(event) {
 
     // Handle checkboxes (unchecked ones don't appear in FormData)
     form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-        const key = cb.name;
-        data[key] = cb.checked ? 'true' : 'false';
+        data[cb.name] = cb.checked ? 'true' : 'false';
     });
 
     ajax('save_settings', data, result => {
@@ -2344,55 +2536,99 @@ function testNotification() {
 }
 
 // ============================================
-// Logs Tab
+// Data Import
+// ============================================
+
+function importLegacyData(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const content = e.target.result;
+
+        // Parse the log file format: YYYY-MM-DD HH:MM:SS | Hostname | Temp: XXC
+        const lines = content.split('\n');
+        const records = [];
+
+        lines.forEach(line => {
+            const match = line.match(/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s*\|\s*\w+\s*\|\s*Temp:\s*(\d+)/);
+            if (match) {
+                records.push({
+                    timestamp: match[1],
+                    ioc_temp: parseInt(match[2])
+                });
+            }
+        });
+
+        if (records.length === 0) {
+            alert('No valid temperature records found in file');
+            return;
+        }
+
+        if (!confirm(`Found ${records.length} temperature records. Import them?`)) {
+            return;
+        }
+
+        ajax('import_legacy_data', { records: records }, data => {
+            if (data.success) {
+                alert(`Successfully imported ${data.imported} records!`);
+                loadDashboard();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    };
+    reader.readAsText(file);
+
+    // Reset file input
+    input.value = '';
+}
+
+// ============================================
+// Logs
 // ============================================
 
 function loadLogs() {
-    ajax('get_logs', { lines: 300 }, data => {
-        const viewer = document.getElementById('logViewer');
-        if (data.success) {
-            viewer.textContent = data.logs || 'No logs available';
-            viewer.scrollTop = viewer.scrollHeight;
+    ajax('get_logs', { lines: 500 }, data => {
+        const el = document.getElementById('logViewer');
+        if (data.success && data.logs) {
+            el.textContent = data.logs;
+            el.scrollTop = el.scrollHeight;
         } else {
-            viewer.textContent = 'Error loading logs: ' + data.error;
+            el.textContent = data.error || 'No logs available';
+        }
+    });
+}
+
+function clearLogs() {
+    if (!confirm('Clear all logs?')) return;
+
+    ajax('clear_logs', {}, data => {
+        if (data.success) {
+            loadLogs();
+        } else {
+            alert('Error: ' + data.error);
         }
     });
 }
 
 // ============================================
-// Service Control
+// Utility
 // ============================================
 
-function toggleService() {
-    const btn = document.getElementById('serviceBtn');
-    const isRunning = btn.textContent.includes('Stop');
-    const cmd = isRunning ? 'stop' : 'start';
-
-    btn.disabled = true;
-    btn.textContent = '⏳ ' + (isRunning ? 'Stopping...' : 'Starting...');
-
-    ajax('service', { cmd: cmd }, data => {
-        setTimeout(() => {
-            location.reload();
-        }, 2000);
-    });
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // ============================================
-// Initialization
+// Init
 // ============================================
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', function() {
     loadDashboard();
-
-    // Auto-refresh dashboard every 30 seconds
-    refreshInterval = setInterval(() => {
-        const activeTab = document.querySelector('.lsi-tab.active');
-        if (activeTab && activeTab.dataset.tab === 'dashboard') {
-            loadCurrentTemp();
-            loadHealth();
-        }
-    }, 30000);
 });
 
 
@@ -2856,8 +3092,6 @@ if (typeof module !== 'undefined' && module.exports) {
 
 
 </script>
-</body>
-</html>
 
 ]]>
 </INLINE>
@@ -2909,7 +3143,7 @@ import hashlib
 
 PLUGIN_NAME = "atp_lsi_monitor"
 DEFAULT_PORT = 39800
-VERSION = "2026.01.31a"
+VERSION = "2026.01.31b"
 
 # Paths
 DATA_DIR = f"/mnt/user/appdata/{PLUGIN_NAME}"
@@ -4126,6 +4360,36 @@ class APIHandler(BaseHTTPRequestHandler):
                     conn.close()
                 self.send_json({'success': True, 'message': 'Alerts cleared'})
 
+            # Import legacy temperature data
+            elif path == '/api/import':
+                records = data.get('records', [])
+                if not records:
+                    self.send_json({'success': False, 'error': 'No records to import'})
+                    return
+
+                imported = 0
+                with db_lock:
+                    conn = get_db()
+                    cursor = conn.cursor()
+                    for record in records:
+                        try:
+                            timestamp = record.get('timestamp')
+                            ioc_temp = record.get('ioc_temp')
+                            if timestamp and ioc_temp is not None:
+                                # Convert timestamp format if needed
+                                cursor.execute(
+                                    "INSERT OR IGNORE INTO temperature_history (timestamp, ioc_temp, board_temp) VALUES (?, ?, ?)",
+                                    (timestamp, ioc_temp, None)
+                                )
+                                imported += 1
+                        except Exception as e:
+                            logging.warning(f"Failed to import record: {e}")
+                    conn.commit()
+                    conn.close()
+
+                logging.info(f"Imported {imported} temperature records from legacy data")
+                self.send_json({'success': True, 'imported': imported})
+
             else:
                 self.send_json({'success': False, 'error': 'Unknown endpoint'}, 404)
 
@@ -4331,7 +4595,7 @@ esac
 <?php
 /**
  * ATP LSI Monitor - AJAX Handler
- * v2026.01.31
+ * v2026.01.31b
  *
  * Proxies requests to Python daemon API.
  *
@@ -4360,8 +4624,8 @@ if (file_exists($CONFIG_FILE)) {
 // ============================================
 
 $modifying_actions = [
-    'save_settings', 'service', 'test_notification',
-    'read_temperature', 'clear_alerts', 'generate_report'
+    'save_settings', 'service', 'service_start', 'service_stop', 'test_notification',
+    'read_temperature', 'clear_alerts', 'generate_report', 'import_legacy_data', 'clear_logs'
 ];
 
 $action = $_REQUEST['action'] ?? '';
@@ -4558,7 +4822,7 @@ switch ($action) {
         echo json_encode($result);
         break;
 
-    // Service control
+    // Service control (legacy)
     case 'service':
         $cmd = $_REQUEST['cmd'] ?? '';
         $validCmds = ['start', 'stop', 'restart', 'status'];
@@ -4577,6 +4841,64 @@ switch ($action) {
             'output' => implode("\n", $output),
             'code' => $returnCode
         ]);
+        break;
+
+    // Service start (new format matching Emby)
+    case 'service_start':
+        global $PLUGIN_NAME;
+        $script = "/usr/local/emhttp/plugins/{$PLUGIN_NAME}/rc.{$PLUGIN_NAME}";
+        exec("{$script} start 2>&1", $output, $returnCode);
+
+        // Get PID if started successfully
+        $pid = null;
+        $pidFile = "/var/run/{$PLUGIN_NAME}.pid";
+        if ($returnCode === 0 && file_exists($pidFile)) {
+            usleep(500000); // Wait 500ms for PID file
+            $pid = trim(file_get_contents($pidFile));
+        }
+
+        echo json_encode([
+            'success' => $returnCode === 0,
+            'pid' => $pid,
+            'output' => implode("\n", $output)
+        ]);
+        break;
+
+    // Service stop (new format matching Emby)
+    case 'service_stop':
+        global $PLUGIN_NAME;
+        $script = "/usr/local/emhttp/plugins/{$PLUGIN_NAME}/rc.{$PLUGIN_NAME}";
+        exec("{$script} stop 2>&1", $output, $returnCode);
+
+        echo json_encode([
+            'success' => $returnCode === 0,
+            'output' => implode("\n", $output)
+        ]);
+        break;
+
+    // Import legacy temperature history
+    case 'import_legacy_data':
+        $recordsJson = $_REQUEST['records'] ?? '[]';
+        $records = json_decode($recordsJson, true);
+
+        if (!$records || !is_array($records)) {
+            echo json_encode(['success' => false, 'error' => 'Invalid records data']);
+            break;
+        }
+
+        echo json_encode(apiCall('/api/import', 'POST', ['records' => $records]));
+        break;
+
+    // Clear logs
+    case 'clear_logs':
+        global $PLUGIN_NAME;
+        $logFile = "/mnt/user/appdata/{$PLUGIN_NAME}/logs/{$PLUGIN_NAME}.log";
+        if (file_exists($logFile)) {
+            file_put_contents($logFile, '');
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Log file not found']);
+        }
         break;
 
     default:
@@ -4616,7 +4938,7 @@ Monitor LSI SAS HBA cards (SAS2308, 9207-8i, etc.) - temperature, PHY errors, fi
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_lsi_monitor"
-PLUGIN_VERSION="2026.01.31a"
+PLUGIN_VERSION="2026.01.31b"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"

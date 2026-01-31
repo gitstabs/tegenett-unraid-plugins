@@ -1,7 +1,7 @@
 <?php
 /**
  * ATP LSI Monitor - AJAX Handler
- * v2026.01.31
+ * v2026.01.31b
  *
  * Proxies requests to Python daemon API.
  *
@@ -30,8 +30,8 @@ if (file_exists($CONFIG_FILE)) {
 // ============================================
 
 $modifying_actions = [
-    'save_settings', 'service', 'test_notification',
-    'read_temperature', 'clear_alerts', 'generate_report'
+    'save_settings', 'service', 'service_start', 'service_stop', 'test_notification',
+    'read_temperature', 'clear_alerts', 'generate_report', 'import_legacy_data', 'clear_logs'
 ];
 
 $action = $_REQUEST['action'] ?? '';
@@ -228,7 +228,7 @@ switch ($action) {
         echo json_encode($result);
         break;
 
-    // Service control
+    // Service control (legacy)
     case 'service':
         $cmd = $_REQUEST['cmd'] ?? '';
         $validCmds = ['start', 'stop', 'restart', 'status'];
@@ -247,6 +247,64 @@ switch ($action) {
             'output' => implode("\n", $output),
             'code' => $returnCode
         ]);
+        break;
+
+    // Service start (new format matching Emby)
+    case 'service_start':
+        global $PLUGIN_NAME;
+        $script = "/usr/local/emhttp/plugins/{$PLUGIN_NAME}/rc.{$PLUGIN_NAME}";
+        exec("{$script} start 2>&1", $output, $returnCode);
+
+        // Get PID if started successfully
+        $pid = null;
+        $pidFile = "/var/run/{$PLUGIN_NAME}.pid";
+        if ($returnCode === 0 && file_exists($pidFile)) {
+            usleep(500000); // Wait 500ms for PID file
+            $pid = trim(file_get_contents($pidFile));
+        }
+
+        echo json_encode([
+            'success' => $returnCode === 0,
+            'pid' => $pid,
+            'output' => implode("\n", $output)
+        ]);
+        break;
+
+    // Service stop (new format matching Emby)
+    case 'service_stop':
+        global $PLUGIN_NAME;
+        $script = "/usr/local/emhttp/plugins/{$PLUGIN_NAME}/rc.{$PLUGIN_NAME}";
+        exec("{$script} stop 2>&1", $output, $returnCode);
+
+        echo json_encode([
+            'success' => $returnCode === 0,
+            'output' => implode("\n", $output)
+        ]);
+        break;
+
+    // Import legacy temperature history
+    case 'import_legacy_data':
+        $recordsJson = $_REQUEST['records'] ?? '[]';
+        $records = json_decode($recordsJson, true);
+
+        if (!$records || !is_array($records)) {
+            echo json_encode(['success' => false, 'error' => 'Invalid records data']);
+            break;
+        }
+
+        echo json_encode(apiCall('/api/import', 'POST', ['records' => $records]));
+        break;
+
+    // Clear logs
+    case 'clear_logs':
+        global $PLUGIN_NAME;
+        $logFile = "/mnt/user/appdata/{$PLUGIN_NAME}/logs/{$PLUGIN_NAME}.log";
+        if (file_exists($logFile)) {
+            file_put_contents($logFile, '');
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Log file not found']);
+        }
         break;
 
     default:

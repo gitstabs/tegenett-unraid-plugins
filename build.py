@@ -1031,6 +1031,17 @@ def build_atp_lsi_monitor() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="{icon_attr}" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31b
+- UI: Tab styling now matches ATP Emby Smart Cache (orange active tabs)
+- UI: Running/Healthy badges moved to right side with Stop button and Version
+- UI: Settings panel redesigned with 2-column layout
+- UI: Font Awesome icons added to all tabs and sections
+- NEW: Log level setting (DEBUG, INFO, WARNING, ERROR)
+- NEW: Log rotation settings (retention count, max file size)
+- NEW: Import legacy temperature history from lsi_temp_history.log
+- NEW: Raw lsiutil output shown in expandable details section
+- FIX: Connected devices parsing improved
+
 ##2026.01.31a
 - NEW: Initial release
 - NEW: IOC temperature monitoring for LSI SAS HBA cards
