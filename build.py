@@ -276,11 +276,12 @@ def build_atp_emby_smart_cache() -> bool:
 
     plg = f'''<?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
-<!ENTITY name      "atp_emby_smart_cache">
-<!ENTITY author    "Tegenett">
-<!ENTITY version   "{version}">
-<!ENTITY launch    "Settings/AtpEmbySmartCache">
-<!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
+<!ENTITY name        "atp_emby_smart_cache">
+<!ENTITY displayName "ATP Emby Smart Cache">
+<!ENTITY author      "Tegenett">
+<!ENTITY version     "{version}">
+<!ENTITY launch      "Settings/AtpEmbySmartCache">
+<!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
@@ -571,11 +572,12 @@ def build_atp_backup() -> bool:
 
     plg = f'''<?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
-<!ENTITY name      "atp_backup">
-<!ENTITY author    "Tegenett">
-<!ENTITY version   "{version}">
-<!ENTITY launch    "Settings/AtpBackup">
-<!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
+<!ENTITY name        "atp_backup">
+<!ENTITY displayName "ATP Backup">
+<!ENTITY author      "Tegenett">
+<!ENTITY version     "{version}">
+<!ENTITY launch      "Settings/AtpBackup">
+<!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">

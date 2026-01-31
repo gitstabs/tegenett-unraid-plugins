@@ -1,10 +1,11 @@
 <?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
-<!ENTITY name      "atp_backup">
-<!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.31a">
-<!ENTITY launch    "Settings/AtpBackup">
-<!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
+<!ENTITY name        "atp_backup">
+<!ENTITY displayName "ATP Backup">
+<!ENTITY author      "Tegenett">
+<!ENTITY version     "2026.01.31b">
+<!ENTITY launch      "Settings/AtpBackup">
+<!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
@@ -120,7 +121,7 @@ Icon="shield"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.01.31a";
+$version = "v2026.01.31b";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 
@@ -6322,7 +6323,7 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Backup v2026.01.31a installed!"
+echo "ATP Backup v2026.01.31b installed!"
 echo "Service will start in 5 seconds..."
 ]]>
 </INLINE>

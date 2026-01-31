@@ -4,6 +4,16 @@ All notable changes to Tegenett Unraid Plugins.
 
 ---
 
+## [2026.01.31c] - Plugin Display Names
+
+### Display Names
+- **FIX**: Added `displayName` ENTITY to PLG files for proper display in Unraid Plugins list
+- ATP Backup now shows as "ATP Backup" instead of "atp_backup"
+- ATP Emby Smart Cache now shows as "ATP Emby Smart Cache" instead of "atp_emby_smart_cache"
+- Technical ID (`name`) unchanged - no breaking changes to existing installations
+
+---
+
 ## [2026.01.31b] - Plugin Template & TODO Cleanup
 
 ### Plugin Template

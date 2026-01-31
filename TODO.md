@@ -49,7 +49,7 @@
 
 ### 🟡 Medium Priority
 - [x] ~~Document CSS class naming convention~~ *(Added shared/README.md)*
-- [ ] Fix plugin display names in Unraid Plugins list
+- [x] ~~Fix plugin display names in Unraid Plugins list~~ *(v2026.01.31c - Added displayName ENTITY)*
 - [x] ~~Create plugin template for new plugins~~ *(v2026.01.31 - Full template in plugin_template/)*
 - [x] ~~Automated version bumping in build.py~~ *(Implemented --bump flag)*
 

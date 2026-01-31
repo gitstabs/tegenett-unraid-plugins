@@ -181,9 +181,15 @@ Markdown="false"
   - `plugin check plugin_name` says "not installed"
   - File paths break
 
-**Display name comes from the .page file:**
+**Display name in Plugin List uses `displayName` ENTITY:**
+```xml
+<!ENTITY name        "atp_backup">           <!-- Technical ID (snake_case) -->
+<!ENTITY displayName "ATP Backup">           <!-- Human-readable display name -->
 ```
-Title="ATP Backup"    <!-- This shows in the UI -->
+
+**Display name in menu/tabs comes from the .page file:**
+```
+Title="ATP Backup"    <!-- This shows in Settings menu -->
 ```
 
 ### CRITICAL: FILE Paths in PLG
