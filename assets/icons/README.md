@@ -1,23 +1,44 @@
-# ATP Plugin Icons
+# Tegenett Plugin Icons & Branding
 
-This directory contains branding assets for Tegenett plugins.
+## Current Icons
 
-## Planned Assets
+| File | Size | Purpose |
+|------|------|---------|
+| `favicon.png` | 128x128 | Tegenett "T." logo (GitHub README) |
+| `atp-backup.png` | 1024x1024 | ATP Backup plugin icon (Shield + T) |
+| `atp-emby-smart-cache.png` | 1024x1024 | ATP Emby Smart Cache icon (Play + T) |
 
-- `tegenett-logo.svg` - Master logo (vector)
-- `tegenett-logo-128.png` - Logo 128x128
-- `tegenett-logo-64.png` - Logo 64x64
-- `tegenett-logo-32.png` - Logo 32x32
-- `favicon.ico` - Favicon (user has existing version)
-- `atp-backup-icon.png` - ATP Backup plugin icon
-- `atp-emby-smart-cache-icon.png` - ATP Emby Smart Cache icon
+## Color Palette
+
+| Color | Hex | Usage |
+|-------|-----|-------|
+| **Primary Orange** | `#F26522` | Main brand color, icons, buttons |
+| **Primary Dark** | `#d35400` | Hover states |
+| **Success Green** | `#27ae60` | Running status, success messages |
+| **Danger Red** | `#c0392b` | Stopped status, errors |
+| **Warning Yellow** | `#f39c12` | Warnings |
+| **Info Blue** | `#3498db` | Information |
 
 ## Design Guidelines
 
-- Primary color: `#e67e22` (orange)
-- Style: Modern, clean, consistent
-- Icons should work at small sizes (32x32 minimum)
+- **Icon style**: Modern flat design with "T." branding element
+- **Minimum size**: 32x32px (Unraid auto-scales from source)
+- **Background**: Transparent (preferred) or white
+- **File format**: PNG
 
-## Current Status
+## Usage in Plugins
 
-Placeholder directory - icons to be designed.
+Icons are downloaded from GitHub during plugin install:
+```xml
+<FILE Name="/usr/local/emhttp/plugins/plugin_name/icon.png">
+<URL>https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/assets/icons/icon.png</URL>
+</FILE>
+```
+
+Referenced in PLG and .page files:
+```xml
+<PLUGIN ... icon="atp-backup.png" ...>
+```
+```
+Icon="atp-backup.png"
+```

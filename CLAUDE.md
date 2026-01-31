@@ -15,8 +15,8 @@ This monorepo contains personal Unraid plugins developed by Tegenett:
 
 | Plugin | Status | Version | Description |
 |--------|--------|---------|-------------|
-| `atp_backup` | ✅ Active | v2026.01.30g | Backup solution with local/remote SMB, WOL, Discord notifications |
-| `atp_emby_smart_cache` | ✅ Active | v2026.01.30l | Media cache management for Emby |
+| `atp_backup` | ✅ Active | v2026.01.31f | Backup solution with local/remote SMB, WOL, Discord notifications |
+| `atp_emby_smart_cache` | ✅ Active | v2026.01.31e | Media cache management for Emby |
 | Future plugins | Planned | - | TBD |
 
 ## Critical Requirements
@@ -94,9 +94,9 @@ fetch(url, {
 
 **Visual Consistency:**
 - All Tegenett plugins must share the same visual language
-- Primary color: `#e67e22` (orange)
-- Use shared CSS from `shared/css/tegenett-common.css`
-- Icons: Font Awesome 6.x
+- Primary color: `#F26522` (orange) - see `assets/icons/README.md` for full palette
+- Use shared CSS from `shared/css/atp-common.css`
+- Custom plugin icons in `assets/icons/` (Shield+T for Backup, Play+T for Emby)
 
 **Auto-refresh Guidelines:**
 - Dashboard/status tabs: Auto-refresh every 3-30 seconds ✅
@@ -138,8 +138,9 @@ shared/
 - `build.py` - Master build script that:
   - Injects shared CSS/JS into .page files
   - Builds PLG files from src/ components
+  - Downloads custom icons from GitHub
   - Validates XML and Python syntax
-  - Creates version-tagged releases
+  - Auto-bumps versions with `--bump` flag
 
 **PLG File Requirements:**
 - Version format: `YYYY.MM.DDx` (e.g., 2026.01.30f)
@@ -333,6 +334,7 @@ include 'plugins/atp_backup/AtpBackup.page';
 | Buttons/forms do nothing | Missing AJAX handler in ajax.php | Add handler for that action |
 | Plugin name too big in list | Full README.md used | Use short PLUGIN_INFO.md (2 lines, `####` heading) |
 | Plugin shows raw name (atp_backup) | No README.md in plugin | Include PLUGIN_INFO.md as README.md in PLG |
+| Custom icon not showing | Icon file not in plugin folder | Add FILE with URL to download icon from GitHub |
 
 ## Reference Documentation
 
@@ -394,21 +396,19 @@ After installing update on Unraid:
 
 ## Current State
 
-**atp_backup v2026.01.31e:**
-- Features: Local/Remote SMB backup, WOL, Discord, retry logic, bandwidth scheduling, export/import, weekly/monthly summaries
+**atp_backup v2026.01.31f:**
+- Features: Local/Remote SMB backup, WOL, Discord, retry logic, bandwidth scheduling, export/import, weekly/monthly summaries, checksum verification
 - Status: ✅ Fully working
-- Recent fixes: Plugin display name, improved install/remove scripts
 - Pending: Cloud backup (rclone integration)
 
-**atp_emby_smart_cache v2026.01.31d:**
-- Features: Emby media caching, auto-cleanup, statistics
+**atp_emby_smart_cache v2026.01.31e:**
+- Features: Emby media caching, auto-cleanup, statistics, pre-cache next episodes
 - Status: ✅ Fully working
-- Recent fixes: Plugin display name, improved install/remove scripts
 - Data path: `/mnt/user/appdata/atp_emby_smart_cache/`
 
-## Known Issues & TODO
+## Version Bumping
 
-**Version Bumping:**
 - ALWAYS bump version on ANY change, even small fixes
 - User cannot receive updates without version change
 - Format: `YYYY.MM.DDx` where x is a letter (a-z) for same-day releases
+- Use `python build.py --bump` to auto-increment

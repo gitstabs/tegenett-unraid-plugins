@@ -4,7 +4,23 @@ All notable changes to Tegenett Unraid Plugins.
 
 ---
 
-## [2026.01.31f] - Short Plugin Description
+## [2026.01.31f] - Custom Plugin Icons
+
+### Branding
+- **NEW**: Custom plugin icons designed with Tegenett "T." branding
+  - ATP Backup: Shield + T design (protection/security theme)
+  - ATP Emby Smart Cache: Play + T design (media streaming theme)
+- **NEW**: Icons display in Unraid plugin list and Settings menu
+- **NEW**: Color palette documentation in `assets/icons/README.md`
+- **UPDATED**: All README files now include plugin icons
+
+### Technical
+- `build.py` now downloads icons from GitHub during plugin install
+- Icon files: 1024x1024 PNG with transparent background
+
+---
+
+## [2026.01.31e] - Short Plugin Description
 
 ### Plugin List Display
 - **FIX**: Plugin description in "Installed Plugins" now shows short 2-line summary

@@ -10,16 +10,8 @@
 
 ## ATP Backup
 
-### 🟠 High Priority
-- [x] ~~Bandwidth scheduling (different limits at different times)~~ *(v2026.01.31a - Two profiles with start times)*
-
 ### 🟡 Medium Priority
-- [x] ~~Export/import job configurations~~ *(v2026.01.31a - Export/Import jobs and settings as JSON)*
-- [x] ~~Weekly/monthly Discord summary reports~~ *(v2026.01.31a - Configurable day/time for weekly and monthly)*
 - [ ] Cloud backup support via rclone Docker container
-
-### 🟢 Nice to Have
-- [x] ~~Backup verification (checksum comparison)~~ *(v2026.01.31a - Per-job rsync --checksum option)*
 
 ### 🔮 Future Considerations
 - [ ] Compression option for backups (tar.gz) - *Significant architecture change needed*
@@ -39,28 +31,7 @@
 
 ## ATP Emby Smart Cache
 
-### 🟡 Medium Priority
-- [x] ~~Improve logging and statistics~~ *(Already implemented - SQLite activity_log, /api/stats, Statistics tab)*
-- [x] ~~Create proper documentation~~ *(Already complete in README.md)*
-
----
-
-## Shared Components
-
-### 🟡 Medium Priority
-- [x] ~~Document CSS class naming convention~~ *(Added shared/README.md)*
-- [x] ~~Fix plugin display names in Unraid Plugins list~~ *(v2026.01.31f - PLUGIN_INFO.md with short description)*
-- [x] ~~Create plugin template for new plugins~~ *(v2026.01.31 - Full template in plugin_template/)*
-- [x] ~~Automated version bumping in build.py~~ *(Implemented --bump flag)*
-
----
-
-## Branding & Design
-
-### 🟢 Nice to Have
-- [ ] Design uniform Tegenett logo for all plugins
-- [ ] Design plugin-specific icons
-- [ ] Color palette documentation
+*No pending tasks - feature complete for current needs*
 
 ---
 
