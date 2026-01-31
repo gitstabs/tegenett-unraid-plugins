@@ -17,7 +17,7 @@ This monorepo contains personal Unraid plugins developed by Tegenett:
 |--------|--------|---------|-------------|
 | `atp_backup` | ✅ Active | v2026.01.31f | Backup solution with local/remote SMB, WOL, Discord notifications |
 | `atp_emby_smart_cache` | ✅ Active | v2026.01.31e | Media cache management for Emby |
-| Future plugins | Planned | - | TBD |
+| `atp_lsi_monitor` | ✅ Active | v2026.01.31a | LSI HBA temperature & PHY monitoring with notifications |
 
 ## Critical Requirements
 

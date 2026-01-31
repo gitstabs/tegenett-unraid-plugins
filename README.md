@@ -12,6 +12,7 @@ Personal Unraid 7.x plugins by Tegenett. **ATP** = A Tegenett Plugin.
 |--------|:----:|-------------|--------|
 | [ATP Backup](atp_backup/) | <img src="assets/icons/atp-backup.png" width="32"> | Smart backup with local/remote SMB, WOL, Discord notifications | ✅ Active |
 | [ATP Emby Smart Cache](atp_emby_smart_cache/) | <img src="assets/icons/atp-emby-smart-cache.png" width="32"> | Intelligent media caching for Emby | ✅ Active |
+| [ATP LSI Monitor](atp_lsi_monitor/) | <img src="assets/icons/atp-lsi-monitor.png" width="32"> | LSI HBA temperature & PHY monitoring with notifications | ✅ Active |
 
 ## Installation
 
@@ -42,11 +43,26 @@ https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby
 - Discord notifications
 - SQLite state tracking
 
+### ATP LSI Monitor
+```
+https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_lsi_monitor/atp_lsi_monitor.plg
+```
+
+**Features:**
+- IOC temperature monitoring for LSI SAS HBA cards (SAS2308, 9207-8i, etc.)
+- PHY link error tracking (Invalid DWord, Running Disparity, Loss of Sync)
+- Firmware and hardware info display
+- Multiple notification services: Discord, Notifiarr, Gotify, ntfy, Pushover
+- Temperature history with charts
+- Scheduled reports (daily/weekly/monthly)
+- Bundled lsiutil v1.72 binary (standalone)
+
 ## Requirements
 
 - Unraid 7.0.0 or newer
 - For remote SMB backups: Unassigned Devices plugin
 - For Emby Smart Cache: Emby Media Server with API access
+- For LSI Monitor: LSI SAS HBA card (SAS2308/9207-8i recommended for temperature)
 
 ## Support
 

@@ -4,6 +4,26 @@ All notable changes to Tegenett Unraid Plugins.
 
 ---
 
+## [2026.01.31g] - ATP LSI Monitor (New Plugin!)
+
+### New Plugin: ATP LSI Monitor
+- **NEW**: Complete plugin for monitoring LSI SAS HBA cards
+- **NEW**: IOC temperature monitoring with configurable warning/critical thresholds
+- **NEW**: PHY link error tracking (Invalid DWord, Running Disparity, Loss of Sync, Phy Reset)
+- **NEW**: Firmware and hardware info display
+- **NEW**: Connected device listing
+- **NEW**: Temperature history with SQLite database and Chart.js graphs
+- **NEW**: Multiple notification services: Discord, Notifiarr, Gotify, ntfy, Pushover
+- **NEW**: Scheduled reports (daily/weekly/monthly summaries)
+- **NEW**: Bundled lsiutil v1.72 binary for standalone operation
+
+### Supported Hardware
+- LSI SAS2308 / 9207-8i (full support with temperature)
+- LSI SAS2008 / 9211-8i (limited - no temperature sensor)
+- Other LSI MPT-based HBA cards
+
+---
+
 ## [2026.01.31f] - Custom Plugin Icons
 
 ### Branding

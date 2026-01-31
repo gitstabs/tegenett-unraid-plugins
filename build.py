@@ -40,6 +40,7 @@ ICONS_DIR = ROOT / 'assets' / 'icons'
 PLUGIN_ICONS = {
     'backup': 'atp-backup.png',
     'emby': 'atp-emby-smart-cache.png',
+    'lsi': 'atp-lsi-monitor.png',
 }
 
 # Plugin definitions
@@ -57,6 +58,13 @@ PLUGINS = {
         'dir': ROOT / 'atp_emby_smart_cache',
         'has_build_script': True,
         'icon': 'atp-emby-smart-cache.png',  # Custom PNG icon
+    },
+    'lsi': {
+        'name': 'atp_lsi_monitor',
+        'display_name': 'ATP LSI Monitor',
+        'dir': ROOT / 'atp_lsi_monitor',
+        'has_build_script': True,
+        'icon': 'atp-lsi-monitor.png',  # Custom PNG icon
     }
 }
 
@@ -972,6 +980,294 @@ echo "To completely remove all data, manually delete these folders."
     return xml_valid and py_valid
 
 
+def build_atp_lsi_monitor() -> bool:
+    """Build ATP LSI Monitor plugin from src files."""
+    plugin = PLUGINS['lsi']
+    src_dir = plugin['dir'] / 'src'
+    output = plugin['dir'] / 'atp_lsi_monitor.plg'
+
+    print(f"\nBuilding {plugin['display_name']}...")
+
+    # Read source files
+    try:
+        page_content = read_file(src_dir / 'AtpLsiMonitor.page')
+        python_content = read_file(src_dir / 'atp_lsi_monitor.py')
+        rc_content = read_file(src_dir / 'rc.atp_lsi_monitor')
+        ajax_content = read_file(src_dir / 'ajax.php')
+        # Use PLUGIN_INFO.md for short plugin list description (not full README.md)
+        plugin_info_content = read_file(plugin['dir'] / 'PLUGIN_INFO.md')
+    except FileNotFoundError as e:
+        print(f"  Error: Missing source file - {e}")
+        return False
+
+    # Check for custom icon
+    icon_path = get_icon_path('lsi')
+    has_custom_icon = icon_path and icon_path.exists()
+    icon_attr = plugin['icon'] if has_custom_icon else 'hdd-o'
+    if has_custom_icon:
+        print(f"  Using custom icon: {plugin['icon']}")
+
+    # Inject shared CSS/JS into page content
+    page_content = inject_shared_resources(page_content, prefix='lsi')
+    print("  Injected shared CSS/JS")
+
+    # Get version from page content
+    version_match = re.search(r'\$version\s*=\s*["\']v?(\d{4}\.\d{2}\.\d{2}\w*)["\']', page_content)
+    version = version_match.group(1) if version_match else datetime.now().strftime('%Y.%m.%d')
+
+    # lsiutil download URL (v1.72 from latchdevel repository)
+    lsiutil_url = "https://raw.githubusercontent.com/latchdevel/LSIUtil/master/release/LSIUtil_v1.72_binaries/Linux/lsiutil.x86_64"
+
+    plg = f'''<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name        "atp_lsi_monitor">
+<!ENTITY displayName "ATP LSI Monitor">
+<!ENTITY author      "Tegenett">
+<!ENTITY version     "{version}">
+<!ENTITY launch      "Settings/AtpLsiMonitor">
+<!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_lsi_monitor/atp_lsi_monitor.plg">
+]>
+
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="{icon_attr}" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
+
+<CHANGES>
+##2026.01.31a
+- NEW: Initial release
+- NEW: IOC temperature monitoring for LSI SAS HBA cards
+- NEW: PHY link error tracking (Invalid DWord, Running Disparity, Loss of Sync, Phy Reset)
+- NEW: Firmware and hardware info display
+- NEW: Connected device listing
+- NEW: Temperature history with SQLite database
+- NEW: Multiple notification services: Discord, Notifiarr, Gotify, ntfy, Pushover
+- NEW: Configurable alerting thresholds (warning/critical)
+- NEW: Scheduled reports (daily/weekly/monthly summaries)
+- NEW: Chart.js temperature graphs
+- NEW: Bundled lsiutil v1.72 binary (standalone operation)
+</CHANGES>
+
+<!-- Pre-install: Version check -->
+<FILE Run="/usr/bin/php">
+<INLINE>
+<![CDATA[
+<?php
+$version = parse_ini_file("/etc/unraid-version");
+if (version_compare($version['version'], "7.0.0", "<")) {{
+    echo "********************************************************************\\n";
+    echo "\\n";
+    echo "ATP LSI Monitor requires Unraid version 7.0.0 or newer\\n";
+    echo "Your version: " . $version['version'] . "\\n";
+    echo "\\n";
+    echo "********************************************************************\\n";
+    exit(1);
+}}
+?>
+]]>
+</INLINE>
+</FILE>
+
+<!-- Pre-install: Stop existing service and clean up -->
+<FILE Run="/bin/bash">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+PLUGIN_NAME="atp_lsi_monitor"
+PLUGIN_DIR="/usr/local/emhttp/plugins/${{PLUGIN_NAME}}"
+LOG="/var/log/${{PLUGIN_NAME}}_install.log"
+
+echo "$(date): Pre-install starting" >> "$LOG"
+
+# Stop old service if running
+if [ -f "/var/run/${{PLUGIN_NAME}}.pid" ]; then
+    PID=$(cat /var/run/${{PLUGIN_NAME}}.pid)
+    echo "$(date): Stopping service PID $PID" >> "$LOG"
+    kill "$PID" 2>/dev/null
+    sleep 3
+fi
+pkill -f "${{PLUGIN_NAME}}.py" 2>/dev/null || true
+
+rm -rf "${{PLUGIN_DIR}}"
+mkdir -p "${{PLUGIN_DIR}}/include"
+
+echo "$(date): Pre-install complete" >> "$LOG"
+]]>
+</INLINE>
+</FILE>
+
+<!-- Main Page File -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/AtpLsiMonitor.page">
+<INLINE>
+<![CDATA[
+{page_content}
+]]>
+</INLINE>
+</FILE>
+
+<!-- Python Daemon -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/atp_lsi_monitor.py" Mode="0755">
+<INLINE>
+<![CDATA[
+{python_content}
+]]>
+</INLINE>
+</FILE>
+
+<!-- RC Service Script -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/rc.atp_lsi_monitor" Mode="0755">
+<INLINE>
+<![CDATA[
+{rc_content}
+]]>
+</INLINE>
+</FILE>
+
+<!-- AJAX Handler -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/include/ajax.php">
+<INLINE>
+<![CDATA[
+{ajax_content}
+]]>
+</INLINE>
+</FILE>
+
+<!-- Short plugin description for Installed Plugins list -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/README.md">
+<INLINE>
+<![CDATA[
+{plugin_info_content}
+]]>
+</INLINE>
+</FILE>
+
+<!-- lsiutil binary (v1.72 from latchdevel repository) -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/lsiutil" Mode="0755">
+<URL>{lsiutil_url}</URL>
+</FILE>
+
+<!-- Plugin Icon (download from GitHub) -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/{icon_attr}">
+<URL>https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/assets/icons/{icon_attr}</URL>
+</FILE>
+
+<!-- Post-install: Set up directories and auto-start -->
+<FILE Run="/bin/bash">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+PLUGIN_NAME="atp_lsi_monitor"
+PLUGIN_VERSION="{version}"
+DATA_DIR="/mnt/user/appdata/${{PLUGIN_NAME}}"
+CONFIG_DIR="/boot/config/plugins/${{PLUGIN_NAME}}"
+RC_SCRIPT="/usr/local/emhttp/plugins/${{PLUGIN_NAME}}/rc.${{PLUGIN_NAME}}"
+GO_FILE="/boot/config/go"
+LOG="/var/log/${{PLUGIN_NAME}}_install.log"
+
+echo "$(date): Post-install starting" >> "$LOG"
+
+# Create directories
+mkdir -p "$DATA_DIR/logs"
+mkdir -p "$CONFIG_DIR"
+
+# Make scripts executable
+chmod +x "/usr/local/emhttp/plugins/${{PLUGIN_NAME}}/${{PLUGIN_NAME}}.py"
+chmod +x "/usr/local/emhttp/plugins/${{PLUGIN_NAME}}/lsiutil"
+chmod +x "$RC_SCRIPT"
+
+# Add to startup if not already there
+if ! grep -q "rc.${{PLUGIN_NAME}}" "$GO_FILE" 2>/dev/null; then
+    echo "" >> "$GO_FILE"
+    echo "# Start ATP LSI Monitor" >> "$GO_FILE"
+    echo "$RC_SCRIPT start &" >> "$GO_FILE"
+    echo "$(date): Added to $GO_FILE" >> "$LOG"
+fi
+
+# Start the service in background with delay
+(
+    sleep 5
+    "$RC_SCRIPT" start >> "$LOG" 2>&1
+) &
+
+echo "$(date): Post-install complete" >> "$LOG"
+echo ""
+echo "----------------------------------------------------"
+echo " ATP LSI Monitor has been installed."
+echo " Copyright 2024-2026, Tegenett"
+echo " Version: $PLUGIN_VERSION"
+echo "----------------------------------------------------"
+echo ""
+echo "Includes lsiutil v1.72 for LSI HBA management."
+echo ""
+echo "IMPORTANT: The plugin will attempt to detect LSI HBA"
+echo "cards on first run. Check Settings to verify."
+echo ""
+]]>
+</INLINE>
+</FILE>
+
+<!-- Uninstall script -->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+PLUGIN_NAME="atp_lsi_monitor"
+RC_SCRIPT="/usr/local/emhttp/plugins/${{PLUGIN_NAME}}/rc.${{PLUGIN_NAME}}"
+GO_FILE="/boot/config/go"
+
+echo "Removing ATP LSI Monitor..."
+
+# Stop service
+if [ -f "$RC_SCRIPT" ]; then
+    "$RC_SCRIPT" stop 2>/dev/null
+fi
+pkill -f "${{PLUGIN_NAME}}.py" 2>/dev/null || true
+rm -f "/var/run/${{PLUGIN_NAME}}.pid"
+
+# Remove from startup
+if [ -f "$GO_FILE" ]; then
+    sed -i "/# Start ATP LSI Monitor/d" "$GO_FILE"
+    sed -i "/rc.${{PLUGIN_NAME}}/d" "$GO_FILE"
+fi
+
+# Remove plugin files from RAM
+rm -rf "/usr/local/emhttp/plugins/${{PLUGIN_NAME}}"
+
+# Remove PLG file from boot (keeps settings.json and database)
+rm -f "/boot/config/plugins/${{PLUGIN_NAME}}.plg"
+
+# Clean up log files
+rm -f "/var/log/${{PLUGIN_NAME}}_install.log"
+rm -f "/var/log/${{PLUGIN_NAME}}_startup.log"
+
+echo ""
+echo "----------------------------------------------------"
+echo " ATP LSI Monitor has been removed."
+echo "----------------------------------------------------"
+echo ""
+echo "Settings preserved at: /boot/config/plugins/${{PLUGIN_NAME}}/"
+echo "Data preserved at: /mnt/user/appdata/${{PLUGIN_NAME}}/"
+echo ""
+echo "To completely remove all data, manually delete these folders."
+]]>
+</INLINE>
+</FILE>
+
+</PLUGIN>
+'''
+
+    write_file(output, plg)
+
+    # Validate
+    xml_valid = validate_xml(output)
+    py_valid = validate_python(src_dir / 'atp_lsi_monitor.py')
+
+    size = output.stat().st_size
+    print(f"  Output: {output}")
+    print(f"  Size: {size:,} bytes")
+    print(f"  XML valid: {'Yes' if xml_valid else 'NO'}")
+    print(f"  Python valid: {'Yes' if py_valid else 'NO'}")
+
+    return xml_valid and py_valid
+
+
 def print_shared_info():
     """Print information about shared resources."""
     print("\n" + "=" * 50)
@@ -1009,12 +1305,15 @@ def main():
             # Bump all plugins
             bump_version('backup')
             bump_version('emby')
+            bump_version('lsi')
         else:
             # Bump specific plugins
             if 'backup' in args_without_bump:
                 bump_version('backup')
             if 'emby' in args_without_bump:
                 bump_version('emby')
+            if 'lsi' in args_without_bump:
+                bump_version('lsi')
 
         print("\nVersions bumped. Run 'python build.py' to rebuild.")
         return 0
@@ -1023,6 +1322,7 @@ def main():
     build_all = len(args) == 0 or '--all' in args
     build_backup = build_all or 'backup' in args
     build_emby = build_all or 'emby' in args
+    build_lsi = build_all or 'lsi' in args
     validate_only = '--validate' in args
 
     # Print shared resources info
@@ -1036,6 +1336,9 @@ def main():
 
     if build_emby:
         results['emby'] = build_atp_emby_smart_cache()
+
+    if build_lsi:
+        results['lsi'] = build_atp_lsi_monitor()
 
     # Summary
     print("\n" + "=" * 50)

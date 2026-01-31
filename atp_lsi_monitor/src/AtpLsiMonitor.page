@@ -1,0 +1,1557 @@
+Menu="Utilities"
+Title="ATP LSI Monitor"
+Icon="atp-lsi-monitor.png"
+Markdown="false"
+---
+<?php
+$plugin = "atp_lsi_monitor";
+$version = "v2026.01.31a";
+$docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
+$pluginDir = "{$docroot}/plugins/{$plugin}";
+
+// Check if service is running
+$pidFile = "/var/run/{$plugin}.pid";
+$isRunning = false;
+$pid = null;
+if (file_exists($pidFile)) {
+    $pid = trim(file_get_contents($pidFile));
+    if ($pid && file_exists("/proc/{$pid}")) {
+        $isRunning = true;
+    } else {
+        $pid = null;
+    }
+}
+
+// CSRF token for Unraid 7 security
+$csrf_token = $var['csrf_token'] ?? '';
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+    /* ============================================
+       ATP LSI Monitor Styles
+       ============================================ */
+
+    .lsi-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    /* Header */
+    .lsi-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid var(--border-color, #444);
+    }
+
+    .lsi-header-left {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+
+    .lsi-header h1 {
+        margin: 0;
+        font-size: 24px;
+        color: var(--text-color, #fff);
+    }
+
+    .lsi-header-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    /* Status badges */
+    .lsi-status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .lsi-status-badge.running {
+        background: rgba(39, 174, 96, 0.2);
+        color: #27ae60;
+        border: 1px solid #27ae60;
+    }
+
+    .lsi-status-badge.stopped {
+        background: rgba(192, 57, 43, 0.2);
+        color: #c0392b;
+        border: 1px solid #c0392b;
+    }
+
+    .lsi-status-badge.healthy {
+        background: rgba(39, 174, 96, 0.2);
+        color: #27ae60;
+        border: 1px solid #27ae60;
+    }
+
+    .lsi-status-badge.warning {
+        background: rgba(243, 156, 18, 0.2);
+        color: #f39c12;
+        border: 1px solid #f39c12;
+    }
+
+    .lsi-status-badge.critical {
+        background: rgba(192, 57, 43, 0.2);
+        color: #c0392b;
+        border: 1px solid #c0392b;
+    }
+
+    .lsi-version {
+        color: var(--text-muted, #888);
+        font-size: 12px;
+    }
+
+    /* Tabs */
+    .lsi-tabs {
+        display: flex;
+        gap: 5px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--border-color, #444);
+        padding-bottom: 0;
+        flex-wrap: wrap;
+    }
+
+    .lsi-tab {
+        padding: 10px 20px;
+        background: transparent;
+        border: none;
+        border-bottom: 3px solid transparent;
+        color: var(--text-muted, #888);
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+        margin: 0;
+    }
+
+    .lsi-tab:hover {
+        color: var(--text-color, #fff);
+        background: rgba(242, 101, 34, 0.1);
+    }
+
+    .lsi-tab.active {
+        color: #F26522;
+        border-bottom-color: #F26522;
+        background: rgba(242, 101, 34, 0.1);
+    }
+
+    .lsi-panel {
+        display: none;
+    }
+
+    .lsi-panel.active {
+        display: block;
+    }
+
+    /* Cards */
+    .lsi-card {
+        background: var(--card-background, #1a1a1a);
+        border: 1px solid var(--border-color, #333);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .lsi-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border-color, #333);
+    }
+
+    .lsi-card-header h3 {
+        margin: 0;
+        font-size: 16px;
+        color: var(--text-color, #fff);
+    }
+
+    /* Grid */
+    .lsi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+    }
+
+    .lsi-grid-2 {
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    }
+
+    /* Stat cards */
+    .lsi-stat-card {
+        background: var(--card-background, #1a1a1a);
+        border: 1px solid var(--border-color, #333);
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+    }
+
+    .lsi-stat-icon {
+        font-size: 32px;
+        margin-bottom: 10px;
+    }
+
+    .lsi-stat-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--text-color, #fff);
+        margin-bottom: 5px;
+    }
+
+    .lsi-stat-value.temp-ok { color: #27ae60; }
+    .lsi-stat-value.temp-warning { color: #f39c12; }
+    .lsi-stat-value.temp-critical { color: #c0392b; }
+
+    .lsi-stat-label {
+        font-size: 13px;
+        color: var(--text-muted, #888);
+    }
+
+    /* Buttons */
+    .lsi-btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .lsi-btn-primary {
+        background: #F26522;
+        color: #fff;
+    }
+
+    .lsi-btn-primary:hover {
+        background: #d35400;
+    }
+
+    .lsi-btn-success {
+        background: #27ae60;
+        color: #fff;
+    }
+
+    .lsi-btn-success:hover {
+        background: #1e8449;
+    }
+
+    .lsi-btn-danger {
+        background: #c0392b;
+        color: #fff;
+    }
+
+    .lsi-btn-danger:hover {
+        background: #922b21;
+    }
+
+    .lsi-btn-secondary {
+        background: var(--border-color, #444);
+        color: var(--text-color, #fff);
+    }
+
+    .lsi-btn-secondary:hover {
+        background: #555;
+    }
+
+    .lsi-btn-sm {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+
+    /* Forms */
+    .lsi-form-group {
+        margin-bottom: 15px;
+    }
+
+    .lsi-form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: var(--text-color, #fff);
+    }
+
+    .lsi-form-group input,
+    .lsi-form-group select,
+    .lsi-form-group textarea {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid var(--border-color, #444);
+        border-radius: 4px;
+        background: var(--body-background, #1a1a1a);
+        color: var(--text-color, #fff);
+        font-size: 14px;
+        box-sizing: border-box;
+    }
+
+    .lsi-form-group input:focus,
+    .lsi-form-group select:focus {
+        outline: none;
+        border-color: #F26522;
+    }
+
+    .lsi-form-hint {
+        font-size: 12px;
+        color: var(--text-muted, #888);
+        margin-top: 4px;
+    }
+
+    .lsi-form-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+    }
+
+    .lsi-section {
+        margin-bottom: 25px;
+    }
+
+    .lsi-section h4 {
+        margin: 0 0 15px 0;
+        font-size: 14px;
+        color: #F26522;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    /* Tables */
+    .lsi-table-wrapper {
+        overflow-x: auto;
+    }
+
+    .lsi-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .lsi-table th,
+    .lsi-table td {
+        padding: 10px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color, #333);
+    }
+
+    .lsi-table th {
+        background: rgba(242, 101, 34, 0.1);
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text-muted, #888);
+    }
+
+    .lsi-table tr:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Log viewer */
+    .lsi-log-viewer {
+        background: #0a0a0a;
+        border: 1px solid var(--border-color, #333);
+        border-radius: 4px;
+        padding: 15px;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        max-height: 500px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        color: #a0a0a0;
+    }
+
+    /* Chart container */
+    .lsi-chart-container {
+        position: relative;
+        height: 300px;
+    }
+
+    /* Alerts */
+    .lsi-alert {
+        padding: 12px 15px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+    }
+
+    .lsi-alert-warning {
+        background: rgba(243, 156, 18, 0.15);
+        border: 1px solid #f39c12;
+        color: #f39c12;
+    }
+
+    .lsi-alert-danger {
+        background: rgba(192, 57, 43, 0.15);
+        border: 1px solid #c0392b;
+        color: #c0392b;
+    }
+
+    .lsi-alert-info {
+        background: rgba(52, 152, 219, 0.15);
+        border: 1px solid #3498db;
+        color: #3498db;
+    }
+
+    /* PHY Status */
+    .lsi-phy-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 10px;
+    }
+
+    .lsi-phy-card {
+        background: var(--body-background, #1a1a1a);
+        border: 1px solid var(--border-color, #333);
+        border-radius: 6px;
+        padding: 12px;
+    }
+
+    .lsi-phy-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .lsi-phy-name {
+        font-weight: 600;
+    }
+
+    .lsi-phy-status {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+    }
+
+    .lsi-phy-status.up { background: #27ae60; }
+    .lsi-phy-status.down { background: #c0392b; }
+
+    .lsi-phy-stat {
+        font-size: 11px;
+        color: var(--text-muted, #888);
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .lsi-phy-stat.error span:last-child {
+        color: #e74c3c;
+    }
+
+    /* Hidden */
+    .lsi-hidden {
+        display: none !important;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .lsi-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .lsi-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .lsi-tabs {
+            overflow-x: auto;
+            flex-wrap: nowrap;
+        }
+
+        .lsi-form-row {
+            grid-template-columns: 1fr;
+        }
+    }
+    </style>
+</head>
+<body>
+<div class="lsi-container">
+    <!-- Header -->
+    <div class="lsi-header">
+        <div class="lsi-header-left">
+            <h1>ATP LSI Monitor</h1>
+            <span class="lsi-status-badge <?=$isRunning ? 'running' : 'stopped'?>" id="serviceStatus">
+                <span id="statusDot">●</span>
+                <span id="statusText"><?=$isRunning ? "Running" . ($pid ? " (PID: $pid)" : "") : "Stopped"?></span>
+            </span>
+            <span class="lsi-status-badge" id="healthBadge">
+                <span>Health: <span id="healthStatus">--</span></span>
+            </span>
+        </div>
+        <div class="lsi-header-right">
+            <button class="lsi-btn <?=$isRunning ? 'lsi-btn-danger' : 'lsi-btn-success'?>" id="serviceBtn" onclick="toggleService()">
+                <?=$isRunning ? '⏹ Stop' : '▶ Start'?>
+            </button>
+            <span class="lsi-version"><?=$version?></span>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="lsi-tabs">
+        <button class="lsi-tab active" data-tab="dashboard">Dashboard</button>
+        <button class="lsi-tab" data-tab="temperature">Temperature</button>
+        <button class="lsi-tab" data-tab="hardware">Hardware</button>
+        <button class="lsi-tab" data-tab="alerts">Alerts</button>
+        <button class="lsi-tab" data-tab="settings">Settings</button>
+        <button class="lsi-tab" data-tab="logs">Logs</button>
+    </div>
+
+    <!-- Dashboard Panel -->
+    <div class="lsi-panel active" id="panel-dashboard">
+        <!-- Current Stats -->
+        <div class="lsi-grid">
+            <div class="lsi-stat-card">
+                <div class="lsi-stat-icon">🌡️</div>
+                <div class="lsi-stat-value" id="currentTemp">--</div>
+                <div class="lsi-stat-label">Current Temperature</div>
+            </div>
+            <div class="lsi-stat-card">
+                <div class="lsi-stat-icon">📈</div>
+                <div class="lsi-stat-value" id="maxTemp24h">--</div>
+                <div class="lsi-stat-label">Max (24h)</div>
+            </div>
+            <div class="lsi-stat-card">
+                <div class="lsi-stat-icon">📊</div>
+                <div class="lsi-stat-value" id="avgTemp24h">--</div>
+                <div class="lsi-stat-label">Avg (24h)</div>
+            </div>
+            <div class="lsi-stat-card">
+                <div class="lsi-stat-icon">⚠️</div>
+                <div class="lsi-stat-value" id="alertCount">--</div>
+                <div class="lsi-stat-label">Alerts (24h)</div>
+            </div>
+        </div>
+
+        <!-- Temperature Chart -->
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3>Temperature History (24h)</h3>
+                <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="refreshChart()">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div class="lsi-chart-container">
+                <canvas id="tempChart"></canvas>
+            </div>
+        </div>
+
+        <!-- PHY Status -->
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3>PHY Status</h3>
+                <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="refreshPhyStatus()">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div class="lsi-phy-grid" id="phyGrid">
+                <div class="lsi-alert lsi-alert-info">Loading PHY status...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Temperature Panel -->
+    <div class="lsi-panel" id="panel-temperature">
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3>Temperature History</h3>
+                <div>
+                    <select id="tempPeriod" onchange="loadTempHistory()">
+                        <option value="24">Last 24 hours</option>
+                        <option value="168">Last 7 days</option>
+                        <option value="720">Last 30 days</option>
+                    </select>
+                    <button class="lsi-btn lsi-btn-primary lsi-btn-sm" onclick="readTemperature()">
+                        📖 Read Now
+                    </button>
+                </div>
+            </div>
+            <div class="lsi-chart-container">
+                <canvas id="tempHistoryChart"></canvas>
+            </div>
+        </div>
+
+        <div class="lsi-grid lsi-grid-2">
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>Statistics</h3>
+                </div>
+                <div class="lsi-table-wrapper">
+                    <table class="lsi-table">
+                        <thead>
+                            <tr>
+                                <th>Period</th>
+                                <th>Min</th>
+                                <th>Max</th>
+                                <th>Avg</th>
+                                <th>Readings</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tempStatsTable">
+                            <tr><td colspan="5">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>Reports</h3>
+                </div>
+                <div class="lsi-form-group">
+                    <label>Generate Report</label>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="lsi-btn lsi-btn-secondary" onclick="generateReport('daily')">Daily</button>
+                        <button class="lsi-btn lsi-btn-secondary" onclick="generateReport('weekly')">Weekly</button>
+                        <button class="lsi-btn lsi-btn-secondary" onclick="generateReport('monthly')">Monthly</button>
+                    </div>
+                </div>
+                <div id="reportOutput" class="lsi-log-viewer" style="max-height: 200px; margin-top: 15px; display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hardware Panel -->
+    <div class="lsi-panel" id="panel-hardware">
+        <div class="lsi-grid lsi-grid-2">
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>Firmware Information</h3>
+                    <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadFirmwareInfo()">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div id="firmwareInfo">
+                    <div class="lsi-alert lsi-alert-info">Loading firmware info...</div>
+                </div>
+            </div>
+
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>Connected Devices</h3>
+                    <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadDevices()">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div id="devicesInfo">
+                    <div class="lsi-alert lsi-alert-info">Loading devices...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3>PHY Link Errors</h3>
+                <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadPhyErrors()">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div class="lsi-table-wrapper">
+                <table class="lsi-table">
+                    <thead>
+                        <tr>
+                            <th>PHY</th>
+                            <th>Status</th>
+                            <th>Invalid DWord</th>
+                            <th>Running Disparity</th>
+                            <th>Loss of Sync</th>
+                            <th>Phy Reset</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="phyErrorsTable">
+                        <tr><td colspan="7">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alerts Panel -->
+    <div class="lsi-panel" id="panel-alerts">
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3>Alert History</h3>
+                <button class="lsi-btn lsi-btn-danger lsi-btn-sm" onclick="clearAlerts()">
+                    🗑️ Clear All
+                </button>
+            </div>
+            <div class="lsi-table-wrapper">
+                <table class="lsi-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Type</th>
+                            <th>Severity</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody id="alertsTable">
+                        <tr><td colspan="4">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div class="lsi-panel" id="panel-settings">
+        <form id="settingsForm" onsubmit="saveSettings(event)">
+            <input type="hidden" name="csrf_token" value="<?=$csrf_token?>">
+
+            <!-- General Settings -->
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>General Settings</h3>
+                </div>
+
+                <div class="lsi-section">
+                    <h4>Monitoring</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="ENABLED" id="setting_ENABLED">
+                                Enable Monitoring
+                            </label>
+                            <div class="lsi-form-hint">Enable/disable automatic temperature polling</div>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Poll Interval (seconds)</label>
+                            <input type="number" name="POLL_INTERVAL" id="setting_POLL_INTERVAL" min="60" max="3600">
+                            <div class="lsi-form-hint">How often to read temperature (60-3600s)</div>
+                        </div>
+                    </div>
+
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>lsiutil Path</label>
+                            <input type="text" name="LSIUTIL_PATH" id="setting_LSIUTIL_PATH">
+                            <div class="lsi-form-hint">Path to lsiutil binary (default: bundled)</div>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>LSI Port Number</label>
+                            <input type="number" name="LSI_PORT" id="setting_LSI_PORT" min="1" max="8">
+                            <div class="lsi-form-hint">lsiutil port number (usually 1)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lsi-section">
+                    <h4>Temperature Thresholds</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>Warning Threshold (°C)</label>
+                            <input type="number" name="TEMP_WARNING" id="setting_TEMP_WARNING" min="30" max="80">
+                            <div class="lsi-form-hint">Temperature for warning alert</div>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Critical Threshold (°C)</label>
+                            <input type="number" name="TEMP_CRITICAL" id="setting_TEMP_CRITICAL" min="40" max="90">
+                            <div class="lsi-form-hint">Temperature for critical alert</div>
+                        </div>
+                    </div>
+                    <div class="lsi-form-group">
+                        <label>
+                            <input type="checkbox" name="TEMP_SHUTDOWN_ENABLED" id="setting_TEMP_SHUTDOWN_ENABLED">
+                            Enable Emergency Shutdown
+                        </label>
+                        <div class="lsi-form-hint">Shutdown system on critical temperature (USE WITH CAUTION!)</div>
+                    </div>
+                </div>
+
+                <div class="lsi-section">
+                    <h4>Alert Settings</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="ALERT_ON_WARNING" id="setting_ALERT_ON_WARNING">
+                                Alert on Warning
+                            </label>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="ALERT_ON_CRITICAL" id="setting_ALERT_ON_CRITICAL">
+                                Alert on Critical
+                            </label>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="ALERT_ON_PHY_ERRORS" id="setting_ALERT_ON_PHY_ERRORS">
+                                Alert on PHY Errors
+                            </label>
+                        </div>
+                    </div>
+                    <div class="lsi-form-group">
+                        <label>Alert Cooldown (seconds)</label>
+                        <input type="number" name="ALERT_COOLDOWN" id="setting_ALERT_COOLDOWN" min="300" max="86400">
+                        <div class="lsi-form-hint">Minimum time between repeated alerts</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notification Settings -->
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>Notifications</h3>
+                    <button type="button" class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="testNotification()">
+                        📤 Test Notification
+                    </button>
+                </div>
+
+                <div class="lsi-form-group">
+                    <label>Notification Service</label>
+                    <select name="NOTIFICATION_SERVICE" id="setting_NOTIFICATION_SERVICE" onchange="toggleNotificationFields()">
+                        <option value="none">None</option>
+                        <option value="discord">Discord</option>
+                        <option value="notifiarr">Notifiarr</option>
+                        <option value="gotify">Gotify</option>
+                        <option value="ntfy">ntfy</option>
+                        <option value="pushover">Pushover</option>
+                    </select>
+                </div>
+
+                <!-- Discord -->
+                <div id="discord-settings" class="lsi-section lsi-hidden">
+                    <h4>Discord Settings</h4>
+                    <div class="lsi-form-group">
+                        <label>Webhook URL</label>
+                        <input type="text" name="DISCORD_WEBHOOK" id="setting_DISCORD_WEBHOOK" placeholder="https://discord.com/api/webhooks/...">
+                    </div>
+                </div>
+
+                <!-- Notifiarr -->
+                <div id="notifiarr-settings" class="lsi-section lsi-hidden">
+                    <h4>Notifiarr Settings</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>API Key</label>
+                            <input type="text" name="NOTIFIARR_API_KEY" id="setting_NOTIFIARR_API_KEY">
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Channel ID (optional)</label>
+                            <input type="text" name="NOTIFIARR_CHANNEL" id="setting_NOTIFIARR_CHANNEL">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gotify -->
+                <div id="gotify-settings" class="lsi-section lsi-hidden">
+                    <h4>Gotify Settings</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>Server URL</label>
+                            <input type="text" name="GOTIFY_URL" id="setting_GOTIFY_URL" placeholder="https://gotify.example.com">
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>App Token</label>
+                            <input type="text" name="GOTIFY_TOKEN" id="setting_GOTIFY_TOKEN">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ntfy -->
+                <div id="ntfy-settings" class="lsi-section lsi-hidden">
+                    <h4>ntfy Settings</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>Server URL</label>
+                            <input type="text" name="NTFY_URL" id="setting_NTFY_URL" placeholder="https://ntfy.sh">
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Topic</label>
+                            <input type="text" name="NTFY_TOPIC" id="setting_NTFY_TOPIC">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pushover -->
+                <div id="pushover-settings" class="lsi-section lsi-hidden">
+                    <h4>Pushover Settings</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>User Key</label>
+                            <input type="text" name="PUSHOVER_USER_KEY" id="setting_PUSHOVER_USER_KEY">
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>API Token</label>
+                            <input type="text" name="PUSHOVER_API_TOKEN" id="setting_PUSHOVER_API_TOKEN">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scheduled Reports -->
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>Scheduled Reports</h3>
+                </div>
+
+                <div class="lsi-section">
+                    <h4>Daily Report</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="DAILY_REPORT_ENABLED" id="setting_DAILY_REPORT_ENABLED">
+                                Enable Daily Report
+                            </label>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Send at Hour</label>
+                            <input type="number" name="DAILY_REPORT_HOUR" id="setting_DAILY_REPORT_HOUR" min="0" max="23">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lsi-section">
+                    <h4>Weekly Report</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="WEEKLY_REPORT_ENABLED" id="setting_WEEKLY_REPORT_ENABLED">
+                                Enable Weekly Report
+                            </label>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Day of Week</label>
+                            <select name="WEEKLY_REPORT_DAY" id="setting_WEEKLY_REPORT_DAY">
+                                <option value="0">Monday</option>
+                                <option value="1">Tuesday</option>
+                                <option value="2">Wednesday</option>
+                                <option value="3">Thursday</option>
+                                <option value="4">Friday</option>
+                                <option value="5">Saturday</option>
+                                <option value="6">Sunday</option>
+                            </select>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Send at Hour</label>
+                            <input type="number" name="WEEKLY_REPORT_HOUR" id="setting_WEEKLY_REPORT_HOUR" min="0" max="23">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lsi-section">
+                    <h4>Monthly Report</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="MONTHLY_REPORT_ENABLED" id="setting_MONTHLY_REPORT_ENABLED">
+                                Enable Monthly Report
+                            </label>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Day of Month</label>
+                            <input type="number" name="MONTHLY_REPORT_DAY" id="setting_MONTHLY_REPORT_DAY" min="1" max="28">
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Send at Hour</label>
+                            <input type="number" name="MONTHLY_REPORT_HOUR" id="setting_MONTHLY_REPORT_HOUR" min="0" max="23">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="submit" class="lsi-btn lsi-btn-primary">💾 Save Settings</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Logs Panel -->
+    <div class="lsi-panel" id="panel-logs">
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3>Service Logs</h3>
+                <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadLogs()">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div class="lsi-log-viewer" id="logViewer">Loading logs...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================
+// ATP LSI Monitor JavaScript
+// ============================================
+
+const ajaxUrl = '/plugins/<?=$plugin?>/include/ajax.php';
+const csrfToken = '<?=$csrf_token?>';
+let tempChart = null;
+let tempHistoryChart = null;
+let refreshInterval = null;
+
+// ============================================
+// AJAX Helper
+// ============================================
+
+function ajax(action, data = {}, callback) {
+    data.action = action;
+    data.csrf_token = csrfToken;
+
+    const formData = new URLSearchParams();
+    for (const key in data) {
+        formData.append(key, data[key]);
+    }
+
+    fetch(ajaxUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formData
+    })
+    .then(r => r.json())
+    .then(callback)
+    .catch(e => {
+        console.error('AJAX error:', e);
+        callback({ success: false, error: e.message });
+    });
+}
+
+// ============================================
+// Tab Navigation
+// ============================================
+
+document.querySelectorAll('.lsi-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.lsi-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.lsi-panel').forEach(p => p.classList.remove('active'));
+
+        tab.classList.add('active');
+        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+
+        // Load data for specific tabs
+        const tabName = tab.dataset.tab;
+        if (tabName === 'dashboard') loadDashboard();
+        else if (tabName === 'temperature') loadTemperatureTab();
+        else if (tabName === 'hardware') loadHardwareTab();
+        else if (tabName === 'alerts') loadAlerts();
+        else if (tabName === 'settings') loadSettings();
+        else if (tabName === 'logs') loadLogs();
+    });
+});
+
+// ============================================
+// Dashboard
+// ============================================
+
+function loadDashboard() {
+    loadHealth();
+    loadCurrentTemp();
+    loadTempStats('24h');
+    loadTempChart();
+    refreshPhyStatus();
+}
+
+function loadHealth() {
+    ajax('health', {}, data => {
+        if (data.success) {
+            const badge = document.getElementById('healthBadge');
+            const status = document.getElementById('healthStatus');
+
+            badge.className = 'lsi-status-badge ' + data.health;
+            status.textContent = data.health.charAt(0).toUpperCase() + data.health.slice(1);
+        }
+    });
+}
+
+function loadCurrentTemp() {
+    ajax('get_temperature', {}, data => {
+        const el = document.getElementById('currentTemp');
+        if (data.success && data.ioc_temp !== null) {
+            const temp = data.ioc_temp;
+            el.textContent = temp + '°C';
+            el.className = 'lsi-stat-value ';
+            if (temp >= 65) el.className += 'temp-critical';
+            else if (temp >= 50) el.className += 'temp-warning';
+            else el.className += 'temp-ok';
+        } else {
+            el.textContent = '--';
+        }
+    });
+}
+
+function loadTempStats(period) {
+    ajax('get_temperature_stats', { period: period }, data => {
+        if (data.success) {
+            document.getElementById('maxTemp24h').textContent =
+                data.max_temp !== null ? data.max_temp + '°C' : '--';
+            document.getElementById('avgTemp24h').textContent =
+                data.avg_temp !== null ? data.avg_temp.toFixed(1) + '°C' : '--';
+        }
+    });
+
+    ajax('get_alerts', { limit: 100 }, data => {
+        if (data.success) {
+            // Count alerts from last 24h
+            const now = new Date();
+            const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
+            const count = data.alerts.filter(a => new Date(a.timestamp) > dayAgo).length;
+            document.getElementById('alertCount').textContent = count;
+        }
+    });
+}
+
+function loadTempChart() {
+    ajax('get_temperature_history', { hours: 24 }, data => {
+        if (!data.success) return;
+
+        const ctx = document.getElementById('tempChart').getContext('2d');
+
+        if (tempChart) tempChart.destroy();
+
+        const labels = data.history.map(h => {
+            const d = new Date(h.timestamp);
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        });
+        const temps = data.history.map(h => h.ioc_temp);
+
+        tempChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Temperature (°C)',
+                    data: temps,
+                    borderColor: '#F26522',
+                    backgroundColor: 'rgba(242, 101, 34, 0.1)',
+                    tension: 0.3,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        suggestedMin: 20,
+                        suggestedMax: 80
+                    }
+                }
+            }
+        });
+    });
+}
+
+function refreshChart() {
+    loadTempChart();
+}
+
+function refreshPhyStatus() {
+    ajax('get_phy', {}, data => {
+        const grid = document.getElementById('phyGrid');
+
+        if (!data.success || !data.phys || data.phys.length === 0) {
+            grid.innerHTML = '<div class="lsi-alert lsi-alert-info">No PHY data available</div>';
+            return;
+        }
+
+        grid.innerHTML = data.phys.map(phy => {
+            const total = phy.invalid_dword + phy.running_disparity + phy.loss_of_sync + phy.phy_reset_problem;
+            const hasErrors = total > 0;
+
+            return `
+                <div class="lsi-phy-card">
+                    <div class="lsi-phy-header">
+                        <span class="lsi-phy-name">PHY ${phy.phy_number}</span>
+                        <span class="lsi-phy-status ${phy.link_up ? 'up' : 'down'}"></span>
+                    </div>
+                    <div class="lsi-phy-stat ${hasErrors ? 'error' : ''}">
+                        <span>Total Errors:</span>
+                        <span>${total.toLocaleString()}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    });
+}
+
+// ============================================
+// Temperature Tab
+// ============================================
+
+function loadTemperatureTab() {
+    loadTempHistory();
+    loadTempStatsTable();
+}
+
+function loadTempHistory() {
+    const hours = document.getElementById('tempPeriod').value;
+
+    ajax('get_temperature_history', { hours: hours }, data => {
+        if (!data.success) return;
+
+        const ctx = document.getElementById('tempHistoryChart').getContext('2d');
+
+        if (tempHistoryChart) tempHistoryChart.destroy();
+
+        const labels = data.history.map(h => {
+            const d = new Date(h.timestamp);
+            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        });
+        const temps = data.history.map(h => h.ioc_temp);
+
+        tempHistoryChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Temperature (°C)',
+                    data: temps,
+                    borderColor: '#F26522',
+                    backgroundColor: 'rgba(242, 101, 34, 0.1)',
+                    tension: 0.3,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    });
+}
+
+function loadTempStatsTable() {
+    const periods = [
+        { id: '24h', label: 'Last 24 Hours' },
+        { id: '7d', label: 'Last 7 Days' },
+        { id: '30d', label: 'Last 30 Days' }
+    ];
+
+    const tbody = document.getElementById('tempStatsTable');
+    tbody.innerHTML = '<tr><td colspan="5">Loading...</td></tr>';
+
+    Promise.all(periods.map(p =>
+        new Promise(resolve => {
+            ajax('get_temperature_stats', { period: p.id }, data => {
+                resolve({ ...p, ...data });
+            });
+        })
+    )).then(results => {
+        tbody.innerHTML = results.map(r => `
+            <tr>
+                <td>${r.label}</td>
+                <td>${r.min_temp !== null ? r.min_temp + '°C' : '--'}</td>
+                <td>${r.max_temp !== null ? r.max_temp + '°C' : '--'}</td>
+                <td>${r.avg_temp !== null ? r.avg_temp.toFixed(1) + '°C' : '--'}</td>
+                <td>${r.readings || 0}</td>
+            </tr>
+        `).join('');
+    });
+}
+
+function readTemperature() {
+    ajax('read_temperature', {}, data => {
+        if (data.success) {
+            alert('Temperature read: ' + data.temperature + '°C');
+            loadDashboard();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+}
+
+function generateReport(type) {
+    ajax('generate_report', { type: type }, data => {
+        const output = document.getElementById('reportOutput');
+        output.style.display = 'block';
+
+        if (data.success && data.report) {
+            output.textContent = data.report;
+        } else {
+            output.textContent = 'Error: ' + (data.error || 'No data available');
+        }
+    });
+}
+
+// ============================================
+// Hardware Tab
+// ============================================
+
+function loadHardwareTab() {
+    loadFirmwareInfo();
+    loadDevices();
+    loadPhyErrors();
+}
+
+function loadFirmwareInfo() {
+    ajax('get_firmware', {}, data => {
+        const el = document.getElementById('firmwareInfo');
+
+        if (!data.success) {
+            el.innerHTML = `<div class="lsi-alert lsi-alert-danger">${data.error}</div>`;
+            return;
+        }
+
+        el.innerHTML = `
+            <table class="lsi-table">
+                <tr><td><strong>Firmware</strong></td><td>${data.firmware_version || 'Unknown'}</td></tr>
+                <tr><td><strong>BIOS</strong></td><td>${data.bios_version || 'Unknown'}</td></tr>
+                <tr><td><strong>Chip</strong></td><td>${data.chip_name || 'Unknown'}</td></tr>
+                <tr><td><strong>Board</strong></td><td>${data.board_name || 'Unknown'}</td></tr>
+            </table>
+        `;
+    });
+}
+
+function loadDevices() {
+    ajax('get_devices', {}, data => {
+        const el = document.getElementById('devicesInfo');
+
+        if (!data.success) {
+            el.innerHTML = `<div class="lsi-alert lsi-alert-danger">${data.error}</div>`;
+            return;
+        }
+
+        if (!data.devices || data.devices.length === 0) {
+            el.innerHTML = '<div class="lsi-alert lsi-alert-info">No devices detected</div>';
+            return;
+        }
+
+        el.innerHTML = `
+            <p>Found ${data.device_count} device(s)</p>
+            <table class="lsi-table">
+                <thead>
+                    <tr><th>SAS Address</th><th>Type</th></tr>
+                </thead>
+                <tbody>
+                    ${data.devices.map(d => `
+                        <tr>
+                            <td><code>${d.sas_address}</code></td>
+                            <td>${d.device_type}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    });
+}
+
+function loadPhyErrors() {
+    ajax('get_phy', {}, data => {
+        const tbody = document.getElementById('phyErrorsTable');
+
+        if (!data.success || !data.phys) {
+            tbody.innerHTML = '<tr><td colspan="7">Error loading PHY data</td></tr>';
+            return;
+        }
+
+        if (data.phys.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7">No PHY data available</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.phys.map(phy => {
+            const total = phy.invalid_dword + phy.running_disparity + phy.loss_of_sync + phy.phy_reset_problem;
+            return `
+                <tr>
+                    <td>PHY ${phy.phy_number}</td>
+                    <td><span class="lsi-status-badge ${phy.link_up ? 'running' : 'stopped'}">${phy.link_up ? 'Up' : 'Down'}</span></td>
+                    <td>${phy.invalid_dword.toLocaleString()}</td>
+                    <td>${phy.running_disparity.toLocaleString()}</td>
+                    <td>${phy.loss_of_sync.toLocaleString()}</td>
+                    <td>${phy.phy_reset_problem.toLocaleString()}</td>
+                    <td><strong>${total.toLocaleString()}</strong></td>
+                </tr>
+            `;
+        }).join('');
+    });
+}
+
+// ============================================
+// Alerts Tab
+// ============================================
+
+function loadAlerts() {
+    ajax('get_alerts', { limit: 100 }, data => {
+        const tbody = document.getElementById('alertsTable');
+
+        if (!data.success || !data.alerts || data.alerts.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4">No alerts</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.alerts.map(a => `
+            <tr>
+                <td>${new Date(a.timestamp).toLocaleString()}</td>
+                <td>${a.alert_type}</td>
+                <td><span class="lsi-status-badge ${a.severity}">${a.severity}</span></td>
+                <td>${a.message}</td>
+            </tr>
+        `).join('');
+    });
+}
+
+function clearAlerts() {
+    if (!confirm('Clear all alerts?')) return;
+
+    ajax('clear_alerts', {}, data => {
+        if (data.success) {
+            loadAlerts();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+}
+
+// ============================================
+// Settings Tab
+// ============================================
+
+function loadSettings() {
+    ajax('get_settings', {}, data => {
+        if (!data.success) return;
+
+        // Populate form fields
+        for (const key in data) {
+            const el = document.getElementById('setting_' + key);
+            if (!el) continue;
+
+            if (el.type === 'checkbox') {
+                el.checked = data[key] === true || data[key] === 'true';
+            } else {
+                // Don't show masked values
+                if (data[key] !== '***configured***') {
+                    el.value = data[key];
+                }
+            }
+        }
+
+        toggleNotificationFields();
+    });
+}
+
+function toggleNotificationFields() {
+    const service = document.getElementById('setting_NOTIFICATION_SERVICE').value;
+
+    ['discord', 'notifiarr', 'gotify', 'ntfy', 'pushover'].forEach(s => {
+        document.getElementById(s + '-settings').classList.add('lsi-hidden');
+    });
+
+    if (service !== 'none') {
+        const el = document.getElementById(service + '-settings');
+        if (el) el.classList.remove('lsi-hidden');
+    }
+}
+
+function saveSettings(event) {
+    event.preventDefault();
+
+    const form = document.getElementById('settingsForm');
+    const formData = new FormData(form);
+    const data = {};
+
+    formData.forEach((value, key) => {
+        if (key !== 'csrf_token' && key !== 'action') {
+            data[key] = value;
+        }
+    });
+
+    // Handle checkboxes (unchecked ones don't appear in FormData)
+    form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        const key = cb.name;
+        data[key] = cb.checked ? 'true' : 'false';
+    });
+
+    ajax('save_settings', data, result => {
+        if (result.success) {
+            alert('Settings saved!');
+        } else {
+            alert('Error: ' + result.error);
+        }
+    });
+}
+
+function testNotification() {
+    ajax('test_notification', {}, data => {
+        if (data.success) {
+            alert('Test notification sent!');
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+}
+
+// ============================================
+// Logs Tab
+// ============================================
+
+function loadLogs() {
+    ajax('get_logs', { lines: 300 }, data => {
+        const viewer = document.getElementById('logViewer');
+        if (data.success) {
+            viewer.textContent = data.logs || 'No logs available';
+            viewer.scrollTop = viewer.scrollHeight;
+        } else {
+            viewer.textContent = 'Error loading logs: ' + data.error;
+        }
+    });
+}
+
+// ============================================
+// Service Control
+// ============================================
+
+function toggleService() {
+    const btn = document.getElementById('serviceBtn');
+    const isRunning = btn.textContent.includes('Stop');
+    const cmd = isRunning ? 'stop' : 'start';
+
+    btn.disabled = true;
+    btn.textContent = '⏳ ' + (isRunning ? 'Stopping...' : 'Starting...');
+
+    ajax('service', { cmd: cmd }, data => {
+        setTimeout(() => {
+            location.reload();
+        }, 2000);
+    });
+}
+
+// ============================================
+// Initialization
+// ============================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadDashboard();
+
+    // Auto-refresh dashboard every 30 seconds
+    refreshInterval = setInterval(() => {
+        const activeTab = document.querySelector('.lsi-tab.active');
+        if (activeTab && activeTab.dataset.tab === 'dashboard') {
+            loadCurrentTemp();
+            loadHealth();
+        }
+    }, 30000);
+});
+</script>
+</body>
+</html>

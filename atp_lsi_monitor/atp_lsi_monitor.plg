@@ -1,0 +1,4715 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name        "atp_lsi_monitor">
+<!ENTITY displayName "ATP LSI Monitor">
+<!ENTITY author      "Tegenett">
+<!ENTITY version     "2026.01.31a">
+<!ENTITY launch      "Settings/AtpLsiMonitor">
+<!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_lsi_monitor/atp_lsi_monitor.plg">
+]>
+
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="hdd-o" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
+
+<CHANGES>
+##2026.01.31a
+- NEW: Initial release
+- NEW: IOC temperature monitoring for LSI SAS HBA cards
+- NEW: PHY link error tracking (Invalid DWord, Running Disparity, Loss of Sync, Phy Reset)
+- NEW: Firmware and hardware info display
+- NEW: Connected device listing
+- NEW: Temperature history with SQLite database
+- NEW: Multiple notification services: Discord, Notifiarr, Gotify, ntfy, Pushover
+- NEW: Configurable alerting thresholds (warning/critical)
+- NEW: Scheduled reports (daily/weekly/monthly summaries)
+- NEW: Chart.js temperature graphs
+- NEW: Bundled lsiutil v1.72 binary (standalone operation)
+</CHANGES>
+
+<!-- Pre-install: Version check -->
+<FILE Run="/usr/bin/php">
+<INLINE>
+<![CDATA[
+<?php
+$version = parse_ini_file("/etc/unraid-version");
+if (version_compare($version['version'], "7.0.0", "<")) {
+    echo "********************************************************************\n";
+    echo "\n";
+    echo "ATP LSI Monitor requires Unraid version 7.0.0 or newer\n";
+    echo "Your version: " . $version['version'] . "\n";
+    echo "\n";
+    echo "********************************************************************\n";
+    exit(1);
+}
+?>
+]]>
+</INLINE>
+</FILE>
+
+<!-- Pre-install: Stop existing service and clean up -->
+<FILE Run="/bin/bash">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+PLUGIN_NAME="atp_lsi_monitor"
+PLUGIN_DIR="/usr/local/emhttp/plugins/${PLUGIN_NAME}"
+LOG="/var/log/${PLUGIN_NAME}_install.log"
+
+echo "$(date): Pre-install starting" >> "$LOG"
+
+# Stop old service if running
+if [ -f "/var/run/${PLUGIN_NAME}.pid" ]; then
+    PID=$(cat /var/run/${PLUGIN_NAME}.pid)
+    echo "$(date): Stopping service PID $PID" >> "$LOG"
+    kill "$PID" 2>/dev/null
+    sleep 3
+fi
+pkill -f "${PLUGIN_NAME}.py" 2>/dev/null || true
+
+rm -rf "${PLUGIN_DIR}"
+mkdir -p "${PLUGIN_DIR}/include"
+
+echo "$(date): Pre-install complete" >> "$LOG"
+]]>
+</INLINE>
+</FILE>
+
+<!-- Main Page File -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/AtpLsiMonitor.page">
+<INLINE>
+<![CDATA[
+Menu="Utilities"
+Title="ATP LSI Monitor"
+Icon="atp-lsi-monitor.png"
+Markdown="false"
+---
+<?php
+$plugin = "atp_lsi_monitor";
+$version = "v2026.01.31a";
+$docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
+$pluginDir = "{$docroot}/plugins/{$plugin}";
+
+// Check if service is running
+$pidFile = "/var/run/{$plugin}.pid";
+$isRunning = false;
+$pid = null;
+if (file_exists($pidFile)) {
+    $pid = trim(file_get_contents($pidFile));
+    if ($pid && file_exists("/proc/{$pid}")) {
+        $isRunning = true;
+    } else {
+        $pid = null;
+    }
+}
+
+// CSRF token for Unraid 7 security
+$csrf_token = $var['csrf_token'] ?? '';
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+
+/* ============================================
+   ATP SHARED CSS - Injected by build.py
+   ============================================ */
+/* ============================================
+   ATP COMMON CSS - v2026.01.30
+   Shared styles for all ATP (A Tegenett Plugin) plugins
+   Injected automatically by build.py
+   ============================================ */
+
+/* ============================================
+   CSS VARIABLES (Theme Colors)
+   ============================================ */
+:root {
+    /* Brand Colors - ATP Orange Theme */
+    --atp-primary: #e67e22;
+    --atp-primary-dark: #d35400;
+    --atp-primary-light: #f39c12;
+
+    /* Status Colors */
+    --atp-success: #27ae60;
+    --atp-success-dark: #1e8449;
+    --atp-danger: #c0392b;
+    --atp-danger-dark: #a93226;
+    --atp-warning: #f39c12;
+    --atp-warning-dark: #d68910;
+    --atp-info: #3498db;
+    --atp-info-dark: #2980b9;
+
+    /* Theme-aware colors (from Unraid CSS variables) */
+    --atp-bg: var(--body-background, #1a1a1a);
+    --atp-card-bg: var(--card-background, #262626);
+    --atp-text: var(--text-color, #e0e0e0);
+    --atp-text-muted: var(--text-muted, #888);
+    --atp-border: var(--border-color, #3a3a3a);
+
+    /* Spacing */
+    --atp-spacing-xs: 5px;
+    --atp-spacing-sm: 10px;
+    --atp-spacing-md: 15px;
+    --atp-spacing-lg: 20px;
+    --atp-spacing-xl: 30px;
+
+    /* Border Radius */
+    --atp-radius-sm: 4px;
+    --atp-radius-md: 8px;
+    --atp-radius-lg: 12px;
+    --atp-radius-round: 50%;
+}
+
+/* ============================================
+   LAYOUT - Container
+   ============================================ */
+.atp-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: var(--atp-spacing-lg);
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+.atp-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--atp-spacing-lg);
+    padding-bottom: var(--atp-spacing-md);
+    border-bottom: 1px solid var(--atp-border);
+}
+
+.atp-title {
+    display: flex;
+    align-items: center;
+    gap: var(--atp-spacing-md);
+}
+
+.atp-title h1 {
+    margin: 0;
+    color: var(--atp-primary);
+    font-size: 1.8em;
+}
+
+.atp-title h1 i {
+    margin-right: var(--atp-spacing-sm);
+}
+
+.atp-header-right {
+    display: flex;
+    gap: var(--atp-spacing-sm);
+    align-items: center;
+}
+
+.atp-version {
+    color: var(--atp-text-muted);
+    font-size: 0.85em;
+}
+
+/* Status Badge */
+.atp-status-badge {
+    padding: 0 16px;
+    border-radius: var(--atp-radius-sm);
+    font-size: 0.85em;
+    font-weight: 600;
+    white-space: nowrap;
+    height: 36px;
+    line-height: 36px;
+    display: inline-block;
+}
+
+.atp-status-badge i {
+    font-size: 0.6em;
+    margin-right: 6px;
+}
+
+.atp-status-badge.running { background: var(--atp-success); color: white; }
+.atp-status-badge.stopped { background: var(--atp-danger); color: white; }
+.atp-status-badge.warning { background: var(--atp-warning); color: white; }
+
+/* ============================================
+   TABS - Navigation
+   ============================================ */
+.atp-tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: var(--atp-spacing-lg);
+    border-bottom: 1px solid var(--atp-border);
+    padding-bottom: var(--atp-spacing-sm);
+    flex-wrap: wrap;
+}
+
+.atp-tab {
+    padding: 10px 20px;
+    background: var(--atp-card-bg);
+    border: 1px solid var(--atp-border);
+    border-radius: var(--atp-radius-sm) var(--atp-radius-sm) 0 0;
+    color: var(--atp-text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.atp-tab:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--atp-text);
+}
+
+.atp-tab.active {
+    background: var(--atp-primary);
+    color: #fff;
+    border-color: var(--atp-primary);
+}
+
+.atp-tab i {
+    margin-right: 8px;
+}
+
+/* Panels */
+.atp-panel { display: none; }
+.atp-panel.active { display: block; }
+
+/* ============================================
+   CARDS
+   ============================================ */
+.atp-card {
+    background: var(--atp-card-bg);
+    border-radius: var(--atp-radius-md);
+    padding: var(--atp-spacing-lg);
+    margin-bottom: var(--atp-spacing-lg);
+    border: 1px solid var(--atp-border);
+}
+
+.atp-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--atp-spacing-md);
+    padding-bottom: var(--atp-spacing-sm);
+    border-bottom: 1px solid var(--atp-border);
+}
+
+.atp-card-title {
+    margin: 0;
+    font-size: 1.1em;
+    color: var(--atp-primary);
+}
+
+.atp-card-title i {
+    margin-right: 8px;
+}
+
+/* Section (alternative card style) */
+.atp-section {
+    background: var(--atp-card-bg);
+    border: 1px solid var(--atp-border);
+    border-radius: var(--atp-radius-md);
+    padding: var(--atp-spacing-lg);
+    margin-bottom: var(--atp-spacing-lg);
+}
+
+.atp-section-title {
+    color: var(--atp-primary);
+    font-size: 14px;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-bottom: var(--atp-spacing-md);
+    padding-bottom: var(--atp-spacing-sm);
+    border-bottom: 1px solid var(--atp-border);
+}
+
+.atp-section-title i {
+    margin-right: 8px;
+}
+
+/* ============================================
+   STAT CARDS (Dashboard)
+   ============================================ */
+.atp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--atp-spacing-md);
+    margin-bottom: var(--atp-spacing-lg);
+}
+
+.atp-stat-card {
+    background: var(--atp-card-bg);
+    border-radius: var(--atp-radius-md);
+    padding: var(--atp-spacing-lg);
+    border: 1px solid var(--atp-border);
+    text-align: center;
+}
+
+.atp-stat-icon {
+    font-size: 2em;
+    margin-bottom: var(--atp-spacing-sm);
+    color: var(--atp-primary);
+}
+
+.atp-stat-value {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: var(--atp-text);
+}
+
+.atp-stat-label {
+    color: var(--atp-text-muted);
+    font-size: 0.9em;
+    margin-top: var(--atp-spacing-xs);
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+.atp-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: var(--atp-radius-sm);
+    cursor: pointer;
+    font-size: 0.9em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+
+.atp-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.atp-btn-primary { background: var(--atp-primary); color: white; }
+.atp-btn-primary:hover:not(:disabled) { background: var(--atp-primary-dark); }
+
+.atp-btn-success { background: var(--atp-success); color: white; }
+.atp-btn-success:hover:not(:disabled) { background: var(--atp-success-dark); }
+
+.atp-btn-danger { background: var(--atp-danger); color: white; }
+.atp-btn-danger:hover:not(:disabled) { background: var(--atp-danger-dark); }
+
+.atp-btn-warning { background: var(--atp-warning); color: white; }
+.atp-btn-warning:hover:not(:disabled) { background: var(--atp-warning-dark); }
+
+.atp-btn-info { background: var(--atp-info); color: white; }
+.atp-btn-info:hover:not(:disabled) { background: var(--atp-info-dark); }
+
+.atp-btn-secondary { background: var(--atp-border); color: var(--atp-text); }
+.atp-btn-secondary:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+
+.atp-btn-sm { padding: 5px 10px; font-size: 0.85em; }
+.atp-btn-lg { padding: 12px 24px; font-size: 1em; }
+
+/* ============================================
+   TABLES
+   ============================================ */
+.atp-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: var(--atp-spacing-md);
+}
+
+.atp-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+}
+
+.atp-table th,
+.atp-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--atp-border);
+}
+
+.atp-table th {
+    color: var(--atp-primary);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.atp-table tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.atp-table .filename,
+.atp-table .truncate {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ============================================
+   FORMS
+   ============================================ */
+.atp-form-group {
+    margin-bottom: var(--atp-spacing-md);
+}
+
+.atp-form-group label {
+    display: block;
+    margin-bottom: var(--atp-spacing-xs);
+    color: var(--atp-text);
+    font-weight: 500;
+}
+
+.atp-form-group input,
+.atp-form-group select,
+.atp-form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--atp-border);
+    border-radius: var(--atp-radius-sm);
+    background: var(--atp-bg);
+    color: var(--atp-text);
+    font-size: 0.95em;
+}
+
+.atp-form-group input:focus,
+.atp-form-group select:focus,
+.atp-form-group textarea:focus {
+    outline: none;
+    border-color: var(--atp-primary);
+}
+
+.atp-form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--atp-spacing-md);
+}
+
+.atp-form-hint {
+    font-size: 0.85em;
+    color: var(--atp-text-muted);
+    margin-top: 4px;
+}
+
+/* Checkbox styling */
+.atp-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.atp-checkbox-label input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
+/* ============================================
+   BADGES
+   ============================================ */
+.atp-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: var(--atp-radius-lg);
+    font-size: 0.8em;
+    font-weight: 600;
+}
+
+.atp-badge-success { background: rgba(39, 174, 96, 0.2); color: #27ae60; }
+.atp-badge-danger { background: rgba(192, 57, 43, 0.2); color: #e74c3c; }
+.atp-badge-warning { background: rgba(243, 156, 18, 0.2); color: #f39c12; }
+.atp-badge-info { background: rgba(52, 152, 219, 0.2); color: #3498db; }
+
+/* ============================================
+   STATUS TEXT COLORS
+   ============================================ */
+.atp-text-success, .success { color: var(--atp-success) !important; }
+.atp-text-danger, .danger { color: var(--atp-danger) !important; }
+.atp-text-warning, .warning { color: var(--atp-warning) !important; }
+.atp-text-info, .info { color: var(--atp-info) !important; }
+.atp-text-muted { color: var(--atp-text-muted) !important; }
+
+/* ============================================
+   LOG VIEWER
+   ============================================ */
+.atp-log-viewer {
+    background: #1a1a1a;
+    border: 1px solid var(--atp-border);
+    border-radius: var(--atp-radius-sm);
+    padding: var(--atp-spacing-md);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.85em;
+    line-height: 1.5;
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #0f0;
+}
+
+/* ============================================
+   PROGRESS BAR
+   ============================================ */
+.atp-progress-bar {
+    height: 8px;
+    background: #333;
+    border-radius: var(--atp-radius-sm);
+    overflow: hidden;
+    flex-grow: 1;
+    min-width: 100px;
+}
+
+.atp-progress-fill {
+    height: 100%;
+    background: var(--atp-success);
+    transition: width 0.3s, background 0.3s;
+}
+
+.atp-progress-fill.warning { background: var(--atp-warning); }
+.atp-progress-fill.danger { background: var(--atp-danger); }
+
+/* ============================================
+   TOOLBAR
+   ============================================ */
+.atp-toolbar {
+    display: flex;
+    gap: var(--atp-spacing-sm);
+    margin-bottom: var(--atp-spacing-md);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* ============================================
+   ACTIVITY LIST
+   ============================================ */
+.atp-activity {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.atp-activity-item {
+    padding: var(--atp-spacing-sm);
+    border-bottom: 1px solid var(--atp-border);
+    display: flex;
+    align-items: center;
+    gap: var(--atp-spacing-sm);
+}
+
+.atp-activity-item:last-child {
+    border-bottom: none;
+}
+
+.atp-activity-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--atp-radius-round);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+}
+
+.atp-activity-icon.copy { background: var(--atp-info); }
+.atp-activity-icon.cleanup { background: var(--atp-warning); }
+.atp-activity-icon.error { background: var(--atp-danger); }
+.atp-activity-icon.success { background: var(--atp-success); }
+
+/* ============================================
+   MODAL
+   ============================================ */
+.atp-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.atp-modal {
+    background: var(--atp-card-bg);
+    border-radius: var(--atp-radius-md);
+    padding: var(--atp-spacing-lg);
+    max-width: 600px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.atp-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--atp-spacing-md);
+    padding-bottom: var(--atp-spacing-sm);
+    border-bottom: 1px solid var(--atp-border);
+}
+
+.atp-modal-title {
+    margin: 0;
+    color: var(--atp-primary);
+}
+
+.atp-modal-close {
+    background: none;
+    border: none;
+    color: var(--atp-text-muted);
+    font-size: 1.5em;
+    cursor: pointer;
+}
+
+.atp-modal-close:hover {
+    color: var(--atp-text);
+}
+
+.atp-modal-footer {
+    margin-top: var(--atp-spacing-lg);
+    padding-top: var(--atp-spacing-md);
+    border-top: 1px solid var(--atp-border);
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--atp-spacing-sm);
+}
+
+/* ============================================
+   HEALTH INDICATORS
+   ============================================ */
+.atp-health-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--atp-spacing-xs);
+}
+
+.atp-health-label {
+    font-size: 12px;
+    color: var(--atp-text-muted);
+    text-transform: uppercase;
+}
+
+.atp-health-value {
+    font-size: 14px;
+    color: var(--atp-text);
+    font-weight: 500;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+.atp-countdown {
+    font-family: monospace;
+    color: var(--atp-warning);
+}
+
+.atp-refresh-indicator {
+    font-size: 11px;
+    color: var(--atp-text-muted);
+}
+
+.atp-hidden { display: none !important; }
+.atp-text-center { text-align: center; }
+.atp-text-right { text-align: right; }
+.atp-mt-0 { margin-top: 0; }
+.atp-mb-0 { margin-bottom: 0; }
+.atp-mt-lg { margin-top: var(--atp-spacing-lg); }
+.atp-mb-lg { margin-bottom: var(--atp-spacing-lg); }
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+@keyframes atp-spin {
+    to { transform: rotate(360deg); }
+}
+
+.atp-spin {
+    animation: atp-spin 1s linear infinite;
+}
+
+@keyframes atp-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.atp-pulse {
+    animation: atp-pulse 2s ease-in-out infinite;
+}
+
+/* ============================================
+   RESPONSIVE - Tablet (768px)
+   ============================================ */
+@media (max-width: 768px) {
+    .atp-header {
+        flex-direction: column;
+        gap: var(--atp-spacing-md);
+        text-align: center;
+    }
+
+    .atp-tabs {
+        gap: 3px;
+    }
+
+    .atp-tab {
+        padding: 8px 12px;
+        font-size: 12px;
+        flex: 1 1 auto;
+        text-align: center;
+        min-width: 70px;
+    }
+
+    .atp-tab i {
+        margin-right: 5px;
+    }
+
+    .atp-form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .atp-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .atp-stat-card {
+        padding: var(--atp-spacing-md);
+    }
+
+    .atp-stat-value {
+        font-size: 1.5em;
+    }
+
+    .atp-table {
+        font-size: 12px;
+    }
+
+    .atp-table th,
+    .atp-table td {
+        padding: 8px 10px;
+    }
+
+    .atp-table .filename,
+    .atp-table .truncate {
+        max-width: 120px;
+    }
+
+    .atp-section,
+    .atp-card {
+        padding: var(--atp-spacing-md);
+    }
+
+    /* Force single column on 2-column grids */
+    div[style*="grid-template-columns: 1fr 1fr"] {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* ============================================
+   RESPONSIVE - Mobile (480px)
+   ============================================ */
+@media (max-width: 480px) {
+    .atp-container {
+        padding: var(--atp-spacing-sm);
+    }
+
+    .atp-tabs {
+        gap: 2px;
+    }
+
+    .atp-tab {
+        padding: 6px 8px;
+        font-size: 11px;
+        min-width: 50px;
+    }
+
+    .atp-tab i {
+        margin-right: 0;
+    }
+
+    .atp-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .atp-stat-value {
+        font-size: 1.2em;
+    }
+
+    .atp-table {
+        font-size: 11px;
+    }
+
+    .atp-table th,
+    .atp-table td {
+        padding: 6px 8px;
+    }
+
+    .atp-log-viewer {
+        max-height: 300px;
+        font-size: 10px;
+    }
+
+    .atp-btn {
+        padding: 6px 12px;
+        font-size: 0.85em;
+    }
+}
+
+
+/* Backwards compatibility aliases: --lsi-* maps to --atp-* */
+:root {
+    --lsi-primary: var(--atp-primary);
+    --lsi-primary-dark: var(--atp-primary-dark);
+    --lsi-success: var(--atp-success);
+    --lsi-danger: var(--atp-danger);
+    --lsi-warning: var(--atp-warning);
+    --lsi-info: var(--atp-info);
+    --lsi-bg: var(--atp-bg);
+    --lsi-card-bg: var(--atp-card-bg);
+    --lsi-text: var(--atp-text);
+    --lsi-text-muted: var(--atp-text-muted);
+    --lsi-border: var(--atp-border);
+}
+
+
+    /* ============================================
+       ATP LSI Monitor Styles
+       ============================================ */
+
+    .lsi-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    /* Header */
+    .lsi-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid var(--border-color, #444);
+    }
+
+    .lsi-header-left {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+
+    .lsi-header h1 {
+        margin: 0;
+        font-size: 24px;
+        color: var(--text-color, #fff);
+    }
+
+    .lsi-header-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    /* Status badges */
+    .lsi-status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .lsi-status-badge.running {
+        background: rgba(39, 174, 96, 0.2);
+        color: #27ae60;
+        border: 1px solid #27ae60;
+    }
+
+    .lsi-status-badge.stopped {
+        background: rgba(192, 57, 43, 0.2);
+        color: #c0392b;
+        border: 1px solid #c0392b;
+    }
+
+    .lsi-status-badge.healthy {
+        background: rgba(39, 174, 96, 0.2);
+        color: #27ae60;
+        border: 1px solid #27ae60;
+    }
+
+    .lsi-status-badge.warning {
+        background: rgba(243, 156, 18, 0.2);
+        color: #f39c12;
+        border: 1px solid #f39c12;
+    }
+
+    .lsi-status-badge.critical {
+        background: rgba(192, 57, 43, 0.2);
+        color: #c0392b;
+        border: 1px solid #c0392b;
+    }
+
+    .lsi-version {
+        color: var(--text-muted, #888);
+        font-size: 12px;
+    }
+
+    /* Tabs */
+    .lsi-tabs {
+        display: flex;
+        gap: 5px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--border-color, #444);
+        padding-bottom: 0;
+        flex-wrap: wrap;
+    }
+
+    .lsi-tab {
+        padding: 10px 20px;
+        background: transparent;
+        border: none;
+        border-bottom: 3px solid transparent;
+        color: var(--text-muted, #888);
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+        margin: 0;
+    }
+
+    .lsi-tab:hover {
+        color: var(--text-color, #fff);
+        background: rgba(242, 101, 34, 0.1);
+    }
+
+    .lsi-tab.active {
+        color: #F26522;
+        border-bottom-color: #F26522;
+        background: rgba(242, 101, 34, 0.1);
+    }
+
+    .lsi-panel {
+        display: none;
+    }
+
+    .lsi-panel.active {
+        display: block;
+    }
+
+    /* Cards */
+    .lsi-card {
+        background: var(--card-background, #1a1a1a);
+        border: 1px solid var(--border-color, #333);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .lsi-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border-color, #333);
+    }
+
+    .lsi-card-header h3 {
+        margin: 0;
+        font-size: 16px;
+        color: var(--text-color, #fff);
+    }
+
+    /* Grid */
+    .lsi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+    }
+
+    .lsi-grid-2 {
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    }
+
+    /* Stat cards */
+    .lsi-stat-card {
+        background: var(--card-background, #1a1a1a);
+        border: 1px solid var(--border-color, #333);
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+    }
+
+    .lsi-stat-icon {
+        font-size: 32px;
+        margin-bottom: 10px;
+    }
+
+    .lsi-stat-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--text-color, #fff);
+        margin-bottom: 5px;
+    }
+
+    .lsi-stat-value.temp-ok { color: #27ae60; }
+    .lsi-stat-value.temp-warning { color: #f39c12; }
+    .lsi-stat-value.temp-critical { color: #c0392b; }
+
+    .lsi-stat-label {
+        font-size: 13px;
+        color: var(--text-muted, #888);
+    }
+
+    /* Buttons */
+    .lsi-btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .lsi-btn-primary {
+        background: #F26522;
+        color: #fff;
+    }
+
+    .lsi-btn-primary:hover {
+        background: #d35400;
+    }
+
+    .lsi-btn-success {
+        background: #27ae60;
+        color: #fff;
+    }
+
+    .lsi-btn-success:hover {
+        background: #1e8449;
+    }
+
+    .lsi-btn-danger {
+        background: #c0392b;
+        color: #fff;
+    }
+
+    .lsi-btn-danger:hover {
+        background: #922b21;
+    }
+
+    .lsi-btn-secondary {
+        background: var(--border-color, #444);
+        color: var(--text-color, #fff);
+    }
+
+    .lsi-btn-secondary:hover {
+        background: #555;
+    }
+
+    .lsi-btn-sm {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+
+    /* Forms */
+    .lsi-form-group {
+        margin-bottom: 15px;
+    }
+
+    .lsi-form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: var(--text-color, #fff);
+    }
+
+    .lsi-form-group input,
+    .lsi-form-group select,
+    .lsi-form-group textarea {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid var(--border-color, #444);
+        border-radius: 4px;
+        background: var(--body-background, #1a1a1a);
+        color: var(--text-color, #fff);
+        font-size: 14px;
+        box-sizing: border-box;
+    }
+
+    .lsi-form-group input:focus,
+    .lsi-form-group select:focus {
+        outline: none;
+        border-color: #F26522;
+    }
+
+    .lsi-form-hint {
+        font-size: 12px;
+        color: var(--text-muted, #888);
+        margin-top: 4px;
+    }
+
+    .lsi-form-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+    }
+
+    .lsi-section {
+        margin-bottom: 25px;
+    }
+
+    .lsi-section h4 {
+        margin: 0 0 15px 0;
+        font-size: 14px;
+        color: #F26522;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    /* Tables */
+    .lsi-table-wrapper {
+        overflow-x: auto;
+    }
+
+    .lsi-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .lsi-table th,
+    .lsi-table td {
+        padding: 10px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color, #333);
+    }
+
+    .lsi-table th {
+        background: rgba(242, 101, 34, 0.1);
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text-muted, #888);
+    }
+
+    .lsi-table tr:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Log viewer */
+    .lsi-log-viewer {
+        background: #0a0a0a;
+        border: 1px solid var(--border-color, #333);
+        border-radius: 4px;
+        padding: 15px;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        max-height: 500px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        color: #a0a0a0;
+    }
+
+    /* Chart container */
+    .lsi-chart-container {
+        position: relative;
+        height: 300px;
+    }
+
+    /* Alerts */
+    .lsi-alert {
+        padding: 12px 15px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+    }
+
+    .lsi-alert-warning {
+        background: rgba(243, 156, 18, 0.15);
+        border: 1px solid #f39c12;
+        color: #f39c12;
+    }
+
+    .lsi-alert-danger {
+        background: rgba(192, 57, 43, 0.15);
+        border: 1px solid #c0392b;
+        color: #c0392b;
+    }
+
+    .lsi-alert-info {
+        background: rgba(52, 152, 219, 0.15);
+        border: 1px solid #3498db;
+        color: #3498db;
+    }
+
+    /* PHY Status */
+    .lsi-phy-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 10px;
+    }
+
+    .lsi-phy-card {
+        background: var(--body-background, #1a1a1a);
+        border: 1px solid var(--border-color, #333);
+        border-radius: 6px;
+        padding: 12px;
+    }
+
+    .lsi-phy-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .lsi-phy-name {
+        font-weight: 600;
+    }
+
+    .lsi-phy-status {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+    }
+
+    .lsi-phy-status.up { background: #27ae60; }
+    .lsi-phy-status.down { background: #c0392b; }
+
+    .lsi-phy-stat {
+        font-size: 11px;
+        color: var(--text-muted, #888);
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .lsi-phy-stat.error span:last-child {
+        color: #e74c3c;
+    }
+
+    /* Hidden */
+    .lsi-hidden {
+        display: none !important;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .lsi-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .lsi-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .lsi-tabs {
+            overflow-x: auto;
+            flex-wrap: nowrap;
+        }
+
+        .lsi-form-row {
+            grid-template-columns: 1fr;
+        }
+    }
+    </style>
+</head>
+<body>
+<div class="lsi-container">
+    <!-- Header -->
+    <div class="lsi-header">
+        <div class="lsi-header-left">
+            <h1>ATP LSI Monitor</h1>
+            <span class="lsi-status-badge <?=$isRunning ? 'running' : 'stopped'?>" id="serviceStatus">
+                <span id="statusDot">●</span>
+                <span id="statusText"><?=$isRunning ? "Running" . ($pid ? " (PID: $pid)" : "") : "Stopped"?></span>
+            </span>
+            <span class="lsi-status-badge" id="healthBadge">
+                <span>Health: <span id="healthStatus">--</span></span>
+            </span>
+        </div>
+        <div class="lsi-header-right">
+            <button class="lsi-btn <?=$isRunning ? 'lsi-btn-danger' : 'lsi-btn-success'?>" id="serviceBtn" onclick="toggleService()">
+                <?=$isRunning ? '⏹ Stop' : '▶ Start'?>
+            </button>
+            <span class="lsi-version"><?=$version?></span>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="lsi-tabs">
+        <button class="lsi-tab active" data-tab="dashboard">Dashboard</button>
+        <button class="lsi-tab" data-tab="temperature">Temperature</button>
+        <button class="lsi-tab" data-tab="hardware">Hardware</button>
+        <button class="lsi-tab" data-tab="alerts">Alerts</button>
+        <button class="lsi-tab" data-tab="settings">Settings</button>
+        <button class="lsi-tab" data-tab="logs">Logs</button>
+    </div>
+
+    <!-- Dashboard Panel -->
+    <div class="lsi-panel active" id="panel-dashboard">
+        <!-- Current Stats -->
+        <div class="lsi-grid">
+            <div class="lsi-stat-card">
+                <div class="lsi-stat-icon">🌡️</div>
+                <div class="lsi-stat-value" id="currentTemp">--</div>
+                <div class="lsi-stat-label">Current Temperature</div>
+            </div>
+            <div class="lsi-stat-card">
+                <div class="lsi-stat-icon">📈</div>
+                <div class="lsi-stat-value" id="maxTemp24h">--</div>
+                <div class="lsi-stat-label">Max (24h)</div>
+            </div>
+            <div class="lsi-stat-card">
+                <div class="lsi-stat-icon">📊</div>
+                <div class="lsi-stat-value" id="avgTemp24h">--</div>
+                <div class="lsi-stat-label">Avg (24h)</div>
+            </div>
+            <div class="lsi-stat-card">
+                <div class="lsi-stat-icon">⚠️</div>
+                <div class="lsi-stat-value" id="alertCount">--</div>
+                <div class="lsi-stat-label">Alerts (24h)</div>
+            </div>
+        </div>
+
+        <!-- Temperature Chart -->
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3>Temperature History (24h)</h3>
+                <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="refreshChart()">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div class="lsi-chart-container">
+                <canvas id="tempChart"></canvas>
+            </div>
+        </div>
+
+        <!-- PHY Status -->
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3>PHY Status</h3>
+                <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="refreshPhyStatus()">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div class="lsi-phy-grid" id="phyGrid">
+                <div class="lsi-alert lsi-alert-info">Loading PHY status...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Temperature Panel -->
+    <div class="lsi-panel" id="panel-temperature">
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3>Temperature History</h3>
+                <div>
+                    <select id="tempPeriod" onchange="loadTempHistory()">
+                        <option value="24">Last 24 hours</option>
+                        <option value="168">Last 7 days</option>
+                        <option value="720">Last 30 days</option>
+                    </select>
+                    <button class="lsi-btn lsi-btn-primary lsi-btn-sm" onclick="readTemperature()">
+                        📖 Read Now
+                    </button>
+                </div>
+            </div>
+            <div class="lsi-chart-container">
+                <canvas id="tempHistoryChart"></canvas>
+            </div>
+        </div>
+
+        <div class="lsi-grid lsi-grid-2">
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>Statistics</h3>
+                </div>
+                <div class="lsi-table-wrapper">
+                    <table class="lsi-table">
+                        <thead>
+                            <tr>
+                                <th>Period</th>
+                                <th>Min</th>
+                                <th>Max</th>
+                                <th>Avg</th>
+                                <th>Readings</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tempStatsTable">
+                            <tr><td colspan="5">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>Reports</h3>
+                </div>
+                <div class="lsi-form-group">
+                    <label>Generate Report</label>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="lsi-btn lsi-btn-secondary" onclick="generateReport('daily')">Daily</button>
+                        <button class="lsi-btn lsi-btn-secondary" onclick="generateReport('weekly')">Weekly</button>
+                        <button class="lsi-btn lsi-btn-secondary" onclick="generateReport('monthly')">Monthly</button>
+                    </div>
+                </div>
+                <div id="reportOutput" class="lsi-log-viewer" style="max-height: 200px; margin-top: 15px; display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hardware Panel -->
+    <div class="lsi-panel" id="panel-hardware">
+        <div class="lsi-grid lsi-grid-2">
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>Firmware Information</h3>
+                    <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadFirmwareInfo()">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div id="firmwareInfo">
+                    <div class="lsi-alert lsi-alert-info">Loading firmware info...</div>
+                </div>
+            </div>
+
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>Connected Devices</h3>
+                    <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadDevices()">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div id="devicesInfo">
+                    <div class="lsi-alert lsi-alert-info">Loading devices...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3>PHY Link Errors</h3>
+                <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadPhyErrors()">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div class="lsi-table-wrapper">
+                <table class="lsi-table">
+                    <thead>
+                        <tr>
+                            <th>PHY</th>
+                            <th>Status</th>
+                            <th>Invalid DWord</th>
+                            <th>Running Disparity</th>
+                            <th>Loss of Sync</th>
+                            <th>Phy Reset</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="phyErrorsTable">
+                        <tr><td colspan="7">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alerts Panel -->
+    <div class="lsi-panel" id="panel-alerts">
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3>Alert History</h3>
+                <button class="lsi-btn lsi-btn-danger lsi-btn-sm" onclick="clearAlerts()">
+                    🗑️ Clear All
+                </button>
+            </div>
+            <div class="lsi-table-wrapper">
+                <table class="lsi-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Type</th>
+                            <th>Severity</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody id="alertsTable">
+                        <tr><td colspan="4">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div class="lsi-panel" id="panel-settings">
+        <form id="settingsForm" onsubmit="saveSettings(event)">
+            <input type="hidden" name="csrf_token" value="<?=$csrf_token?>">
+
+            <!-- General Settings -->
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>General Settings</h3>
+                </div>
+
+                <div class="lsi-section">
+                    <h4>Monitoring</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="ENABLED" id="setting_ENABLED">
+                                Enable Monitoring
+                            </label>
+                            <div class="lsi-form-hint">Enable/disable automatic temperature polling</div>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Poll Interval (seconds)</label>
+                            <input type="number" name="POLL_INTERVAL" id="setting_POLL_INTERVAL" min="60" max="3600">
+                            <div class="lsi-form-hint">How often to read temperature (60-3600s)</div>
+                        </div>
+                    </div>
+
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>lsiutil Path</label>
+                            <input type="text" name="LSIUTIL_PATH" id="setting_LSIUTIL_PATH">
+                            <div class="lsi-form-hint">Path to lsiutil binary (default: bundled)</div>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>LSI Port Number</label>
+                            <input type="number" name="LSI_PORT" id="setting_LSI_PORT" min="1" max="8">
+                            <div class="lsi-form-hint">lsiutil port number (usually 1)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lsi-section">
+                    <h4>Temperature Thresholds</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>Warning Threshold (°C)</label>
+                            <input type="number" name="TEMP_WARNING" id="setting_TEMP_WARNING" min="30" max="80">
+                            <div class="lsi-form-hint">Temperature for warning alert</div>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Critical Threshold (°C)</label>
+                            <input type="number" name="TEMP_CRITICAL" id="setting_TEMP_CRITICAL" min="40" max="90">
+                            <div class="lsi-form-hint">Temperature for critical alert</div>
+                        </div>
+                    </div>
+                    <div class="lsi-form-group">
+                        <label>
+                            <input type="checkbox" name="TEMP_SHUTDOWN_ENABLED" id="setting_TEMP_SHUTDOWN_ENABLED">
+                            Enable Emergency Shutdown
+                        </label>
+                        <div class="lsi-form-hint">Shutdown system on critical temperature (USE WITH CAUTION!)</div>
+                    </div>
+                </div>
+
+                <div class="lsi-section">
+                    <h4>Alert Settings</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="ALERT_ON_WARNING" id="setting_ALERT_ON_WARNING">
+                                Alert on Warning
+                            </label>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="ALERT_ON_CRITICAL" id="setting_ALERT_ON_CRITICAL">
+                                Alert on Critical
+                            </label>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="ALERT_ON_PHY_ERRORS" id="setting_ALERT_ON_PHY_ERRORS">
+                                Alert on PHY Errors
+                            </label>
+                        </div>
+                    </div>
+                    <div class="lsi-form-group">
+                        <label>Alert Cooldown (seconds)</label>
+                        <input type="number" name="ALERT_COOLDOWN" id="setting_ALERT_COOLDOWN" min="300" max="86400">
+                        <div class="lsi-form-hint">Minimum time between repeated alerts</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notification Settings -->
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>Notifications</h3>
+                    <button type="button" class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="testNotification()">
+                        📤 Test Notification
+                    </button>
+                </div>
+
+                <div class="lsi-form-group">
+                    <label>Notification Service</label>
+                    <select name="NOTIFICATION_SERVICE" id="setting_NOTIFICATION_SERVICE" onchange="toggleNotificationFields()">
+                        <option value="none">None</option>
+                        <option value="discord">Discord</option>
+                        <option value="notifiarr">Notifiarr</option>
+                        <option value="gotify">Gotify</option>
+                        <option value="ntfy">ntfy</option>
+                        <option value="pushover">Pushover</option>
+                    </select>
+                </div>
+
+                <!-- Discord -->
+                <div id="discord-settings" class="lsi-section lsi-hidden">
+                    <h4>Discord Settings</h4>
+                    <div class="lsi-form-group">
+                        <label>Webhook URL</label>
+                        <input type="text" name="DISCORD_WEBHOOK" id="setting_DISCORD_WEBHOOK" placeholder="https://discord.com/api/webhooks/...">
+                    </div>
+                </div>
+
+                <!-- Notifiarr -->
+                <div id="notifiarr-settings" class="lsi-section lsi-hidden">
+                    <h4>Notifiarr Settings</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>API Key</label>
+                            <input type="text" name="NOTIFIARR_API_KEY" id="setting_NOTIFIARR_API_KEY">
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Channel ID (optional)</label>
+                            <input type="text" name="NOTIFIARR_CHANNEL" id="setting_NOTIFIARR_CHANNEL">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gotify -->
+                <div id="gotify-settings" class="lsi-section lsi-hidden">
+                    <h4>Gotify Settings</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>Server URL</label>
+                            <input type="text" name="GOTIFY_URL" id="setting_GOTIFY_URL" placeholder="https://gotify.example.com">
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>App Token</label>
+                            <input type="text" name="GOTIFY_TOKEN" id="setting_GOTIFY_TOKEN">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ntfy -->
+                <div id="ntfy-settings" class="lsi-section lsi-hidden">
+                    <h4>ntfy Settings</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>Server URL</label>
+                            <input type="text" name="NTFY_URL" id="setting_NTFY_URL" placeholder="https://ntfy.sh">
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Topic</label>
+                            <input type="text" name="NTFY_TOPIC" id="setting_NTFY_TOPIC">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pushover -->
+                <div id="pushover-settings" class="lsi-section lsi-hidden">
+                    <h4>Pushover Settings</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>User Key</label>
+                            <input type="text" name="PUSHOVER_USER_KEY" id="setting_PUSHOVER_USER_KEY">
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>API Token</label>
+                            <input type="text" name="PUSHOVER_API_TOKEN" id="setting_PUSHOVER_API_TOKEN">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scheduled Reports -->
+            <div class="lsi-card">
+                <div class="lsi-card-header">
+                    <h3>Scheduled Reports</h3>
+                </div>
+
+                <div class="lsi-section">
+                    <h4>Daily Report</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="DAILY_REPORT_ENABLED" id="setting_DAILY_REPORT_ENABLED">
+                                Enable Daily Report
+                            </label>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Send at Hour</label>
+                            <input type="number" name="DAILY_REPORT_HOUR" id="setting_DAILY_REPORT_HOUR" min="0" max="23">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lsi-section">
+                    <h4>Weekly Report</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="WEEKLY_REPORT_ENABLED" id="setting_WEEKLY_REPORT_ENABLED">
+                                Enable Weekly Report
+                            </label>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Day of Week</label>
+                            <select name="WEEKLY_REPORT_DAY" id="setting_WEEKLY_REPORT_DAY">
+                                <option value="0">Monday</option>
+                                <option value="1">Tuesday</option>
+                                <option value="2">Wednesday</option>
+                                <option value="3">Thursday</option>
+                                <option value="4">Friday</option>
+                                <option value="5">Saturday</option>
+                                <option value="6">Sunday</option>
+                            </select>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Send at Hour</label>
+                            <input type="number" name="WEEKLY_REPORT_HOUR" id="setting_WEEKLY_REPORT_HOUR" min="0" max="23">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lsi-section">
+                    <h4>Monthly Report</h4>
+                    <div class="lsi-form-row">
+                        <div class="lsi-form-group">
+                            <label>
+                                <input type="checkbox" name="MONTHLY_REPORT_ENABLED" id="setting_MONTHLY_REPORT_ENABLED">
+                                Enable Monthly Report
+                            </label>
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Day of Month</label>
+                            <input type="number" name="MONTHLY_REPORT_DAY" id="setting_MONTHLY_REPORT_DAY" min="1" max="28">
+                        </div>
+                        <div class="lsi-form-group">
+                            <label>Send at Hour</label>
+                            <input type="number" name="MONTHLY_REPORT_HOUR" id="setting_MONTHLY_REPORT_HOUR" min="0" max="23">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="submit" class="lsi-btn lsi-btn-primary">💾 Save Settings</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Logs Panel -->
+    <div class="lsi-panel" id="panel-logs">
+        <div class="lsi-card">
+            <div class="lsi-card-header">
+                <h3>Service Logs</h3>
+                <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadLogs()">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div class="lsi-log-viewer" id="logViewer">Loading logs...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================
+// ATP LSI Monitor JavaScript
+// ============================================
+
+const ajaxUrl = '/plugins/<?=$plugin?>/include/ajax.php';
+const csrfToken = '<?=$csrf_token?>';
+let tempChart = null;
+let tempHistoryChart = null;
+let refreshInterval = null;
+
+// ============================================
+// AJAX Helper
+// ============================================
+
+function ajax(action, data = {}, callback) {
+    data.action = action;
+    data.csrf_token = csrfToken;
+
+    const formData = new URLSearchParams();
+    for (const key in data) {
+        formData.append(key, data[key]);
+    }
+
+    fetch(ajaxUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formData
+    })
+    .then(r => r.json())
+    .then(callback)
+    .catch(e => {
+        console.error('AJAX error:', e);
+        callback({ success: false, error: e.message });
+    });
+}
+
+// ============================================
+// Tab Navigation
+// ============================================
+
+document.querySelectorAll('.lsi-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.lsi-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.lsi-panel').forEach(p => p.classList.remove('active'));
+
+        tab.classList.add('active');
+        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+
+        // Load data for specific tabs
+        const tabName = tab.dataset.tab;
+        if (tabName === 'dashboard') loadDashboard();
+        else if (tabName === 'temperature') loadTemperatureTab();
+        else if (tabName === 'hardware') loadHardwareTab();
+        else if (tabName === 'alerts') loadAlerts();
+        else if (tabName === 'settings') loadSettings();
+        else if (tabName === 'logs') loadLogs();
+    });
+});
+
+// ============================================
+// Dashboard
+// ============================================
+
+function loadDashboard() {
+    loadHealth();
+    loadCurrentTemp();
+    loadTempStats('24h');
+    loadTempChart();
+    refreshPhyStatus();
+}
+
+function loadHealth() {
+    ajax('health', {}, data => {
+        if (data.success) {
+            const badge = document.getElementById('healthBadge');
+            const status = document.getElementById('healthStatus');
+
+            badge.className = 'lsi-status-badge ' + data.health;
+            status.textContent = data.health.charAt(0).toUpperCase() + data.health.slice(1);
+        }
+    });
+}
+
+function loadCurrentTemp() {
+    ajax('get_temperature', {}, data => {
+        const el = document.getElementById('currentTemp');
+        if (data.success && data.ioc_temp !== null) {
+            const temp = data.ioc_temp;
+            el.textContent = temp + '°C';
+            el.className = 'lsi-stat-value ';
+            if (temp >= 65) el.className += 'temp-critical';
+            else if (temp >= 50) el.className += 'temp-warning';
+            else el.className += 'temp-ok';
+        } else {
+            el.textContent = '--';
+        }
+    });
+}
+
+function loadTempStats(period) {
+    ajax('get_temperature_stats', { period: period }, data => {
+        if (data.success) {
+            document.getElementById('maxTemp24h').textContent =
+                data.max_temp !== null ? data.max_temp + '°C' : '--';
+            document.getElementById('avgTemp24h').textContent =
+                data.avg_temp !== null ? data.avg_temp.toFixed(1) + '°C' : '--';
+        }
+    });
+
+    ajax('get_alerts', { limit: 100 }, data => {
+        if (data.success) {
+            // Count alerts from last 24h
+            const now = new Date();
+            const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
+            const count = data.alerts.filter(a => new Date(a.timestamp) > dayAgo).length;
+            document.getElementById('alertCount').textContent = count;
+        }
+    });
+}
+
+function loadTempChart() {
+    ajax('get_temperature_history', { hours: 24 }, data => {
+        if (!data.success) return;
+
+        const ctx = document.getElementById('tempChart').getContext('2d');
+
+        if (tempChart) tempChart.destroy();
+
+        const labels = data.history.map(h => {
+            const d = new Date(h.timestamp);
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        });
+        const temps = data.history.map(h => h.ioc_temp);
+
+        tempChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Temperature (°C)',
+                    data: temps,
+                    borderColor: '#F26522',
+                    backgroundColor: 'rgba(242, 101, 34, 0.1)',
+                    tension: 0.3,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        suggestedMin: 20,
+                        suggestedMax: 80
+                    }
+                }
+            }
+        });
+    });
+}
+
+function refreshChart() {
+    loadTempChart();
+}
+
+function refreshPhyStatus() {
+    ajax('get_phy', {}, data => {
+        const grid = document.getElementById('phyGrid');
+
+        if (!data.success || !data.phys || data.phys.length === 0) {
+            grid.innerHTML = '<div class="lsi-alert lsi-alert-info">No PHY data available</div>';
+            return;
+        }
+
+        grid.innerHTML = data.phys.map(phy => {
+            const total = phy.invalid_dword + phy.running_disparity + phy.loss_of_sync + phy.phy_reset_problem;
+            const hasErrors = total > 0;
+
+            return `
+                <div class="lsi-phy-card">
+                    <div class="lsi-phy-header">
+                        <span class="lsi-phy-name">PHY ${phy.phy_number}</span>
+                        <span class="lsi-phy-status ${phy.link_up ? 'up' : 'down'}"></span>
+                    </div>
+                    <div class="lsi-phy-stat ${hasErrors ? 'error' : ''}">
+                        <span>Total Errors:</span>
+                        <span>${total.toLocaleString()}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    });
+}
+
+// ============================================
+// Temperature Tab
+// ============================================
+
+function loadTemperatureTab() {
+    loadTempHistory();
+    loadTempStatsTable();
+}
+
+function loadTempHistory() {
+    const hours = document.getElementById('tempPeriod').value;
+
+    ajax('get_temperature_history', { hours: hours }, data => {
+        if (!data.success) return;
+
+        const ctx = document.getElementById('tempHistoryChart').getContext('2d');
+
+        if (tempHistoryChart) tempHistoryChart.destroy();
+
+        const labels = data.history.map(h => {
+            const d = new Date(h.timestamp);
+            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        });
+        const temps = data.history.map(h => h.ioc_temp);
+
+        tempHistoryChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Temperature (°C)',
+                    data: temps,
+                    borderColor: '#F26522',
+                    backgroundColor: 'rgba(242, 101, 34, 0.1)',
+                    tension: 0.3,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    });
+}
+
+function loadTempStatsTable() {
+    const periods = [
+        { id: '24h', label: 'Last 24 Hours' },
+        { id: '7d', label: 'Last 7 Days' },
+        { id: '30d', label: 'Last 30 Days' }
+    ];
+
+    const tbody = document.getElementById('tempStatsTable');
+    tbody.innerHTML = '<tr><td colspan="5">Loading...</td></tr>';
+
+    Promise.all(periods.map(p =>
+        new Promise(resolve => {
+            ajax('get_temperature_stats', { period: p.id }, data => {
+                resolve({ ...p, ...data });
+            });
+        })
+    )).then(results => {
+        tbody.innerHTML = results.map(r => `
+            <tr>
+                <td>${r.label}</td>
+                <td>${r.min_temp !== null ? r.min_temp + '°C' : '--'}</td>
+                <td>${r.max_temp !== null ? r.max_temp + '°C' : '--'}</td>
+                <td>${r.avg_temp !== null ? r.avg_temp.toFixed(1) + '°C' : '--'}</td>
+                <td>${r.readings || 0}</td>
+            </tr>
+        `).join('');
+    });
+}
+
+function readTemperature() {
+    ajax('read_temperature', {}, data => {
+        if (data.success) {
+            alert('Temperature read: ' + data.temperature + '°C');
+            loadDashboard();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+}
+
+function generateReport(type) {
+    ajax('generate_report', { type: type }, data => {
+        const output = document.getElementById('reportOutput');
+        output.style.display = 'block';
+
+        if (data.success && data.report) {
+            output.textContent = data.report;
+        } else {
+            output.textContent = 'Error: ' + (data.error || 'No data available');
+        }
+    });
+}
+
+// ============================================
+// Hardware Tab
+// ============================================
+
+function loadHardwareTab() {
+    loadFirmwareInfo();
+    loadDevices();
+    loadPhyErrors();
+}
+
+function loadFirmwareInfo() {
+    ajax('get_firmware', {}, data => {
+        const el = document.getElementById('firmwareInfo');
+
+        if (!data.success) {
+            el.innerHTML = `<div class="lsi-alert lsi-alert-danger">${data.error}</div>`;
+            return;
+        }
+
+        el.innerHTML = `
+            <table class="lsi-table">
+                <tr><td><strong>Firmware</strong></td><td>${data.firmware_version || 'Unknown'}</td></tr>
+                <tr><td><strong>BIOS</strong></td><td>${data.bios_version || 'Unknown'}</td></tr>
+                <tr><td><strong>Chip</strong></td><td>${data.chip_name || 'Unknown'}</td></tr>
+                <tr><td><strong>Board</strong></td><td>${data.board_name || 'Unknown'}</td></tr>
+            </table>
+        `;
+    });
+}
+
+function loadDevices() {
+    ajax('get_devices', {}, data => {
+        const el = document.getElementById('devicesInfo');
+
+        if (!data.success) {
+            el.innerHTML = `<div class="lsi-alert lsi-alert-danger">${data.error}</div>`;
+            return;
+        }
+
+        if (!data.devices || data.devices.length === 0) {
+            el.innerHTML = '<div class="lsi-alert lsi-alert-info">No devices detected</div>';
+            return;
+        }
+
+        el.innerHTML = `
+            <p>Found ${data.device_count} device(s)</p>
+            <table class="lsi-table">
+                <thead>
+                    <tr><th>SAS Address</th><th>Type</th></tr>
+                </thead>
+                <tbody>
+                    ${data.devices.map(d => `
+                        <tr>
+                            <td><code>${d.sas_address}</code></td>
+                            <td>${d.device_type}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    });
+}
+
+function loadPhyErrors() {
+    ajax('get_phy', {}, data => {
+        const tbody = document.getElementById('phyErrorsTable');
+
+        if (!data.success || !data.phys) {
+            tbody.innerHTML = '<tr><td colspan="7">Error loading PHY data</td></tr>';
+            return;
+        }
+
+        if (data.phys.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7">No PHY data available</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.phys.map(phy => {
+            const total = phy.invalid_dword + phy.running_disparity + phy.loss_of_sync + phy.phy_reset_problem;
+            return `
+                <tr>
+                    <td>PHY ${phy.phy_number}</td>
+                    <td><span class="lsi-status-badge ${phy.link_up ? 'running' : 'stopped'}">${phy.link_up ? 'Up' : 'Down'}</span></td>
+                    <td>${phy.invalid_dword.toLocaleString()}</td>
+                    <td>${phy.running_disparity.toLocaleString()}</td>
+                    <td>${phy.loss_of_sync.toLocaleString()}</td>
+                    <td>${phy.phy_reset_problem.toLocaleString()}</td>
+                    <td><strong>${total.toLocaleString()}</strong></td>
+                </tr>
+            `;
+        }).join('');
+    });
+}
+
+// ============================================
+// Alerts Tab
+// ============================================
+
+function loadAlerts() {
+    ajax('get_alerts', { limit: 100 }, data => {
+        const tbody = document.getElementById('alertsTable');
+
+        if (!data.success || !data.alerts || data.alerts.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4">No alerts</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.alerts.map(a => `
+            <tr>
+                <td>${new Date(a.timestamp).toLocaleString()}</td>
+                <td>${a.alert_type}</td>
+                <td><span class="lsi-status-badge ${a.severity}">${a.severity}</span></td>
+                <td>${a.message}</td>
+            </tr>
+        `).join('');
+    });
+}
+
+function clearAlerts() {
+    if (!confirm('Clear all alerts?')) return;
+
+    ajax('clear_alerts', {}, data => {
+        if (data.success) {
+            loadAlerts();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+}
+
+// ============================================
+// Settings Tab
+// ============================================
+
+function loadSettings() {
+    ajax('get_settings', {}, data => {
+        if (!data.success) return;
+
+        // Populate form fields
+        for (const key in data) {
+            const el = document.getElementById('setting_' + key);
+            if (!el) continue;
+
+            if (el.type === 'checkbox') {
+                el.checked = data[key] === true || data[key] === 'true';
+            } else {
+                // Don't show masked values
+                if (data[key] !== '***configured***') {
+                    el.value = data[key];
+                }
+            }
+        }
+
+        toggleNotificationFields();
+    });
+}
+
+function toggleNotificationFields() {
+    const service = document.getElementById('setting_NOTIFICATION_SERVICE').value;
+
+    ['discord', 'notifiarr', 'gotify', 'ntfy', 'pushover'].forEach(s => {
+        document.getElementById(s + '-settings').classList.add('lsi-hidden');
+    });
+
+    if (service !== 'none') {
+        const el = document.getElementById(service + '-settings');
+        if (el) el.classList.remove('lsi-hidden');
+    }
+}
+
+function saveSettings(event) {
+    event.preventDefault();
+
+    const form = document.getElementById('settingsForm');
+    const formData = new FormData(form);
+    const data = {};
+
+    formData.forEach((value, key) => {
+        if (key !== 'csrf_token' && key !== 'action') {
+            data[key] = value;
+        }
+    });
+
+    // Handle checkboxes (unchecked ones don't appear in FormData)
+    form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        const key = cb.name;
+        data[key] = cb.checked ? 'true' : 'false';
+    });
+
+    ajax('save_settings', data, result => {
+        if (result.success) {
+            alert('Settings saved!');
+        } else {
+            alert('Error: ' + result.error);
+        }
+    });
+}
+
+function testNotification() {
+    ajax('test_notification', {}, data => {
+        if (data.success) {
+            alert('Test notification sent!');
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+}
+
+// ============================================
+// Logs Tab
+// ============================================
+
+function loadLogs() {
+    ajax('get_logs', { lines: 300 }, data => {
+        const viewer = document.getElementById('logViewer');
+        if (data.success) {
+            viewer.textContent = data.logs || 'No logs available';
+            viewer.scrollTop = viewer.scrollHeight;
+        } else {
+            viewer.textContent = 'Error loading logs: ' + data.error;
+        }
+    });
+}
+
+// ============================================
+// Service Control
+// ============================================
+
+function toggleService() {
+    const btn = document.getElementById('serviceBtn');
+    const isRunning = btn.textContent.includes('Stop');
+    const cmd = isRunning ? 'stop' : 'start';
+
+    btn.disabled = true;
+    btn.textContent = '⏳ ' + (isRunning ? 'Stopping...' : 'Starting...');
+
+    ajax('service', { cmd: cmd }, data => {
+        setTimeout(() => {
+            location.reload();
+        }, 2000);
+    });
+}
+
+// ============================================
+// Initialization
+// ============================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadDashboard();
+
+    // Auto-refresh dashboard every 30 seconds
+    refreshInterval = setInterval(() => {
+        const activeTab = document.querySelector('.lsi-tab.active');
+        if (activeTab && activeTab.dataset.tab === 'dashboard') {
+            loadCurrentTemp();
+            loadHealth();
+        }
+    }, 30000);
+});
+
+
+/* ============================================
+   ATP SHARED JS - Injected by build.py
+   ============================================ */
+/**
+ * ATP COMMON JS - v2026.01.30
+ * Shared JavaScript utilities for all ATP plugins
+ * Injected automatically by build.py
+ */
+
+var ATP = ATP || {};
+
+/**
+ * Initialize ATP utilities
+ * @param {Object} options - Configuration options
+ * @param {string} options.prefix - Plugin prefix (e.g., 'tb', 'esc')
+ * @param {string} options.ajaxUrl - AJAX endpoint URL
+ * @param {string} options.csrfToken - CSRF token for security
+ */
+ATP.init = function(options) {
+    this.prefix = options.prefix || 'atp';
+    this.ajaxUrl = options.ajaxUrl || '';
+    this.csrfToken = options.csrfToken || '';
+    this.refreshInterval = options.refreshInterval || 3000;
+    this.refreshTimer = null;
+    this.countdown = this.refreshInterval / 1000;
+    this.currentTab = 'dashboard';
+
+    console.log('[ATP] Initialized with prefix:', this.prefix);
+};
+
+/**
+ * Get CSRF token from page or stored value
+ * @returns {string} CSRF token
+ */
+ATP.getCsrfToken = function() {
+    if (this.csrfToken) return this.csrfToken;
+
+    // Try to get from hidden input
+    var input = document.querySelector('input[name="csrf_token"]');
+    if (input) return input.value;
+
+    // Try to get from meta tag
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta) return meta.getAttribute('content');
+
+    return '';
+};
+
+/**
+ * Make AJAX request with CSRF token
+ * @param {string} action - AJAX action name
+ * @param {Object} data - Additional data to send
+ * @param {Function} callback - Success callback
+ * @param {Function} errorCallback - Error callback
+ */
+ATP.ajax = function(action, data, callback, errorCallback) {
+    var self = this;
+    data = data || {};
+    data.ajax = action;
+    data.csrf_token = this.getCsrfToken();
+
+    $.ajax({
+        url: this.ajaxUrl,
+        method: 'POST',
+        data: data,
+        dataType: 'json',
+        timeout: 30000
+    }).done(function(response) {
+        if (callback) callback(response);
+    }).fail(function(xhr, status, error) {
+        console.error('[ATP] AJAX error:', action, status, error);
+        if (errorCallback) {
+            errorCallback(error, xhr);
+        }
+    });
+};
+
+/**
+ * Make AJAX request with extended timeout (for long operations)
+ * @param {string} action - AJAX action name
+ * @param {Object} data - Additional data to send
+ * @param {number} timeout - Timeout in milliseconds
+ * @param {Function} callback - Success callback
+ * @param {Function} errorCallback - Error callback
+ */
+ATP.ajaxLong = function(action, data, timeout, callback, errorCallback) {
+    var self = this;
+    data = data || {};
+    data.ajax = action;
+    data.csrf_token = this.getCsrfToken();
+
+    $.ajax({
+        url: this.ajaxUrl,
+        method: 'POST',
+        data: data,
+        dataType: 'json',
+        timeout: timeout || 120000
+    }).done(function(response) {
+        if (callback) callback(response);
+    }).fail(function(xhr, status, error) {
+        console.error('[ATP] AJAX long error:', action, status, error);
+        if (errorCallback) {
+            errorCallback(error, xhr);
+        }
+    });
+};
+
+/* ============================================
+   FORMATTING UTILITIES
+   ============================================ */
+
+/**
+ * Format bytes to human readable string
+ * @param {number} bytes - Number of bytes
+ * @param {number} decimals - Decimal places (default: 2)
+ * @returns {string} Formatted string (e.g., "1.5 GB")
+ */
+ATP.formatBytes = function(bytes, decimals) {
+    if (bytes === 0 || bytes === null || bytes === undefined) return '0 B';
+    decimals = decimals !== undefined ? decimals : 2;
+
+    var k = 1024;
+    var sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    var i = Math.floor(Math.log(bytes) / Math.log(k));
+
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
+};
+
+/**
+ * Format seconds to human readable duration
+ * @param {number} seconds - Number of seconds
+ * @returns {string} Formatted duration (e.g., "2h 30m")
+ */
+ATP.formatDuration = function(seconds) {
+    if (!seconds || isNaN(seconds) || seconds <= 0) return '-';
+
+    seconds = Math.floor(seconds);
+
+    if (seconds < 60) {
+        return seconds + 's';
+    }
+    if (seconds < 3600) {
+        var m = Math.floor(seconds / 60);
+        var s = seconds % 60;
+        return m + 'm ' + s + 's';
+    }
+    if (seconds < 86400) {
+        var h = Math.floor(seconds / 3600);
+        var m = Math.floor((seconds % 3600) / 60);
+        return h + 'h ' + m + 'm';
+    }
+
+    var d = Math.floor(seconds / 86400);
+    var h = Math.floor((seconds % 86400) / 3600);
+    return d + 'd ' + h + 'h';
+};
+
+/**
+ * Format countdown timer
+ * @param {number} seconds - Seconds remaining
+ * @returns {string} Formatted countdown (e.g., "5m 30s")
+ */
+ATP.formatCountdown = function(seconds) {
+    if (seconds <= 0) return 'Now';
+    return this.formatDuration(seconds);
+};
+
+/**
+ * Format timestamp to locale string
+ * @param {number|string} timestamp - Unix timestamp or ISO string
+ * @returns {string} Formatted date/time
+ */
+ATP.formatTimestamp = function(timestamp) {
+    if (!timestamp) return '-';
+
+    var date;
+    if (typeof timestamp === 'number') {
+        date = new Date(timestamp * 1000);
+    } else {
+        date = new Date(timestamp);
+    }
+
+    if (isNaN(date.getTime())) return '-';
+
+    return date.toLocaleString();
+};
+
+/**
+ * Format relative time (e.g., "5 minutes ago")
+ * @param {number|string} timestamp - Unix timestamp or ISO string
+ * @returns {string} Relative time string
+ */
+ATP.formatRelativeTime = function(timestamp) {
+    if (!timestamp) return '-';
+
+    var date;
+    if (typeof timestamp === 'number') {
+        date = new Date(timestamp * 1000);
+    } else {
+        date = new Date(timestamp);
+    }
+
+    if (isNaN(date.getTime())) return '-';
+
+    var seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return Math.floor(seconds / 60) + ' min ago';
+    if (seconds < 86400) return Math.floor(seconds / 3600) + ' hours ago';
+    if (seconds < 604800) return Math.floor(seconds / 86400) + ' days ago';
+
+    return date.toLocaleDateString();
+};
+
+/* ============================================
+   STRING UTILITIES
+   ============================================ */
+
+/**
+ * Escape HTML entities to prevent XSS
+ * @param {string} str - String to escape
+ * @returns {string} Escaped string
+ */
+ATP.escapeHtml = function(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+};
+
+/**
+ * Truncate string with ellipsis
+ * @param {string} str - String to truncate
+ * @param {number} maxLength - Maximum length
+ * @returns {string} Truncated string
+ */
+ATP.truncate = function(str, maxLength) {
+    if (!str) return '';
+    maxLength = maxLength || 50;
+    if (str.length <= maxLength) return str;
+    return str.substring(0, maxLength - 3) + '...';
+};
+
+/**
+ * Get filename from path
+ * @param {string} path - Full file path
+ * @returns {string} Filename only
+ */
+ATP.getFilename = function(path) {
+    if (!path) return '';
+    return path.split('/').pop().split('\\').pop();
+};
+
+/* ============================================
+   TAB MANAGEMENT
+   ============================================ */
+
+/**
+ * Initialize tab switching
+ * @param {string} tabSelector - Selector for tab elements
+ * @param {string} panelPrefix - Prefix for panel IDs
+ * @param {Function} onTabChange - Callback when tab changes
+ */
+ATP.initTabs = function(tabSelector, panelPrefix, onTabChange) {
+    var self = this;
+    tabSelector = tabSelector || '.atp-tab';
+    panelPrefix = panelPrefix || '#panel-';
+
+    $(tabSelector).click(function() {
+        var tab = $(this).data('tab');
+
+        // Update tab active state
+        $(tabSelector).removeClass('active');
+        $(this).addClass('active');
+
+        // Update panel visibility
+        $('.atp-panel').removeClass('active');
+        $(panelPrefix + tab).addClass('active');
+
+        self.currentTab = tab;
+
+        if (onTabChange) {
+            onTabChange(tab);
+        }
+    });
+};
+
+/* ============================================
+   AUTO-REFRESH
+   ============================================ */
+
+/**
+ * Start auto-refresh timer
+ * @param {Function} refreshFunction - Function to call on refresh
+ * @param {string} countdownSelector - Selector for countdown display
+ */
+ATP.startRefresh = function(refreshFunction, countdownSelector) {
+    var self = this;
+    countdownSelector = countdownSelector || '#refresh-countdown';
+
+    this.stopRefresh();
+
+    // Initial refresh
+    if (refreshFunction) refreshFunction();
+
+    this.countdown = this.refreshInterval / 1000;
+    $(countdownSelector).text(this.countdown);
+
+    this.refreshTimer = setInterval(function() {
+        self.countdown--;
+        $(countdownSelector).text(self.countdown);
+
+        if (self.countdown <= 0) {
+            self.countdown = self.refreshInterval / 1000;
+            if (refreshFunction) refreshFunction();
+        }
+    }, 1000);
+};
+
+/**
+ * Stop auto-refresh timer
+ */
+ATP.stopRefresh = function() {
+    if (this.refreshTimer) {
+        clearInterval(this.refreshTimer);
+        this.refreshTimer = null;
+    }
+};
+
+/* ============================================
+   DIALOG HELPERS
+   ============================================ */
+
+/**
+ * Show confirmation dialog using SweetAlert or fallback
+ * @param {Object} options - Dialog options
+ * @param {string} options.title - Dialog title
+ * @param {string} options.text - Dialog message
+ * @param {string} options.type - Dialog type (warning, info, success, error)
+ * @param {Function} callback - Called with true/false
+ */
+ATP.confirm = function(options, callback) {
+    if (typeof swal !== 'undefined') {
+        swal({
+            title: options.title || 'Confirm',
+            text: options.text || 'Are you sure?',
+            type: options.type || 'warning',
+            showCancelButton: true,
+            confirmButtonColor: options.type === 'warning' ? '#f44336' : '#e67e22'
+        }, function(confirmed) {
+            if (callback) callback(confirmed);
+        });
+    } else {
+        var result = confirm(options.text || 'Are you sure?');
+        if (callback) callback(result);
+    }
+};
+
+/**
+ * Show alert dialog using SweetAlert or fallback
+ * @param {Object} options - Dialog options
+ * @param {string} options.title - Dialog title
+ * @param {string} options.text - Dialog message
+ * @param {string} options.type - Dialog type (success, error, info, warning)
+ */
+ATP.alert = function(options) {
+    if (typeof swal !== 'undefined') {
+        swal({
+            title: options.title || 'Alert',
+            text: options.text || '',
+            type: options.type || 'info'
+        });
+    } else {
+        alert((options.title ? options.title + '\n\n' : '') + (options.text || ''));
+    }
+};
+
+/**
+ * Show loading dialog
+ * @param {string} title - Loading title
+ * @param {string} text - Loading message
+ */
+ATP.showLoading = function(title, text) {
+    if (typeof swal !== 'undefined') {
+        swal({
+            title: title || 'Processing...',
+            text: text || 'Please wait...',
+            type: 'info',
+            showConfirmButton: false
+        });
+    }
+};
+
+/**
+ * Close any open dialog
+ */
+ATP.closeDialog = function() {
+    if (typeof swal !== 'undefined') {
+        swal.close();
+    }
+};
+
+/* ============================================
+   BUTTON STATE HELPERS
+   ============================================ */
+
+/**
+ * Set button to loading state
+ * @param {jQuery|string} button - Button element or selector
+ * @param {string} loadingText - Text to show while loading
+ */
+ATP.setButtonLoading = function(button, loadingText) {
+    var $btn = $(button);
+    var $icon = $btn.find('i').first();
+    var $text = $btn.find('span').first();
+
+    $btn.prop('disabled', true);
+    $btn.data('original-icon', $icon.attr('class'));
+    $btn.data('original-text', $text.text());
+
+    $icon.attr('class', 'fa fa-spinner fa-spin');
+    if (loadingText) $text.text(loadingText);
+};
+
+/**
+ * Reset button from loading state
+ * @param {jQuery|string} button - Button element or selector
+ * @param {boolean} success - Whether operation was successful
+ * @param {string} resultText - Optional text to show briefly
+ */
+ATP.resetButton = function(button, success, resultText) {
+    var $btn = $(button);
+    var $icon = $btn.find('i').first();
+    var $text = $btn.find('span').first();
+
+    var originalIcon = $btn.data('original-icon');
+    var originalText = $btn.data('original-text');
+
+    // Show result briefly
+    $icon.attr('class', success ? 'fa fa-check' : 'fa fa-times');
+    if (resultText) $text.text(resultText);
+
+    setTimeout(function() {
+        $btn.prop('disabled', false);
+        $icon.attr('class', originalIcon || 'fa fa-save');
+        $text.text(originalText || 'Save');
+    }, 1500);
+};
+
+/* ============================================
+   EXPORT FOR CommonJS/AMD
+   ============================================ */
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = ATP;
+} else if (typeof define === 'function' && define.amd) {
+    define(function() { return ATP; });
+}
+
+
+</script>
+</body>
+</html>
+
+]]>
+</INLINE>
+</FILE>
+
+<!-- Python Daemon -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/atp_lsi_monitor.py" Mode="0755">
+<INLINE>
+<![CDATA[
+#!/usr/bin/env python3
+"""
+ATP LSI Monitor - Python Daemon
+v2026.01.31
+
+Monitors LSI SAS HBA cards (SAS2308, 9207-8i, etc.) for:
+- IOC Temperature
+- PHY Link Errors
+- Firmware/Hardware Info
+- Connected Devices
+
+Features:
+- HTTP API server
+- SQLite database for history
+- Discord/Notifiarr/Gotify notifications
+- Scheduled monitoring and reports
+- Configurable alerting thresholds
+"""
+
+import os
+import sys
+import json
+import logging
+import sqlite3
+import threading
+import signal
+import subprocess
+import re
+import time
+from datetime import datetime, timedelta
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlparse, parse_qs
+from urllib.request import Request, urlopen
+from urllib.error import URLError
+import hashlib
+
+# ============================================
+# CONFIGURATION
+# ============================================
+
+PLUGIN_NAME = "atp_lsi_monitor"
+DEFAULT_PORT = 39800
+VERSION = "2026.01.31a"
+
+# Paths
+DATA_DIR = f"/mnt/user/appdata/{PLUGIN_NAME}"
+CONFIG_DIR = f"/boot/config/plugins/{PLUGIN_NAME}"
+SETTINGS_FILE = f"{CONFIG_DIR}/settings.json"
+DB_FILE = f"{DATA_DIR}/lsi_monitor.db"
+LOG_FILE = f"{DATA_DIR}/logs/{PLUGIN_NAME}.log"
+PID_FILE = f"/var/run/{PLUGIN_NAME}.pid"
+
+# Default lsiutil path - plugin will bundle it
+LSIUTIL_BUNDLED = f"/usr/local/emhttp/plugins/{PLUGIN_NAME}/lsiutil"
+LSIUTIL_DEFAULT = LSIUTIL_BUNDLED
+
+# Default settings
+DEFAULT_SETTINGS = {
+    # General
+    "ENABLED": True,
+    "SERVER_PORT": DEFAULT_PORT,
+    "LOG_LEVEL": "INFO",
+
+    # LSI Configuration
+    "LSIUTIL_PATH": LSIUTIL_DEFAULT,
+    "LSI_PORT": 1,  # lsiutil port number (usually 1)
+    "POLL_INTERVAL": 300,  # 5 minutes default
+
+    # Temperature Thresholds
+    "TEMP_WARNING": 50,  # Yellow warning
+    "TEMP_CRITICAL": 65,  # Red critical
+    "TEMP_SHUTDOWN_ENABLED": False,  # Auto-shutdown on critical
+
+    # Alerting
+    "ALERT_ON_WARNING": True,
+    "ALERT_ON_CRITICAL": True,
+    "ALERT_ON_PHY_ERRORS": True,
+    "ALERT_COOLDOWN": 3600,  # Don't repeat same alert for 1 hour
+
+    # Notification Services
+    "NOTIFICATION_SERVICE": "none",  # none, discord, notifiarr, gotify, ntfy, pushover
+
+    # Discord
+    "DISCORD_WEBHOOK": "",
+
+    # Notifiarr
+    "NOTIFIARR_API_KEY": "",
+    "NOTIFIARR_CHANNEL": "",
+
+    # Gotify
+    "GOTIFY_URL": "",
+    "GOTIFY_TOKEN": "",
+
+    # ntfy
+    "NTFY_URL": "https://ntfy.sh",
+    "NTFY_TOPIC": "",
+
+    # Pushover
+    "PUSHOVER_USER_KEY": "",
+    "PUSHOVER_API_TOKEN": "",
+
+    # Scheduled Reports
+    "DAILY_REPORT_ENABLED": False,
+    "DAILY_REPORT_HOUR": 8,
+    "WEEKLY_REPORT_ENABLED": False,
+    "WEEKLY_REPORT_DAY": 0,  # 0=Monday
+    "WEEKLY_REPORT_HOUR": 9,
+    "MONTHLY_REPORT_ENABLED": False,
+    "MONTHLY_REPORT_DAY": 1,
+    "MONTHLY_REPORT_HOUR": 10,
+}
+
+# ============================================
+# GLOBALS
+# ============================================
+
+settings = {}
+db_lock = threading.Lock()
+shutdown_event = threading.Event()
+last_alerts = {}  # Track last alert times to prevent spam
+monitor_thread = None
+scheduler_thread = None
+
+# ============================================
+# LOGGING
+# ============================================
+
+def setup_logging():
+    """Configure logging to file and console."""
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+
+    level = getattr(logging, settings.get("LOG_LEVEL", "INFO"))
+
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[
+            logging.FileHandler(LOG_FILE),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+
+# ============================================
+# SETTINGS
+# ============================================
+
+def load_settings():
+    """Load settings from JSON file."""
+    global settings
+    settings = DEFAULT_SETTINGS.copy()
+
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, 'r') as f:
+                saved = json.load(f)
+                settings.update(saved)
+        except Exception as e:
+            logging.error(f"Error loading settings: {e}")
+
+    return settings
+
+def save_settings(new_settings):
+    """Save settings to JSON file."""
+    global settings
+
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+
+    # Update settings
+    for key, value in new_settings.items():
+        if key in DEFAULT_SETTINGS:
+            # Type conversion
+            if isinstance(DEFAULT_SETTINGS[key], bool):
+                settings[key] = value if isinstance(value, bool) else str(value).lower() == 'true'
+            elif isinstance(DEFAULT_SETTINGS[key], int):
+                settings[key] = int(value) if value not in [None, ''] else DEFAULT_SETTINGS[key]
+            else:
+                settings[key] = value
+
+    with open(SETTINGS_FILE, 'w') as f:
+        json.dump(settings, f, indent=2)
+
+    logging.info("Settings saved")
+    return settings
+
+# ============================================
+# DATABASE
+# ============================================
+
+def get_db():
+    """Get database connection."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    conn = sqlite3.connect(DB_FILE, timeout=30)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_database():
+    """Initialize database schema."""
+    with db_lock:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Schema version tracking
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY
+            )
+        """)
+
+        cursor.execute("SELECT MAX(version) FROM schema_version")
+        row = cursor.fetchone()
+        current_version = row[0] if row[0] else 0
+
+        # Migration v1: Initial schema
+        if current_version < 1:
+            logging.info("Running migration v1: Initial schema")
+
+            # Temperature history
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS temperature_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                    ioc_temp INTEGER,
+                    board_temp INTEGER
+                )
+            """)
+
+            # PHY error history
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS phy_errors (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                    phy_number INTEGER,
+                    invalid_dword INTEGER DEFAULT 0,
+                    running_disparity INTEGER DEFAULT 0,
+                    loss_of_sync INTEGER DEFAULT 0,
+                    phy_reset_problem INTEGER DEFAULT 0
+                )
+            """)
+
+            # Hardware info cache
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS hardware_info (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                    firmware_version TEXT,
+                    bios_version TEXT,
+                    chip_name TEXT,
+                    chip_revision TEXT,
+                    board_name TEXT,
+                    board_tracer TEXT,
+                    raw_output TEXT
+                )
+            """)
+
+            # Alert history
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS alerts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                    alert_type TEXT,
+                    severity TEXT,
+                    message TEXT,
+                    notified INTEGER DEFAULT 0
+                )
+            """)
+
+            # Connected devices
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS devices (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    last_seen TEXT DEFAULT CURRENT_TIMESTAMP,
+                    sas_address TEXT UNIQUE,
+                    device_name TEXT,
+                    phy_number INTEGER,
+                    link_rate TEXT,
+                    device_type TEXT
+                )
+            """)
+
+            cursor.execute("INSERT INTO schema_version (version) VALUES (1)")
+
+        conn.commit()
+        conn.close()
+        logging.info(f"Database initialized (schema v{max(current_version, 1)})")
+
+# ============================================
+# LSIUTIL INTERFACE
+# ============================================
+
+def run_lsiutil(args, timeout=30):
+    """
+    Run lsiutil command and return output.
+
+    Args:
+        args: List of arguments to pass to lsiutil
+        timeout: Command timeout in seconds
+
+    Returns:
+        tuple: (success, output_string)
+    """
+    lsiutil_path = settings.get("LSIUTIL_PATH", LSIUTIL_DEFAULT)
+
+    if not os.path.exists(lsiutil_path):
+        return False, f"lsiutil not found at {lsiutil_path}"
+
+    # Ensure executable
+    try:
+        os.chmod(lsiutil_path, 0o755)
+    except Exception:
+        pass
+
+    cmd = [lsiutil_path] + args
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        return True, result.stdout + result.stderr
+    except subprocess.TimeoutExpired:
+        return False, "Command timed out"
+    except Exception as e:
+        return False, str(e)
+
+def get_temperature():
+    """
+    Read IOC temperature from LSI HBA.
+
+    Returns:
+        dict: {success, ioc_temp, board_temp, unit}
+    """
+    port = settings.get("LSI_PORT", 1)
+
+    # Command: lsiutil -p1 -a 25,2,0,0
+    # This reads IOC temperature via diagnostic page
+    success, output = run_lsiutil([f"-p{port}", "-a", "25,2,0,0"])
+
+    if not success:
+        return {"success": False, "error": output}
+
+    # Parse IOCTemperature: 0xXX from output
+    match = re.search(r'IOCTemperature:\s*0x([0-9A-Fa-f]+)', output)
+
+    if match:
+        hex_temp = match.group(1)
+        try:
+            temp_celsius = int(hex_temp, 16)
+            return {
+                "success": True,
+                "ioc_temp": temp_celsius,
+                "board_temp": None,  # Not all cards report this
+                "unit": "C",
+                "raw": output
+            }
+        except ValueError:
+            return {"success": False, "error": f"Invalid temperature value: {hex_temp}"}
+
+    return {"success": False, "error": "Could not parse temperature from output", "raw": output}
+
+def get_firmware_info():
+    """
+    Get firmware and hardware info from LSI HBA.
+
+    Returns:
+        dict: Firmware/hardware details
+    """
+    port = settings.get("LSI_PORT", 1)
+
+    # Option 1: Identify firmware
+    success, output = run_lsiutil([f"-p{port}", "-a", "1"])
+
+    if not success:
+        return {"success": False, "error": output}
+
+    info = {
+        "success": True,
+        "firmware_version": None,
+        "bios_version": None,
+        "chip_name": None,
+        "chip_revision": None,
+        "board_name": None,
+        "raw": output
+    }
+
+    # Parse firmware version
+    fw_match = re.search(r'Firmware\s+(?:Version)?\s*[:\s]?\s*(\S+)', output, re.IGNORECASE)
+    if fw_match:
+        info["firmware_version"] = fw_match.group(1)
+
+    # Parse BIOS version
+    bios_match = re.search(r'BIOS\s+(?:Version)?\s*[:\s]?\s*(\S+)', output, re.IGNORECASE)
+    if bios_match:
+        info["bios_version"] = bios_match.group(1)
+
+    # Parse chip name
+    chip_match = re.search(r'Chip\s*(?:Name)?\s*[:\s]?\s*(\S+)', output, re.IGNORECASE)
+    if chip_match:
+        info["chip_name"] = chip_match.group(1)
+
+    # Parse board name
+    board_match = re.search(r'Board\s*(?:Name)?\s*[:\s]?\s*(.*?)(?:\n|$)', output, re.IGNORECASE)
+    if board_match:
+        info["board_name"] = board_match.group(1).strip()
+
+    return info
+
+def get_phy_errors():
+    """
+    Get PHY link error statistics.
+
+    Returns:
+        dict: PHY error counts per PHY
+    """
+    port = settings.get("LSI_PORT", 1)
+
+    # Option 20, 12: Diagnostics -> Phy/Link Test
+    success, output = run_lsiutil([f"-p{port}", "-a", "20,12,0"])
+
+    if not success:
+        return {"success": False, "error": output}
+
+    phys = []
+
+    # Parse each PHY's error counts
+    # Pattern: Adapter Phy N: Link Up/Down
+    #          Invalid DWord Count XXX
+    #          Running Disparity Error Count XXX
+    #          Loss of DWord Synch Count XXX
+    #          Phy Reset Problem Count XXX
+
+    phy_blocks = re.split(r'Adapter Phy\s+(\d+)', output)
+
+    for i in range(1, len(phy_blocks), 2):
+        if i + 1 < len(phy_blocks):
+            phy_num = int(phy_blocks[i])
+            phy_data = phy_blocks[i + 1]
+
+            phy_info = {
+                "phy_number": phy_num,
+                "link_up": "Link Up" in phy_data,
+                "invalid_dword": 0,
+                "running_disparity": 0,
+                "loss_of_sync": 0,
+                "phy_reset_problem": 0
+            }
+
+            # Parse error counts
+            invalid_match = re.search(r'Invalid DWord Count\s+(\d+)', phy_data)
+            if invalid_match:
+                phy_info["invalid_dword"] = int(invalid_match.group(1))
+
+            disparity_match = re.search(r'Running Disparity Error Count\s+(\d+)', phy_data)
+            if disparity_match:
+                phy_info["running_disparity"] = int(disparity_match.group(1))
+
+            sync_match = re.search(r'Loss of DWord Synch Count\s+(\d+)', phy_data)
+            if sync_match:
+                phy_info["loss_of_sync"] = int(sync_match.group(1))
+
+            reset_match = re.search(r'Phy Reset Problem Count\s+(\d+)', phy_data)
+            if reset_match:
+                phy_info["phy_reset_problem"] = int(reset_match.group(1))
+
+            phys.append(phy_info)
+
+    return {
+        "success": True,
+        "phys": phys,
+        "raw": output
+    }
+
+def get_connected_devices():
+    """
+    Get list of connected devices/drives.
+
+    Returns:
+        dict: List of connected devices
+    """
+    port = settings.get("LSI_PORT", 1)
+
+    # Option 16: Display attached devices
+    success, output = run_lsiutil([f"-p{port}", "-a", "16"])
+
+    if not success:
+        return {"success": False, "error": output}
+
+    devices = []
+
+    # Parse device entries - format varies by card/firmware
+    # Look for SAS Address patterns
+    sas_pattern = re.findall(
+        r'(?:SAS Address|Handle)\s*[:\s]?\s*([0-9A-Fa-f]{16}|0x[0-9A-Fa-f]+)',
+        output, re.IGNORECASE
+    )
+
+    for sas_addr in sas_pattern:
+        devices.append({
+            "sas_address": sas_addr,
+            "device_name": None,
+            "device_type": "Unknown"
+        })
+
+    return {
+        "success": True,
+        "devices": devices,
+        "device_count": len(devices),
+        "raw": output
+    }
+
+# ============================================
+# MONITORING
+# ============================================
+
+def record_temperature():
+    """Record current temperature to database."""
+    temp_data = get_temperature()
+
+    if not temp_data.get("success"):
+        logging.warning(f"Failed to read temperature: {temp_data.get('error')}")
+        return None
+
+    ioc_temp = temp_data.get("ioc_temp")
+    board_temp = temp_data.get("board_temp")
+
+    with db_lock:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO temperature_history (ioc_temp, board_temp) VALUES (?, ?)",
+            (ioc_temp, board_temp)
+        )
+        conn.commit()
+        conn.close()
+
+    logging.debug(f"Recorded temperature: {ioc_temp}°C")
+
+    # Check thresholds and alert if needed
+    check_temperature_alerts(ioc_temp)
+
+    return ioc_temp
+
+def check_temperature_alerts(temp):
+    """Check temperature against thresholds and send alerts."""
+    if temp is None:
+        return
+
+    warning_threshold = settings.get("TEMP_WARNING", 50)
+    critical_threshold = settings.get("TEMP_CRITICAL", 65)
+
+    severity = None
+    message = None
+
+    if temp >= critical_threshold:
+        severity = "critical"
+        message = f"LSI HBA temperature is CRITICAL: {temp}°C (threshold: {critical_threshold}°C)"
+
+        # Optional: Trigger shutdown
+        if settings.get("TEMP_SHUTDOWN_ENABLED"):
+            logging.critical("Temperature shutdown triggered!")
+            # Could call unraid shutdown here
+
+    elif temp >= warning_threshold:
+        severity = "warning"
+        message = f"LSI HBA temperature is HIGH: {temp}°C (threshold: {warning_threshold}°C)"
+
+    if severity and should_alert("temperature", severity):
+        log_alert("temperature", severity, message)
+
+        if (severity == "warning" and settings.get("ALERT_ON_WARNING")) or \
+           (severity == "critical" and settings.get("ALERT_ON_CRITICAL")):
+            send_notification(f"LSI HBA {severity.upper()}", message, severity)
+
+def record_phy_errors():
+    """Record PHY errors to database and check for issues."""
+    phy_data = get_phy_errors()
+
+    if not phy_data.get("success"):
+        logging.warning(f"Failed to read PHY errors: {phy_data.get('error')}")
+        return
+
+    with db_lock:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        for phy in phy_data.get("phys", []):
+            cursor.execute("""
+                INSERT INTO phy_errors
+                (phy_number, invalid_dword, running_disparity, loss_of_sync, phy_reset_problem)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                phy["phy_number"],
+                phy["invalid_dword"],
+                phy["running_disparity"],
+                phy["loss_of_sync"],
+                phy["phy_reset_problem"]
+            ))
+
+            # Check for significant error increases
+            total_errors = (
+                phy["invalid_dword"] +
+                phy["running_disparity"] +
+                phy["loss_of_sync"] +
+                phy["phy_reset_problem"]
+            )
+
+            if total_errors > 1000 and settings.get("ALERT_ON_PHY_ERRORS"):
+                if should_alert(f"phy_{phy['phy_number']}", "warning"):
+                    message = f"PHY {phy['phy_number']} has accumulated {total_errors} errors"
+                    log_alert("phy_errors", "warning", message)
+                    send_notification("LSI PHY Errors", message, "warning")
+
+        conn.commit()
+        conn.close()
+
+def should_alert(alert_key, severity):
+    """Check if we should send an alert (cooldown check)."""
+    cooldown = settings.get("ALERT_COOLDOWN", 3600)
+    now = time.time()
+
+    key = f"{alert_key}_{severity}"
+    last_time = last_alerts.get(key, 0)
+
+    if now - last_time >= cooldown:
+        last_alerts[key] = now
+        return True
+
+    return False
+
+def log_alert(alert_type, severity, message):
+    """Log alert to database."""
+    with db_lock:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO alerts (alert_type, severity, message) VALUES (?, ?, ?)",
+            (alert_type, severity, message)
+        )
+        conn.commit()
+        conn.close()
+
+    if severity == "critical":
+        logging.critical(message)
+    elif severity == "warning":
+        logging.warning(message)
+    else:
+        logging.info(message)
+
+# ============================================
+# NOTIFICATIONS
+# ============================================
+
+def send_notification(title, message, severity="info"):
+    """Send notification via configured service."""
+    service = settings.get("NOTIFICATION_SERVICE", "none")
+
+    if service == "none":
+        return
+
+    try:
+        if service == "discord":
+            send_discord_notification(title, message, severity)
+        elif service == "notifiarr":
+            send_notifiarr_notification(title, message, severity)
+        elif service == "gotify":
+            send_gotify_notification(title, message, severity)
+        elif service == "ntfy":
+            send_ntfy_notification(title, message, severity)
+        elif service == "pushover":
+            send_pushover_notification(title, message, severity)
+    except Exception as e:
+        logging.error(f"Failed to send {service} notification: {e}")
+
+def get_severity_color(severity):
+    """Get color code for severity level."""
+    colors = {
+        "critical": 0xcc0000,  # Red
+        "warning": 0xffaa00,   # Orange
+        "info": 0x00cc66,      # Green
+        "success": 0x00cc66    # Green
+    }
+    return colors.get(severity, 0x3498db)
+
+def send_discord_notification(title, message, severity):
+    """Send Discord webhook notification."""
+    webhook_url = settings.get("DISCORD_WEBHOOK")
+    if not webhook_url:
+        logging.warning("Discord webhook not configured")
+        return
+
+    color = get_severity_color(severity)
+    hostname = os.uname().nodename if hasattr(os, 'uname') else "Unknown"
+
+    payload = {
+        "embeds": [{
+            "title": f"🌡️ {title}",
+            "description": message,
+            "color": color,
+            "fields": [
+                {"name": "Host", "value": hostname, "inline": True},
+                {"name": "Time", "value": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "inline": True}
+            ],
+            "footer": {"text": "ATP LSI Monitor"}
+        }]
+    }
+
+    req = Request(webhook_url, data=json.dumps(payload).encode())
+    req.add_header('Content-Type', 'application/json')
+    urlopen(req, timeout=10)
+    logging.info(f"Discord notification sent: {title}")
+
+def send_notifiarr_notification(title, message, severity):
+    """Send Notifiarr notification."""
+    api_key = settings.get("NOTIFIARR_API_KEY")
+    channel = settings.get("NOTIFIARR_CHANNEL")
+
+    if not api_key:
+        logging.warning("Notifiarr API key not configured")
+        return
+
+    url = f"https://notifiarr.com/api/v1/notification/passthrough/{api_key}"
+    color = format(get_severity_color(severity), 'x')
+
+    payload = {
+        "notification": {
+            "update": False,
+            "name": "LSI HBA Monitor",
+            "event": f"LSI_{severity.upper()}"
+        },
+        "discord": {
+            "color": color,
+            "text": {
+                "title": title,
+                "description": message,
+                "footer": "ATP LSI Monitor"
+            },
+            "ids": {
+                "channel": channel
+            } if channel else {}
+        }
+    }
+
+    req = Request(url, data=json.dumps(payload).encode())
+    req.add_header('Content-Type', 'application/json')
+    urlopen(req, timeout=10)
+    logging.info(f"Notifiarr notification sent: {title}")
+
+def send_gotify_notification(title, message, severity):
+    """Send Gotify notification."""
+    gotify_url = settings.get("GOTIFY_URL")
+    token = settings.get("GOTIFY_TOKEN")
+
+    if not gotify_url or not token:
+        logging.warning("Gotify not configured")
+        return
+
+    priority_map = {"critical": 10, "warning": 7, "info": 4}
+    priority = priority_map.get(severity, 4)
+
+    url = f"{gotify_url.rstrip('/')}/message?token={token}"
+    payload = {
+        "title": title,
+        "message": message,
+        "priority": priority
+    }
+
+    req = Request(url, data=json.dumps(payload).encode())
+    req.add_header('Content-Type', 'application/json')
+    urlopen(req, timeout=10)
+    logging.info(f"Gotify notification sent: {title}")
+
+def send_ntfy_notification(title, message, severity):
+    """Send ntfy notification."""
+    ntfy_url = settings.get("NTFY_URL", "https://ntfy.sh")
+    topic = settings.get("NTFY_TOPIC")
+
+    if not topic:
+        logging.warning("ntfy topic not configured")
+        return
+
+    priority_map = {"critical": "urgent", "warning": "high", "info": "default"}
+    priority = priority_map.get(severity, "default")
+
+    url = f"{ntfy_url.rstrip('/')}/{topic}"
+
+    req = Request(url, data=message.encode())
+    req.add_header('Title', title)
+    req.add_header('Priority', priority)
+    req.add_header('Tags', 'thermometer' if 'temp' in title.lower() else 'warning')
+    urlopen(req, timeout=10)
+    logging.info(f"ntfy notification sent: {title}")
+
+def send_pushover_notification(title, message, severity):
+    """Send Pushover notification."""
+    user_key = settings.get("PUSHOVER_USER_KEY")
+    api_token = settings.get("PUSHOVER_API_TOKEN")
+
+    if not user_key or not api_token:
+        logging.warning("Pushover not configured")
+        return
+
+    priority_map = {"critical": 2, "warning": 1, "info": 0}
+    priority = priority_map.get(severity, 0)
+
+    url = "https://api.pushover.net/1/messages.json"
+    payload = {
+        "token": api_token,
+        "user": user_key,
+        "title": title,
+        "message": message,
+        "priority": priority
+    }
+
+    if priority == 2:
+        payload["retry"] = 60
+        payload["expire"] = 3600
+
+    data = "&".join(f"{k}={v}" for k, v in payload.items()).encode()
+    req = Request(url, data=data)
+    req.add_header('Content-Type', 'application/x-www-form-urlencoded')
+    urlopen(req, timeout=10)
+    logging.info(f"Pushover notification sent: {title}")
+
+# ============================================
+# SCHEDULED REPORTS
+# ============================================
+
+def generate_daily_report():
+    """Generate daily summary report."""
+    with db_lock:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Get last 24 hours of temperature data
+        cursor.execute("""
+            SELECT
+                MIN(ioc_temp) as min_temp,
+                MAX(ioc_temp) as max_temp,
+                AVG(ioc_temp) as avg_temp,
+                COUNT(*) as readings
+            FROM temperature_history
+            WHERE timestamp > datetime('now', '-1 day')
+        """)
+        temp_stats = dict(cursor.fetchone())
+
+        # Get alert count
+        cursor.execute("""
+            SELECT COUNT(*) as alert_count
+            FROM alerts
+            WHERE timestamp > datetime('now', '-1 day')
+        """)
+        alert_count = cursor.fetchone()[0]
+
+        conn.close()
+
+    if temp_stats['readings'] == 0:
+        return None
+
+    report = f"""📊 **Daily LSI HBA Report**
+
+🌡️ **Temperature (24h)**
+• Min: {temp_stats['min_temp']}°C
+• Max: {temp_stats['max_temp']}°C
+• Avg: {temp_stats['avg_temp']:.1f}°C
+• Readings: {temp_stats['readings']}
+
+⚠️ **Alerts**: {alert_count}
+"""
+    return report
+
+def generate_weekly_report():
+    """Generate weekly summary report."""
+    with db_lock:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                MIN(ioc_temp) as min_temp,
+                MAX(ioc_temp) as max_temp,
+                AVG(ioc_temp) as avg_temp,
+                COUNT(*) as readings
+            FROM temperature_history
+            WHERE timestamp > datetime('now', '-7 days')
+        """)
+        temp_stats = dict(cursor.fetchone())
+
+        cursor.execute("""
+            SELECT COUNT(*) as alert_count
+            FROM alerts
+            WHERE timestamp > datetime('now', '-7 days')
+        """)
+        alert_count = cursor.fetchone()[0]
+
+        conn.close()
+
+    if temp_stats['readings'] == 0:
+        return None
+
+    report = f"""📊 **Weekly LSI HBA Report**
+
+🌡️ **Temperature (7 days)**
+• Min: {temp_stats['min_temp']}°C
+• Max: {temp_stats['max_temp']}°C
+• Avg: {temp_stats['avg_temp']:.1f}°C
+• Readings: {temp_stats['readings']}
+
+⚠️ **Alerts**: {alert_count}
+"""
+    return report
+
+def generate_monthly_report():
+    """Generate monthly summary report."""
+    with db_lock:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                MIN(ioc_temp) as min_temp,
+                MAX(ioc_temp) as max_temp,
+                AVG(ioc_temp) as avg_temp,
+                COUNT(*) as readings
+            FROM temperature_history
+            WHERE timestamp > datetime('now', '-30 days')
+        """)
+        temp_stats = dict(cursor.fetchone())
+
+        cursor.execute("""
+            SELECT COUNT(*) as alert_count
+            FROM alerts
+            WHERE timestamp > datetime('now', '-30 days')
+        """)
+        alert_count = cursor.fetchone()[0]
+
+        conn.close()
+
+    if temp_stats['readings'] == 0:
+        return None
+
+    report = f"""📊 **Monthly LSI HBA Report**
+
+🌡️ **Temperature (30 days)**
+• Min: {temp_stats['min_temp']}°C
+• Max: {temp_stats['max_temp']}°C
+• Avg: {temp_stats['avg_temp']:.1f}°C
+• Readings: {temp_stats['readings']}
+
+⚠️ **Alerts**: {alert_count}
+"""
+    return report
+
+# ============================================
+# MONITORING THREADS
+# ============================================
+
+def monitor_loop():
+    """Main monitoring loop - runs in background thread."""
+    logging.info("Monitor loop started")
+
+    while not shutdown_event.is_set():
+        if settings.get("ENABLED", True):
+            try:
+                record_temperature()
+                record_phy_errors()
+            except Exception as e:
+                logging.error(f"Monitor error: {e}")
+
+        # Wait for next poll interval
+        interval = settings.get("POLL_INTERVAL", 300)
+        shutdown_event.wait(interval)
+
+    logging.info("Monitor loop stopped")
+
+def scheduler_loop():
+    """Scheduler for daily/weekly/monthly reports."""
+    logging.info("Scheduler started")
+
+    last_daily = None
+    last_weekly = None
+    last_monthly = None
+
+    while not shutdown_event.is_set():
+        now = datetime.now()
+
+        # Daily report
+        if settings.get("DAILY_REPORT_ENABLED"):
+            hour = settings.get("DAILY_REPORT_HOUR", 8)
+            if now.hour == hour and last_daily != now.date():
+                report = generate_daily_report()
+                if report:
+                    send_notification("Daily LSI Report", report, "info")
+                last_daily = now.date()
+
+        # Weekly report
+        if settings.get("WEEKLY_REPORT_ENABLED"):
+            day = settings.get("WEEKLY_REPORT_DAY", 0)
+            hour = settings.get("WEEKLY_REPORT_HOUR", 9)
+            if now.weekday() == day and now.hour == hour and last_weekly != now.date():
+                report = generate_weekly_report()
+                if report:
+                    send_notification("Weekly LSI Report", report, "info")
+                last_weekly = now.date()
+
+        # Monthly report
+        if settings.get("MONTHLY_REPORT_ENABLED"):
+            day = settings.get("MONTHLY_REPORT_DAY", 1)
+            hour = settings.get("MONTHLY_REPORT_HOUR", 10)
+            if now.day == day and now.hour == hour and last_monthly != now.date():
+                report = generate_monthly_report()
+                if report:
+                    send_notification("Monthly LSI Report", report, "info")
+                last_monthly = now.date()
+
+        # Check every minute
+        shutdown_event.wait(60)
+
+    logging.info("Scheduler stopped")
+
+# ============================================
+# API HANDLER
+# ============================================
+
+class APIHandler(BaseHTTPRequestHandler):
+    """HTTP request handler for the API."""
+
+    def log_message(self, format, *args):
+        """Suppress default logging."""
+        pass
+
+    def send_json(self, data, status=200):
+        """Send JSON response."""
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
+    def get_post_data(self):
+        """Parse POST body as JSON."""
+        content_length = int(self.headers.get('Content-Length', 0))
+        if content_length:
+            body = self.rfile.read(content_length)
+            return json.loads(body.decode())
+        return {}
+
+    def do_GET(self):
+        """Handle GET requests."""
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
+
+        try:
+            # Status endpoint
+            if path == '/api/status':
+                temp = get_temperature()
+                self.send_json({
+                    'success': True,
+                    'status': 'running',
+                    'version': VERSION,
+                    'enabled': settings.get('ENABLED', True),
+                    'current_temp': temp.get('ioc_temp') if temp.get('success') else None
+                })
+
+            # Current temperature
+            elif path == '/api/temperature':
+                self.send_json(get_temperature())
+
+            # Temperature history
+            elif path == '/api/temperature/history':
+                hours = int(query.get('hours', [24])[0])
+                with db_lock:
+                    conn = get_db()
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT timestamp, ioc_temp, board_temp
+                        FROM temperature_history
+                        WHERE timestamp > datetime('now', ? || ' hours')
+                        ORDER BY timestamp ASC
+                    """, (f"-{hours}",))
+                    history = [dict(row) for row in cursor.fetchall()]
+                    conn.close()
+                self.send_json({'success': True, 'history': history})
+
+            # Temperature stats
+            elif path == '/api/temperature/stats':
+                period = query.get('period', ['24h'])[0]
+                period_map = {'24h': '-1 day', '7d': '-7 days', '30d': '-30 days'}
+                sql_period = period_map.get(period, '-1 day')
+
+                with db_lock:
+                    conn = get_db()
+                    cursor = conn.cursor()
+                    cursor.execute(f"""
+                        SELECT
+                            MIN(ioc_temp) as min_temp,
+                            MAX(ioc_temp) as max_temp,
+                            AVG(ioc_temp) as avg_temp,
+                            COUNT(*) as readings
+                        FROM temperature_history
+                        WHERE timestamp > datetime('now', '{sql_period}')
+                    """)
+                    stats = dict(cursor.fetchone())
+                    conn.close()
+                self.send_json({'success': True, **stats})
+
+            # Firmware info
+            elif path == '/api/firmware':
+                self.send_json(get_firmware_info())
+
+            # PHY errors
+            elif path == '/api/phy':
+                self.send_json(get_phy_errors())
+
+            # Connected devices
+            elif path == '/api/devices':
+                self.send_json(get_connected_devices())
+
+            # Alerts
+            elif path == '/api/alerts':
+                limit = int(query.get('limit', [50])[0])
+                with db_lock:
+                    conn = get_db()
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT * FROM alerts
+                        ORDER BY timestamp DESC
+                        LIMIT ?
+                    """, (limit,))
+                    alerts = [dict(row) for row in cursor.fetchall()]
+                    conn.close()
+                self.send_json({'success': True, 'alerts': alerts})
+
+            # Health check (combined status)
+            elif path == '/api/health':
+                temp_data = get_temperature()
+                phy_data = get_phy_errors()
+
+                health = "healthy"
+                issues = []
+
+                if temp_data.get('success'):
+                    temp = temp_data.get('ioc_temp', 0)
+                    if temp >= settings.get('TEMP_CRITICAL', 65):
+                        health = "critical"
+                        issues.append(f"Temperature critical: {temp}°C")
+                    elif temp >= settings.get('TEMP_WARNING', 50):
+                        health = "warning"
+                        issues.append(f"Temperature high: {temp}°C")
+                else:
+                    issues.append("Cannot read temperature")
+
+                # Check PHY errors
+                if phy_data.get('success'):
+                    for phy in phy_data.get('phys', []):
+                        total = sum([
+                            phy.get('invalid_dword', 0),
+                            phy.get('running_disparity', 0),
+                            phy.get('loss_of_sync', 0),
+                            phy.get('phy_reset_problem', 0)
+                        ])
+                        if total > 10000:
+                            if health != "critical":
+                                health = "warning"
+                            issues.append(f"PHY {phy['phy_number']}: {total} errors")
+
+                self.send_json({
+                    'success': True,
+                    'health': health,
+                    'issues': issues,
+                    'temperature': temp_data,
+                    'phy': phy_data
+                })
+
+            # Settings
+            elif path == '/api/settings':
+                # Return settings without sensitive data
+                safe_settings = settings.copy()
+                for key in ['DISCORD_WEBHOOK', 'NOTIFIARR_API_KEY', 'GOTIFY_TOKEN',
+                           'PUSHOVER_USER_KEY', 'PUSHOVER_API_TOKEN']:
+                    if key in safe_settings and safe_settings[key]:
+                        safe_settings[key] = '***configured***'
+                self.send_json({'success': True, **safe_settings})
+
+            # Logs
+            elif path == '/api/logs':
+                lines = int(query.get('lines', [200])[0])
+                if os.path.exists(LOG_FILE):
+                    with open(LOG_FILE, 'r') as f:
+                        log_lines = f.readlines()
+                        logs = ''.join(log_lines[-lines:])
+                else:
+                    logs = 'No logs available'
+                self.send_json({'success': True, 'logs': logs})
+
+            else:
+                self.send_json({'success': False, 'error': 'Unknown endpoint'}, 404)
+
+        except Exception as e:
+            logging.error(f"GET error: {e}")
+            self.send_json({'success': False, 'error': str(e)}, 500)
+
+    def do_POST(self):
+        """Handle POST requests."""
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        try:
+            data = self.get_post_data()
+
+            # Save settings
+            if path == '/api/settings':
+                save_settings(data)
+                self.send_json({'success': True, 'message': 'Settings saved'})
+
+            # Manual temperature reading
+            elif path == '/api/temperature/read':
+                temp = record_temperature()
+                self.send_json({'success': True, 'temperature': temp})
+
+            # Test notification
+            elif path == '/api/notification/test':
+                try:
+                    send_notification("Test Notification", "LSI Monitor notification test successful!", "info")
+                    self.send_json({'success': True, 'message': 'Test notification sent'})
+                except Exception as e:
+                    self.send_json({'success': False, 'error': str(e)})
+
+            # Generate report
+            elif path == '/api/report':
+                report_type = data.get('type', 'daily')
+                if report_type == 'daily':
+                    report = generate_daily_report()
+                elif report_type == 'weekly':
+                    report = generate_weekly_report()
+                elif report_type == 'monthly':
+                    report = generate_monthly_report()
+                else:
+                    report = None
+
+                if report:
+                    if data.get('send'):
+                        send_notification(f"{report_type.title()} Report", report, "info")
+                    self.send_json({'success': True, 'report': report})
+                else:
+                    self.send_json({'success': False, 'error': 'No data for report'})
+
+            # Clear alerts
+            elif path == '/api/alerts/clear':
+                with db_lock:
+                    conn = get_db()
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM alerts")
+                    conn.commit()
+                    conn.close()
+                self.send_json({'success': True, 'message': 'Alerts cleared'})
+
+            else:
+                self.send_json({'success': False, 'error': 'Unknown endpoint'}, 404)
+
+        except Exception as e:
+            logging.error(f"POST error: {e}")
+            self.send_json({'success': False, 'error': str(e)}, 500)
+
+# ============================================
+# MAIN
+# ============================================
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals."""
+    logging.info("Shutdown signal received")
+    shutdown_event.set()
+
+def write_pid():
+    """Write PID file."""
+    with open(PID_FILE, 'w') as f:
+        f.write(str(os.getpid()))
+
+def remove_pid():
+    """Remove PID file."""
+    if os.path.exists(PID_FILE):
+        os.remove(PID_FILE)
+
+def main():
+    """Main entry point."""
+    global monitor_thread, scheduler_thread
+
+    # Load settings first
+    load_settings()
+
+    # Setup logging
+    setup_logging()
+
+    logging.info(f"Starting {PLUGIN_NAME} daemon v{VERSION}...")
+
+    # Initialize database
+    init_database()
+
+    # Register signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    # Write PID file
+    write_pid()
+
+    # Start monitor thread
+    monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
+    monitor_thread.start()
+
+    # Start scheduler thread
+    scheduler_thread = threading.Thread(target=scheduler_loop, daemon=True)
+    scheduler_thread.start()
+
+    # Start HTTP server
+    port = settings.get('SERVER_PORT', DEFAULT_PORT)
+    server = HTTPServer(('127.0.0.1', port), APIHandler)
+    server.timeout = 1
+
+    logging.info(f"API server listening on port {port}")
+
+    try:
+        while not shutdown_event.is_set():
+            server.handle_request()
+    except Exception as e:
+        logging.error(f"Server error: {e}")
+    finally:
+        server.server_close()
+        remove_pid()
+        logging.info("Daemon stopped")
+
+if __name__ == '__main__':
+    main()
+
+]]>
+</INLINE>
+</FILE>
+
+<!-- RC Service Script -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/rc.atp_lsi_monitor" Mode="0755">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+#
+# ATP LSI Monitor - Service Control Script
+# v2026.01.31
+#
+# Usage: rc.atp_lsi_monitor {start|stop|restart|status}
+#
+
+PLUGIN_NAME="atp_lsi_monitor"
+DAEMON="/usr/local/emhttp/plugins/${PLUGIN_NAME}/${PLUGIN_NAME}.py"
+PIDFILE="/var/run/${PLUGIN_NAME}.pid"
+LOGFILE="/mnt/user/appdata/${PLUGIN_NAME}/logs/${PLUGIN_NAME}.log"
+
+# Ensure log directory exists
+mkdir -p "$(dirname "$LOGFILE")"
+
+start() {
+    if [ -f "$PIDFILE" ]; then
+        PID=$(cat "$PIDFILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo "${PLUGIN_NAME} is already running (PID: $PID)"
+            return 1
+        else
+            rm -f "$PIDFILE"
+        fi
+    fi
+
+    echo "Starting ${PLUGIN_NAME}..."
+    nohup python3 "$DAEMON" >> "$LOGFILE" 2>&1 &
+
+    sleep 2
+
+    if [ -f "$PIDFILE" ]; then
+        echo "${PLUGIN_NAME} started (PID: $(cat $PIDFILE))"
+        return 0
+    else
+        echo "Failed to start ${PLUGIN_NAME}"
+        return 1
+    fi
+}
+
+stop() {
+    if [ -f "$PIDFILE" ]; then
+        PID=$(cat "$PIDFILE")
+        echo "Stopping ${PLUGIN_NAME} (PID: $PID)..."
+        kill "$PID" 2>/dev/null
+
+        # Wait for process to stop
+        for i in {1..10}; do
+            if ! kill -0 "$PID" 2>/dev/null; then
+                rm -f "$PIDFILE"
+                echo "${PLUGIN_NAME} stopped"
+                return 0
+            fi
+            sleep 1
+        done
+
+        # Force kill if still running
+        kill -9 "$PID" 2>/dev/null
+        rm -f "$PIDFILE"
+        echo "${PLUGIN_NAME} killed"
+        return 0
+    else
+        echo "${PLUGIN_NAME} is not running"
+        return 0
+    fi
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}
+
+status() {
+    if [ -f "$PIDFILE" ]; then
+        PID=$(cat "$PIDFILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo "${PLUGIN_NAME} is running (PID: $PID)"
+            return 0
+        else
+            echo "${PLUGIN_NAME} is not running (stale PID file)"
+            rm -f "$PIDFILE"
+            return 1
+        fi
+    else
+        echo "${PLUGIN_NAME} is not running"
+        return 1
+    fi
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
+
+]]>
+</INLINE>
+</FILE>
+
+<!-- AJAX Handler -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/include/ajax.php">
+<INLINE>
+<![CDATA[
+<?php
+/**
+ * ATP LSI Monitor - AJAX Handler
+ * v2026.01.31
+ *
+ * Proxies requests to Python daemon API.
+ *
+ * SECURITY: CSRF validation for Unraid 7.x
+ */
+
+// ============================================
+// CONFIGURATION
+// ============================================
+
+$PLUGIN_NAME = 'atp_lsi_monitor';
+$CONFIG_FILE = "/boot/config/plugins/{$PLUGIN_NAME}/settings.json";
+$API_PORT = 39800;
+$API_HOST = "127.0.0.1";
+
+// Read port from settings if available
+if (file_exists($CONFIG_FILE)) {
+    $config = json_decode(file_get_contents($CONFIG_FILE), true);
+    if (isset($config['SERVER_PORT'])) {
+        $API_PORT = intval($config['SERVER_PORT']);
+    }
+}
+
+// ============================================
+// CSRF VALIDATION (Unraid 7.x Security)
+// ============================================
+
+$modifying_actions = [
+    'save_settings', 'service', 'test_notification',
+    'read_temperature', 'clear_alerts', 'generate_report'
+];
+
+$action = $_REQUEST['action'] ?? '';
+
+if (in_array($action, $modifying_actions)) {
+    $csrf_token = $_POST['csrf_token'] ?? $_GET['csrf_token'] ?? $_REQUEST['csrf_token'] ?? '';
+    $valid_csrf = false;
+
+    $var_file = '/var/local/emhttp/var.ini';
+    if (file_exists($var_file)) {
+        $var = @parse_ini_file($var_file);
+        if ($var && isset($var['csrf_token'])) {
+            $valid_csrf = hash_equals($var['csrf_token'], $csrf_token);
+        }
+    }
+
+    if (!$valid_csrf) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Invalid or missing CSRF token']);
+        exit;
+    }
+}
+
+// ============================================
+// API HELPER
+// ============================================
+
+function apiCall($endpoint, $method = 'GET', $data = null) {
+    global $API_PORT, $API_HOST;
+
+    $url = "http://{$API_HOST}:{$API_PORT}{$endpoint}";
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+
+    if ($method === 'POST') {
+        curl_setopt($ch, CURLOPT_POST, true);
+        if ($data) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        }
+    }
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($curlError) {
+        return ['success' => false, 'error' => "API unavailable: {$curlError}"];
+    }
+
+    if (empty($response)) {
+        return ['success' => false, 'error' => 'Empty response from API'];
+    }
+
+    $decoded = json_decode($response, true);
+    if ($decoded === null) {
+        return ['success' => false, 'error' => 'Invalid API response'];
+    }
+
+    return $decoded;
+}
+
+// ============================================
+// POST DATA HELPER
+// ============================================
+
+function getPostData() {
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+
+    if (strpos($contentType, 'application/json') !== false) {
+        return json_decode(file_get_contents('php://input'), true) ?: [];
+    }
+
+    $data = $_POST;
+    unset($data['csrf_token']);
+    unset($data['action']);
+
+    // Convert types
+    foreach ($data as $key => $value) {
+        if ($value === 'true') $data[$key] = true;
+        if ($value === 'false') $data[$key] = false;
+        if (is_numeric($value) && strpos($value, '.') === false) {
+            $data[$key] = intval($value);
+        }
+    }
+
+    return $data;
+}
+
+// ============================================
+// REQUEST ROUTING
+// ============================================
+
+header('Content-Type: application/json');
+
+switch ($action) {
+
+    // Status
+    case 'status':
+        echo json_encode(apiCall('/api/status'));
+        break;
+
+    // Health check
+    case 'health':
+        echo json_encode(apiCall('/api/health'));
+        break;
+
+    // Temperature
+    case 'get_temperature':
+        echo json_encode(apiCall('/api/temperature'));
+        break;
+
+    case 'get_temperature_history':
+        $hours = intval($_REQUEST['hours'] ?? 24);
+        echo json_encode(apiCall("/api/temperature/history?hours={$hours}"));
+        break;
+
+    case 'get_temperature_stats':
+        $period = $_REQUEST['period'] ?? '24h';
+        echo json_encode(apiCall("/api/temperature/stats?period={$period}"));
+        break;
+
+    case 'read_temperature':
+        echo json_encode(apiCall('/api/temperature/read', 'POST'));
+        break;
+
+    // Firmware info
+    case 'get_firmware':
+        echo json_encode(apiCall('/api/firmware'));
+        break;
+
+    // PHY errors
+    case 'get_phy':
+        echo json_encode(apiCall('/api/phy'));
+        break;
+
+    // Devices
+    case 'get_devices':
+        echo json_encode(apiCall('/api/devices'));
+        break;
+
+    // Alerts
+    case 'get_alerts':
+        $limit = intval($_REQUEST['limit'] ?? 50);
+        echo json_encode(apiCall("/api/alerts?limit={$limit}"));
+        break;
+
+    case 'clear_alerts':
+        echo json_encode(apiCall('/api/alerts/clear', 'POST'));
+        break;
+
+    // Settings
+    case 'get_settings':
+        echo json_encode(apiCall('/api/settings'));
+        break;
+
+    case 'save_settings':
+        $data = getPostData();
+        echo json_encode(apiCall('/api/settings', 'POST', $data));
+        break;
+
+    // Notifications
+    case 'test_notification':
+        echo json_encode(apiCall('/api/notification/test', 'POST'));
+        break;
+
+    // Reports
+    case 'generate_report':
+        $type = $_REQUEST['type'] ?? 'daily';
+        $send = isset($_REQUEST['send']) && $_REQUEST['send'] === 'true';
+        echo json_encode(apiCall('/api/report', 'POST', ['type' => $type, 'send' => $send]));
+        break;
+
+    // Logs
+    case 'get_logs':
+        $lines = intval($_REQUEST['lines'] ?? 200);
+        global $PLUGIN_NAME;
+        $result = apiCall("/api/logs?lines={$lines}");
+
+        // Fallback: read log file directly if API fails
+        if (!$result['success']) {
+            $logFile = "/mnt/user/appdata/{$PLUGIN_NAME}/logs/{$PLUGIN_NAME}.log";
+            if (file_exists($logFile)) {
+                $logLines = file($logFile);
+                $logLines = array_slice($logLines, -$lines);
+                $result = ['success' => true, 'logs' => implode("", $logLines)];
+            }
+        }
+        echo json_encode($result);
+        break;
+
+    // Service control
+    case 'service':
+        $cmd = $_REQUEST['cmd'] ?? '';
+        $validCmds = ['start', 'stop', 'restart', 'status'];
+
+        if (!in_array($cmd, $validCmds)) {
+            echo json_encode(['success' => false, 'error' => 'Invalid command']);
+            break;
+        }
+
+        global $PLUGIN_NAME;
+        $script = "/usr/local/emhttp/plugins/{$PLUGIN_NAME}/rc.{$PLUGIN_NAME}";
+        exec("{$script} {$cmd} 2>&1", $output, $returnCode);
+
+        echo json_encode([
+            'success' => $returnCode === 0,
+            'output' => implode("\n", $output),
+            'code' => $returnCode
+        ]);
+        break;
+
+    default:
+        echo json_encode(['success' => false, 'error' => 'Unknown action']);
+        break;
+}
+
+]]>
+</INLINE>
+</FILE>
+
+<!-- Short plugin description for Installed Plugins list -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/README.md">
+<INLINE>
+<![CDATA[
+#### ATP LSI Monitor
+
+Monitor LSI SAS HBA cards (SAS2308, 9207-8i, etc.) - temperature, PHY errors, firmware info with Discord/Gotify notifications.
+
+]]>
+</INLINE>
+</FILE>
+
+<!-- lsiutil binary (v1.72 from latchdevel repository) -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/lsiutil" Mode="0755">
+<URL>https://raw.githubusercontent.com/latchdevel/LSIUtil/master/release/LSIUtil_v1.72_binaries/Linux/lsiutil.x86_64</URL>
+</FILE>
+
+<!-- Plugin Icon (download from GitHub) -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/hdd-o">
+<URL>https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/assets/icons/hdd-o</URL>
+</FILE>
+
+<!-- Post-install: Set up directories and auto-start -->
+<FILE Run="/bin/bash">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+PLUGIN_NAME="atp_lsi_monitor"
+PLUGIN_VERSION="2026.01.31a"
+DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
+CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
+RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
+GO_FILE="/boot/config/go"
+LOG="/var/log/${PLUGIN_NAME}_install.log"
+
+echo "$(date): Post-install starting" >> "$LOG"
+
+# Create directories
+mkdir -p "$DATA_DIR/logs"
+mkdir -p "$CONFIG_DIR"
+
+# Make scripts executable
+chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/${PLUGIN_NAME}.py"
+chmod +x "/usr/local/emhttp/plugins/${PLUGIN_NAME}/lsiutil"
+chmod +x "$RC_SCRIPT"
+
+# Add to startup if not already there
+if ! grep -q "rc.${PLUGIN_NAME}" "$GO_FILE" 2>/dev/null; then
+    echo "" >> "$GO_FILE"
+    echo "# Start ATP LSI Monitor" >> "$GO_FILE"
+    echo "$RC_SCRIPT start &" >> "$GO_FILE"
+    echo "$(date): Added to $GO_FILE" >> "$LOG"
+fi
+
+# Start the service in background with delay
+(
+    sleep 5
+    "$RC_SCRIPT" start >> "$LOG" 2>&1
+) &
+
+echo "$(date): Post-install complete" >> "$LOG"
+echo ""
+echo "----------------------------------------------------"
+echo " ATP LSI Monitor has been installed."
+echo " Copyright 2024-2026, Tegenett"
+echo " Version: $PLUGIN_VERSION"
+echo "----------------------------------------------------"
+echo ""
+echo "Includes lsiutil v1.72 for LSI HBA management."
+echo ""
+echo "IMPORTANT: The plugin will attempt to detect LSI HBA"
+echo "cards on first run. Check Settings to verify."
+echo ""
+]]>
+</INLINE>
+</FILE>
+
+<!-- Uninstall script -->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+PLUGIN_NAME="atp_lsi_monitor"
+RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
+GO_FILE="/boot/config/go"
+
+echo "Removing ATP LSI Monitor..."
+
+# Stop service
+if [ -f "$RC_SCRIPT" ]; then
+    "$RC_SCRIPT" stop 2>/dev/null
+fi
+pkill -f "${PLUGIN_NAME}.py" 2>/dev/null || true
+rm -f "/var/run/${PLUGIN_NAME}.pid"
+
+# Remove from startup
+if [ -f "$GO_FILE" ]; then
+    sed -i "/# Start ATP LSI Monitor/d" "$GO_FILE"
+    sed -i "/rc.${PLUGIN_NAME}/d" "$GO_FILE"
+fi
+
+# Remove plugin files from RAM
+rm -rf "/usr/local/emhttp/plugins/${PLUGIN_NAME}"
+
+# Remove PLG file from boot (keeps settings.json and database)
+rm -f "/boot/config/plugins/${PLUGIN_NAME}.plg"
+
+# Clean up log files
+rm -f "/var/log/${PLUGIN_NAME}_install.log"
+rm -f "/var/log/${PLUGIN_NAME}_startup.log"
+
+echo ""
+echo "----------------------------------------------------"
+echo " ATP LSI Monitor has been removed."
+echo "----------------------------------------------------"
+echo ""
+echo "Settings preserved at: /boot/config/plugins/${PLUGIN_NAME}/"
+echo "Data preserved at: /mnt/user/appdata/${PLUGIN_NAME}/"
+echo ""
+echo "To completely remove all data, manually delete these folders."
+]]>
+</INLINE>
+</FILE>
+
+</PLUGIN>
