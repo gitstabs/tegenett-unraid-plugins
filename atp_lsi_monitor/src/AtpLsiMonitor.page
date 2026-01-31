@@ -1,6 +1,6 @@
 Menu="Utilities"
 Title="ATP LSI Monitor"
-Icon="atp-lsi-monitor.png"
+Icon="microchip"
 Markdown="false"
 ---
 <?php
@@ -9,7 +9,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31b";
+$version = "v2026.01.31c";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -164,26 +164,28 @@ if (file_exists($pidFile)) {
     font-size: 0.85em;
 }
 
-/* Tabs - ESC style (full button highlight) */
+/* Tabs - ESC style (full button highlight, tight spacing) */
 .lsi-tabs {
     display: flex;
-    gap: 5px;
+    gap: 2px;
     margin-bottom: 20px;
     border-bottom: 1px solid var(--lsi-border);
-    padding-bottom: 10px;
+    padding-bottom: 0;
     flex-wrap: wrap;
 }
 
 .lsi-tab {
-    padding: 10px 20px;
+    padding: 10px 18px;
     background: var(--lsi-card-bg);
     border: 1px solid var(--lsi-border);
+    border-bottom: none;
     border-radius: 5px 5px 0 0;
     color: var(--lsi-text-muted);
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
     transition: all 0.2s ease;
+    margin-bottom: -1px;
 }
 
 .lsi-tab:hover {
@@ -195,10 +197,11 @@ if (file_exists($pidFile)) {
     background: var(--lsi-primary);
     color: #fff;
     border-color: var(--lsi-primary);
+    border-bottom: 1px solid var(--lsi-primary);
 }
 
 .lsi-tab i {
-    margin-right: 8px;
+    margin-right: 6px;
 }
 
 /* Panels */
@@ -281,58 +284,73 @@ if (file_exists($pidFile)) {
 
 /* Buttons */
 .lsi-btn {
-    padding: 8px 16px;
+    padding: 10px 18px;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.lsi-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.lsi-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 
 .lsi-btn i { font-size: 12px; }
 
 .lsi-btn-primary {
-    background: var(--lsi-primary);
+    background: linear-gradient(135deg, var(--lsi-primary) 0%, var(--lsi-primary-dark) 100%);
     color: #fff;
 }
 
 .lsi-btn-primary:hover {
-    background: var(--lsi-primary-dark);
+    background: linear-gradient(135deg, #f39c12 0%, var(--lsi-primary) 100%);
 }
 
 .lsi-btn-success {
-    background: var(--lsi-success);
+    background: linear-gradient(135deg, var(--lsi-success) 0%, #1e8449 100%);
     color: #fff;
 }
 
 .lsi-btn-success:hover {
-    background: #229954;
+    background: linear-gradient(135deg, #2ecc71 0%, var(--lsi-success) 100%);
 }
 
 .lsi-btn-danger {
-    background: var(--lsi-danger);
+    background: linear-gradient(135deg, var(--lsi-danger) 0%, #922b21 100%);
     color: #fff;
 }
 
 .lsi-btn-danger:hover {
-    background: #a93226;
+    background: linear-gradient(135deg, #e74c3c 0%, var(--lsi-danger) 100%);
 }
 
 .lsi-btn-secondary {
-    background: var(--lsi-border);
+    background: linear-gradient(135deg, #4a4a4a 0%, #333 100%);
     color: var(--lsi-text);
+    border: 1px solid var(--lsi-border);
 }
 
 .lsi-btn-secondary:hover {
-    background: #4a4a4a;
+    background: linear-gradient(135deg, #5a5a5a 0%, #444 100%);
+    border-color: var(--lsi-primary);
+    color: var(--lsi-primary);
 }
 
 .lsi-btn-sm {
-    padding: 6px 12px;
+    padding: 8px 14px;
     font-size: 12px;
 }
 
@@ -574,6 +592,122 @@ if (file_exists($pidFile)) {
 
 .lsi-section-header:first-child {
     margin-top: 0;
+}
+
+/* Scheduled Reports - Compact Row Design */
+.lsi-report-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background: var(--lsi-bg);
+    border: 1px solid var(--lsi-border);
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.lsi-report-row:last-child {
+    margin-bottom: 0;
+}
+
+.lsi-report-toggle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.lsi-report-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--lsi-text);
+}
+
+.lsi-report-label i {
+    margin-right: 8px;
+    color: var(--lsi-primary);
+}
+
+.lsi-report-time {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--lsi-text-muted);
+}
+
+.lsi-report-time input,
+.lsi-report-time select {
+    padding: 6px 10px;
+    background: var(--lsi-card-bg);
+    border: 1px solid var(--lsi-border);
+    border-radius: 4px;
+    color: var(--lsi-text);
+    font-size: 13px;
+}
+
+.lsi-report-time input:focus,
+.lsi-report-time select:focus {
+    border-color: var(--lsi-primary);
+    outline: none;
+}
+
+/* Toggle Switch */
+.lsi-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.lsi-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.lsi-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--lsi-border);
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.lsi-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+.lsi-switch input:checked + .lsi-slider {
+    background-color: var(--lsi-primary);
+}
+
+.lsi-switch input:checked + .lsi-slider:before {
+    transform: translateX(20px);
+}
+
+/* Responsive reports */
+@media (max-width: 600px) {
+    .lsi-report-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .lsi-report-time {
+        flex-wrap: wrap;
+    }
 }
 </style>
 
@@ -1053,31 +1187,33 @@ if (file_exists($pidFile)) {
                             <h3><i class="fa fa-calendar-check"></i> Scheduled Reports</h3>
                         </div>
                         <div class="lsi-card-body">
-                            <div class="lsi-section-header">Daily Report</div>
-                            <div class="lsi-form-row">
-                                <div class="lsi-form-group">
-                                    <label>
+                            <!-- Daily Report - compact row -->
+                            <div class="lsi-report-row">
+                                <div class="lsi-report-toggle">
+                                    <label class="lsi-switch">
                                         <input type="checkbox" name="DAILY_REPORT_ENABLED" id="setting_DAILY_REPORT_ENABLED" <?php echo $settings['DAILY_REPORT_ENABLED'] ? 'checked' : ''; ?>>
-                                        Enable Daily Report
+                                        <span class="lsi-slider"></span>
                                     </label>
+                                    <span class="lsi-report-label"><i class="fa fa-calendar-day"></i> Daily Report</span>
                                 </div>
-                                <div class="lsi-form-group">
-                                    <label>Send at Hour</label>
-                                    <input type="number" name="DAILY_REPORT_HOUR" id="setting_DAILY_REPORT_HOUR" value="<?php echo $settings['DAILY_REPORT_HOUR']; ?>" min="0" max="23">
+                                <div class="lsi-report-time">
+                                    <label>Hour:</label>
+                                    <input type="number" name="DAILY_REPORT_HOUR" id="setting_DAILY_REPORT_HOUR" value="<?php echo $settings['DAILY_REPORT_HOUR']; ?>" min="0" max="23" style="width: 70px;">
+                                    <span class="lsi-form-hint">:00</span>
                                 </div>
                             </div>
 
-                            <div class="lsi-section-header">Weekly Report</div>
-                            <div class="lsi-form-row">
-                                <div class="lsi-form-group">
-                                    <label>
+                            <!-- Weekly Report - compact row -->
+                            <div class="lsi-report-row">
+                                <div class="lsi-report-toggle">
+                                    <label class="lsi-switch">
                                         <input type="checkbox" name="WEEKLY_REPORT_ENABLED" id="setting_WEEKLY_REPORT_ENABLED" <?php echo $settings['WEEKLY_REPORT_ENABLED'] ? 'checked' : ''; ?>>
-                                        Enable Weekly Report
+                                        <span class="lsi-slider"></span>
                                     </label>
+                                    <span class="lsi-report-label"><i class="fa fa-calendar-week"></i> Weekly Report</span>
                                 </div>
-                                <div class="lsi-form-group">
-                                    <label>Day of Week</label>
-                                    <select name="WEEKLY_REPORT_DAY" id="setting_WEEKLY_REPORT_DAY">
+                                <div class="lsi-report-time">
+                                    <select name="WEEKLY_REPORT_DAY" id="setting_WEEKLY_REPORT_DAY" style="width: 110px;">
                                         <option value="0" <?php echo $settings['WEEKLY_REPORT_DAY'] == 0 ? 'selected' : ''; ?>>Monday</option>
                                         <option value="1" <?php echo $settings['WEEKLY_REPORT_DAY'] == 1 ? 'selected' : ''; ?>>Tuesday</option>
                                         <option value="2" <?php echo $settings['WEEKLY_REPORT_DAY'] == 2 ? 'selected' : ''; ?>>Wednesday</option>
@@ -1086,28 +1222,27 @@ if (file_exists($pidFile)) {
                                         <option value="5" <?php echo $settings['WEEKLY_REPORT_DAY'] == 5 ? 'selected' : ''; ?>>Saturday</option>
                                         <option value="6" <?php echo $settings['WEEKLY_REPORT_DAY'] == 6 ? 'selected' : ''; ?>>Sunday</option>
                                     </select>
-                                </div>
-                                <div class="lsi-form-group">
-                                    <label>Send at Hour</label>
-                                    <input type="number" name="WEEKLY_REPORT_HOUR" id="setting_WEEKLY_REPORT_HOUR" value="<?php echo $settings['WEEKLY_REPORT_HOUR']; ?>" min="0" max="23">
+                                    <label>@</label>
+                                    <input type="number" name="WEEKLY_REPORT_HOUR" id="setting_WEEKLY_REPORT_HOUR" value="<?php echo $settings['WEEKLY_REPORT_HOUR']; ?>" min="0" max="23" style="width: 70px;">
+                                    <span class="lsi-form-hint">:00</span>
                                 </div>
                             </div>
 
-                            <div class="lsi-section-header">Monthly Report</div>
-                            <div class="lsi-form-row">
-                                <div class="lsi-form-group">
-                                    <label>
+                            <!-- Monthly Report - compact row -->
+                            <div class="lsi-report-row">
+                                <div class="lsi-report-toggle">
+                                    <label class="lsi-switch">
                                         <input type="checkbox" name="MONTHLY_REPORT_ENABLED" id="setting_MONTHLY_REPORT_ENABLED" <?php echo $settings['MONTHLY_REPORT_ENABLED'] ? 'checked' : ''; ?>>
-                                        Enable Monthly Report
+                                        <span class="lsi-slider"></span>
                                     </label>
+                                    <span class="lsi-report-label"><i class="fa fa-calendar"></i> Monthly Report</span>
                                 </div>
-                                <div class="lsi-form-group">
-                                    <label>Day of Month</label>
-                                    <input type="number" name="MONTHLY_REPORT_DAY" id="setting_MONTHLY_REPORT_DAY" value="<?php echo $settings['MONTHLY_REPORT_DAY']; ?>" min="1" max="28">
-                                </div>
-                                <div class="lsi-form-group">
-                                    <label>Send at Hour</label>
-                                    <input type="number" name="MONTHLY_REPORT_HOUR" id="setting_MONTHLY_REPORT_HOUR" value="<?php echo $settings['MONTHLY_REPORT_HOUR']; ?>" min="0" max="23">
+                                <div class="lsi-report-time">
+                                    <label>Day</label>
+                                    <input type="number" name="MONTHLY_REPORT_DAY" id="setting_MONTHLY_REPORT_DAY" value="<?php echo $settings['MONTHLY_REPORT_DAY']; ?>" min="1" max="28" style="width: 60px;">
+                                    <label>@</label>
+                                    <input type="number" name="MONTHLY_REPORT_HOUR" id="setting_MONTHLY_REPORT_HOUR" value="<?php echo $settings['MONTHLY_REPORT_HOUR']; ?>" min="0" max="23" style="width: 70px;">
+                                    <span class="lsi-form-hint">:00</span>
                                 </div>
                             </div>
                         </div>
@@ -1134,8 +1269,8 @@ if (file_exists($pidFile)) {
                 </div>
             </div>
 
-            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-                <button type="submit" class="lsi-btn lsi-btn-primary">
+            <div style="display: flex; gap: 15px; justify-content: center; margin-top: 30px; padding: 20px; background: var(--lsi-card-bg); border-radius: 8px; border: 1px solid var(--lsi-border);">
+                <button type="submit" class="lsi-btn lsi-btn-primary" style="padding: 14px 40px; font-size: 15px;">
                     <i class="fa fa-save"></i> Save Settings
                 </button>
             </div>

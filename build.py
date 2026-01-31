@@ -1003,9 +1003,11 @@ def build_atp_lsi_monitor() -> bool:
     # Check for custom icon
     icon_path = get_icon_path('lsi')
     has_custom_icon = icon_path and icon_path.exists()
-    icon_attr = plugin['icon'] if has_custom_icon else 'hdd-o'
+    icon_attr = plugin['icon'] if has_custom_icon else 'microchip'  # Font Awesome fallback
     if has_custom_icon:
         print(f"  Using custom icon: {plugin['icon']}")
+    else:
+        print(f"  Using Font Awesome icon: {icon_attr} (no custom icon found)")
 
     # Inject shared CSS/JS into page content
     page_content = inject_shared_resources(page_content, prefix='lsi')
@@ -1017,6 +1019,15 @@ def build_atp_lsi_monitor() -> bool:
 
     # lsiutil download URL (v1.72 from latchdevel repository)
     lsiutil_url = "https://raw.githubusercontent.com/latchdevel/LSIUtil/master/release/LSIUtil_v1.72_binaries/Linux/lsiutil.x86_64"
+
+    # Build icon section - only include FILE if custom icon exists
+    if has_custom_icon:
+        icon_section = f'''<!-- Plugin Icon (download from GitHub) -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/{icon_attr}">
+<URL>https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/assets/icons/{icon_attr}</URL>
+</FILE>'''
+    else:
+        icon_section = f'<!-- Using Font Awesome icon: {icon_attr} (no custom PNG) -->'
 
     plg = f'''<?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
@@ -1031,6 +1042,17 @@ def build_atp_lsi_monitor() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="{icon_attr}" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31c
+- UI: Tab spacing reduced (tight gaps like Emby Smart Cache)
+- UI: Tabs now connect directly to border line (no gap)
+- UI: Buttons have gradient styling with hover effects
+- UI: Save Settings button larger and centered
+- UI: Scheduled Reports redesigned with toggle switches
+- FIX: Icon download error (now uses Font Awesome fallback)
+- FIX: Double logging issue (handlers cleared before adding)
+- FIX: Firmware version parsing for hex format (14000700 -> 20.00.07.00)
+- FIX: Device detection improved (SATA/SAS counting)
+
 ##2026.01.31b
 - UI: Tab styling now matches ATP Emby Smart Cache (orange active tabs)
 - UI: Running/Healthy badges moved to right side with Stop button and Version
@@ -1154,10 +1176,7 @@ echo "$(date): Pre-install complete" >> "$LOG"
 <URL>{lsiutil_url}</URL>
 </FILE>
 
-<!-- Plugin Icon (download from GitHub) -->
-<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/{icon_attr}">
-<URL>https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/assets/icons/{icon_attr}</URL>
-</FILE>
+{icon_section}
 
 <!-- Post-install: Set up directories and auto-start -->
 <FILE Run="/bin/bash">

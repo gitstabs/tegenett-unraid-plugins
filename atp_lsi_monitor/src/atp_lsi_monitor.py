@@ -40,7 +40,7 @@ import hashlib
 
 PLUGIN_NAME = "atp_lsi_monitor"
 DEFAULT_PORT = 39800
-VERSION = "2026.01.31b"
+VERSION = "2026.01.31c"
 
 # Paths
 DATA_DIR = f"/mnt/user/appdata/{PLUGIN_NAME}"
@@ -131,15 +131,30 @@ def setup_logging():
 
     level = getattr(logging, settings.get("LOG_LEVEL", "INFO"))
 
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[
-            logging.FileHandler(LOG_FILE),
-            logging.StreamHandler(sys.stdout)
-        ]
+    # Get the root logger
+    logger = logging.getLogger()
+    logger.setLevel(level)
+
+    # Remove any existing handlers to prevent duplicates
+    logger.handlers.clear()
+
+    # Create formatter
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
+
+    # File handler
+    file_handler = logging.FileHandler(LOG_FILE)
+    file_handler.setLevel(level)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(level)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
 # ============================================
 # SETTINGS
@@ -382,28 +397,52 @@ def get_firmware_info():
         "chip_name": None,
         "chip_revision": None,
         "board_name": None,
+        "it_mode": False,
         "raw": output
     }
 
-    # Parse firmware version
-    fw_match = re.search(r'Firmware\s+(?:Version)?\s*[:\s]?\s*(\S+)', output, re.IGNORECASE)
+    # Parse firmware version - multiple formats
+    # Format 1: "Firmware Version 14000700" (hex that decodes to 20.00.07.00)
+    # Format 2: "Firmware: 20.00.07.00"
+    fw_match = re.search(r'Firmware\s*(?:Version)?\s*[:\s]+([0-9A-Fa-f.]+)', output, re.IGNORECASE)
     if fw_match:
-        info["firmware_version"] = fw_match.group(1)
+        fw_raw = fw_match.group(1)
+        # If it's a hex number without dots, try to decode it
+        if '.' not in fw_raw and len(fw_raw) >= 8:
+            try:
+                # Convert hex like 14000700 to version format 20.00.07.00
+                fw_int = int(fw_raw, 16) if not fw_raw.isdigit() else int(fw_raw)
+                major = (fw_int >> 24) & 0xFF
+                minor = (fw_int >> 16) & 0xFF
+                patch = (fw_int >> 8) & 0xFF
+                build = fw_int & 0xFF
+                info["firmware_version"] = f"{major}.{minor:02d}.{patch:02d}.{build:02d}"
+            except ValueError:
+                info["firmware_version"] = fw_raw
+        else:
+            info["firmware_version"] = fw_raw
 
     # Parse BIOS version
-    bios_match = re.search(r'BIOS\s+(?:Version)?\s*[:\s]?\s*(\S+)', output, re.IGNORECASE)
+    bios_match = re.search(r'BIOS\s*(?:Version)?\s*[:\s]+(\S+)', output, re.IGNORECASE)
     if bios_match:
         info["bios_version"] = bios_match.group(1)
 
-    # Parse chip name
-    chip_match = re.search(r'Chip\s*(?:Name)?\s*[:\s]?\s*(\S+)', output, re.IGNORECASE)
+    # Parse chip name - look for patterns like "SAS2308" or "Chip: SAS2308"
+    chip_match = re.search(r'(?:Chip|Controller)\s*(?:Name)?\s*[:\s]*(SAS\d+|LSI\s*\w+)', output, re.IGNORECASE)
+    if not chip_match:
+        # Also try to find standalone SAS#### pattern
+        chip_match = re.search(r'\b(SAS\d{4})\b', output)
     if chip_match:
         info["chip_name"] = chip_match.group(1)
 
-    # Parse board name
-    board_match = re.search(r'Board\s*(?:Name)?\s*[:\s]?\s*(.*?)(?:\n|$)', output, re.IGNORECASE)
+    # Parse board name/assembly - multiple patterns
+    board_match = re.search(r'(?:Board|Assembly)\s*(?:Name)?\s*[:\s]*(.*?)(?:\n|$)', output, re.IGNORECASE)
     if board_match:
         info["board_name"] = board_match.group(1).strip()
+
+    # Check for IT Mode
+    if re.search(r'IT\s*(?:mode|firmware)', output, re.IGNORECASE):
+        info["it_mode"] = True
 
     return info
 
@@ -488,25 +527,63 @@ def get_connected_devices():
         return {"success": False, "error": output}
 
     devices = []
+    sata_count = 0
+    sas_initiator_count = 0
+
+    # Parse device summary line: "X SATA Target(s), Y SAS Initiator(s)"
+    summary_match = re.search(r'(\d+)\s+SATA\s+Target', output)
+    if summary_match:
+        sata_count = int(summary_match.group(1))
+
+    sas_init_match = re.search(r'(\d+)\s+SAS\s+Initiator', output)
+    if sas_init_match:
+        sas_initiator_count = int(sas_init_match.group(1))
 
     # Parse device entries - format varies by card/firmware
-    # Look for SAS Address patterns
+    # Look for SAS Address patterns (16 hex chars or 0x format)
     sas_pattern = re.findall(
-        r'(?:SAS Address|Handle)\s*[:\s]?\s*([0-9A-Fa-f]{16}|0x[0-9A-Fa-f]+)',
+        r'(?:SAS\s*Address|Handle|Device)\s*[:\s]*([0-9A-Fa-f]{16}|0x[0-9A-Fa-f]+)',
         output, re.IGNORECASE
     )
 
+    seen_addresses = set()
     for sas_addr in sas_pattern:
-        devices.append({
-            "sas_address": sas_addr,
-            "device_name": None,
-            "device_type": "Unknown"
-        })
+        # Clean up address
+        addr = sas_addr.replace('0x', '').upper()
+        if addr not in seen_addresses:
+            seen_addresses.add(addr)
+            devices.append({
+                "sas_address": addr,
+                "device_name": None,
+                "device_type": "SAS/SATA"
+            })
+
+    # Parse "B___T___L" format entries (Bus_Target_LUN)
+    btl_pattern = re.findall(r'B(\d+)\s*T(\d+)\s*L(\d+)', output)
+    for bus, target, lun in btl_pattern:
+        device_id = f"B{bus}T{target}L{lun}"
+        if device_id not in [d.get('sas_address') for d in devices]:
+            devices.append({
+                "sas_address": device_id,
+                "device_name": f"Bus {bus}, Target {target}, LUN {lun}",
+                "device_type": "SATA Target" if int(target) < 100 else "SAS Initiator"
+            })
+
+    # If we found SATA count but no parsed devices, create placeholder entries
+    if sata_count > 0 and len(devices) == 0:
+        for i in range(sata_count):
+            devices.append({
+                "sas_address": f"SATA-Target-{i}",
+                "device_name": f"SATA Target {i}",
+                "device_type": "SATA Target"
+            })
 
     return {
         "success": True,
         "devices": devices,
-        "device_count": len(devices),
+        "device_count": len(devices) if devices else (sata_count + sas_initiator_count),
+        "sata_targets": sata_count,
+        "sas_initiators": sas_initiator_count,
         "raw": output
     }
 

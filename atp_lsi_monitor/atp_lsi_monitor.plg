@@ -3,14 +3,25 @@
 <!ENTITY name        "atp_lsi_monitor">
 <!ENTITY displayName "ATP LSI Monitor">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.01.31b">
+<!ENTITY version     "2026.01.31c">
 <!ENTITY launch      "Settings/AtpLsiMonitor">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_lsi_monitor/atp_lsi_monitor.plg">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="hdd-o" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="microchip" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31c
+- UI: Tab spacing reduced (tight gaps like Emby Smart Cache)
+- UI: Tabs now connect directly to border line (no gap)
+- UI: Buttons have gradient styling with hover effects
+- UI: Save Settings button larger and centered
+- UI: Scheduled Reports redesigned with toggle switches
+- FIX: Icon download error (now uses Font Awesome fallback)
+- FIX: Double logging issue (handlers cleared before adding)
+- FIX: Firmware version parsing for hex format (14000700 -> 20.00.07.00)
+- FIX: Device detection improved (SATA/SAS counting)
+
 ##2026.01.31b
 - UI: Tab styling now matches ATP Emby Smart Cache (orange active tabs)
 - UI: Running/Healthy badges moved to right side with Stop button and Version
@@ -90,7 +101,7 @@ echo "$(date): Pre-install complete" >> "$LOG"
 <![CDATA[
 Menu="Utilities"
 Title="ATP LSI Monitor"
-Icon="atp-lsi-monitor.png"
+Icon="microchip"
 Markdown="false"
 ---
 <?php
@@ -99,7 +110,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31b";
+$version = "v2026.01.31c";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -1017,26 +1028,28 @@ if (file_exists($pidFile)) {
     font-size: 0.85em;
 }
 
-/* Tabs - ESC style (full button highlight) */
+/* Tabs - ESC style (full button highlight, tight spacing) */
 .lsi-tabs {
     display: flex;
-    gap: 5px;
+    gap: 2px;
     margin-bottom: 20px;
     border-bottom: 1px solid var(--lsi-border);
-    padding-bottom: 10px;
+    padding-bottom: 0;
     flex-wrap: wrap;
 }
 
 .lsi-tab {
-    padding: 10px 20px;
+    padding: 10px 18px;
     background: var(--lsi-card-bg);
     border: 1px solid var(--lsi-border);
+    border-bottom: none;
     border-radius: 5px 5px 0 0;
     color: var(--lsi-text-muted);
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
     transition: all 0.2s ease;
+    margin-bottom: -1px;
 }
 
 .lsi-tab:hover {
@@ -1048,10 +1061,11 @@ if (file_exists($pidFile)) {
     background: var(--lsi-primary);
     color: #fff;
     border-color: var(--lsi-primary);
+    border-bottom: 1px solid var(--lsi-primary);
 }
 
 .lsi-tab i {
-    margin-right: 8px;
+    margin-right: 6px;
 }
 
 /* Panels */
@@ -1134,58 +1148,73 @@ if (file_exists($pidFile)) {
 
 /* Buttons */
 .lsi-btn {
-    padding: 8px 16px;
+    padding: 10px 18px;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.lsi-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.lsi-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 
 .lsi-btn i { font-size: 12px; }
 
 .lsi-btn-primary {
-    background: var(--lsi-primary);
+    background: linear-gradient(135deg, var(--lsi-primary) 0%, var(--lsi-primary-dark) 100%);
     color: #fff;
 }
 
 .lsi-btn-primary:hover {
-    background: var(--lsi-primary-dark);
+    background: linear-gradient(135deg, #f39c12 0%, var(--lsi-primary) 100%);
 }
 
 .lsi-btn-success {
-    background: var(--lsi-success);
+    background: linear-gradient(135deg, var(--lsi-success) 0%, #1e8449 100%);
     color: #fff;
 }
 
 .lsi-btn-success:hover {
-    background: #229954;
+    background: linear-gradient(135deg, #2ecc71 0%, var(--lsi-success) 100%);
 }
 
 .lsi-btn-danger {
-    background: var(--lsi-danger);
+    background: linear-gradient(135deg, var(--lsi-danger) 0%, #922b21 100%);
     color: #fff;
 }
 
 .lsi-btn-danger:hover {
-    background: #a93226;
+    background: linear-gradient(135deg, #e74c3c 0%, var(--lsi-danger) 100%);
 }
 
 .lsi-btn-secondary {
-    background: var(--lsi-border);
+    background: linear-gradient(135deg, #4a4a4a 0%, #333 100%);
     color: var(--lsi-text);
+    border: 1px solid var(--lsi-border);
 }
 
 .lsi-btn-secondary:hover {
-    background: #4a4a4a;
+    background: linear-gradient(135deg, #5a5a5a 0%, #444 100%);
+    border-color: var(--lsi-primary);
+    color: var(--lsi-primary);
 }
 
 .lsi-btn-sm {
-    padding: 6px 12px;
+    padding: 8px 14px;
     font-size: 12px;
 }
 
@@ -1427,6 +1456,122 @@ if (file_exists($pidFile)) {
 
 .lsi-section-header:first-child {
     margin-top: 0;
+}
+
+/* Scheduled Reports - Compact Row Design */
+.lsi-report-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background: var(--lsi-bg);
+    border: 1px solid var(--lsi-border);
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.lsi-report-row:last-child {
+    margin-bottom: 0;
+}
+
+.lsi-report-toggle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.lsi-report-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--lsi-text);
+}
+
+.lsi-report-label i {
+    margin-right: 8px;
+    color: var(--lsi-primary);
+}
+
+.lsi-report-time {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--lsi-text-muted);
+}
+
+.lsi-report-time input,
+.lsi-report-time select {
+    padding: 6px 10px;
+    background: var(--lsi-card-bg);
+    border: 1px solid var(--lsi-border);
+    border-radius: 4px;
+    color: var(--lsi-text);
+    font-size: 13px;
+}
+
+.lsi-report-time input:focus,
+.lsi-report-time select:focus {
+    border-color: var(--lsi-primary);
+    outline: none;
+}
+
+/* Toggle Switch */
+.lsi-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.lsi-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.lsi-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--lsi-border);
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.lsi-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+.lsi-switch input:checked + .lsi-slider {
+    background-color: var(--lsi-primary);
+}
+
+.lsi-switch input:checked + .lsi-slider:before {
+    transform: translateX(20px);
+}
+
+/* Responsive reports */
+@media (max-width: 600px) {
+    .lsi-report-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .lsi-report-time {
+        flex-wrap: wrap;
+    }
 }
 </style>
 
@@ -1906,31 +2051,33 @@ if (file_exists($pidFile)) {
                             <h3><i class="fa fa-calendar-check"></i> Scheduled Reports</h3>
                         </div>
                         <div class="lsi-card-body">
-                            <div class="lsi-section-header">Daily Report</div>
-                            <div class="lsi-form-row">
-                                <div class="lsi-form-group">
-                                    <label>
+                            <!-- Daily Report - compact row -->
+                            <div class="lsi-report-row">
+                                <div class="lsi-report-toggle">
+                                    <label class="lsi-switch">
                                         <input type="checkbox" name="DAILY_REPORT_ENABLED" id="setting_DAILY_REPORT_ENABLED" <?php echo $settings['DAILY_REPORT_ENABLED'] ? 'checked' : ''; ?>>
-                                        Enable Daily Report
+                                        <span class="lsi-slider"></span>
                                     </label>
+                                    <span class="lsi-report-label"><i class="fa fa-calendar-day"></i> Daily Report</span>
                                 </div>
-                                <div class="lsi-form-group">
-                                    <label>Send at Hour</label>
-                                    <input type="number" name="DAILY_REPORT_HOUR" id="setting_DAILY_REPORT_HOUR" value="<?php echo $settings['DAILY_REPORT_HOUR']; ?>" min="0" max="23">
+                                <div class="lsi-report-time">
+                                    <label>Hour:</label>
+                                    <input type="number" name="DAILY_REPORT_HOUR" id="setting_DAILY_REPORT_HOUR" value="<?php echo $settings['DAILY_REPORT_HOUR']; ?>" min="0" max="23" style="width: 70px;">
+                                    <span class="lsi-form-hint">:00</span>
                                 </div>
                             </div>
 
-                            <div class="lsi-section-header">Weekly Report</div>
-                            <div class="lsi-form-row">
-                                <div class="lsi-form-group">
-                                    <label>
+                            <!-- Weekly Report - compact row -->
+                            <div class="lsi-report-row">
+                                <div class="lsi-report-toggle">
+                                    <label class="lsi-switch">
                                         <input type="checkbox" name="WEEKLY_REPORT_ENABLED" id="setting_WEEKLY_REPORT_ENABLED" <?php echo $settings['WEEKLY_REPORT_ENABLED'] ? 'checked' : ''; ?>>
-                                        Enable Weekly Report
+                                        <span class="lsi-slider"></span>
                                     </label>
+                                    <span class="lsi-report-label"><i class="fa fa-calendar-week"></i> Weekly Report</span>
                                 </div>
-                                <div class="lsi-form-group">
-                                    <label>Day of Week</label>
-                                    <select name="WEEKLY_REPORT_DAY" id="setting_WEEKLY_REPORT_DAY">
+                                <div class="lsi-report-time">
+                                    <select name="WEEKLY_REPORT_DAY" id="setting_WEEKLY_REPORT_DAY" style="width: 110px;">
                                         <option value="0" <?php echo $settings['WEEKLY_REPORT_DAY'] == 0 ? 'selected' : ''; ?>>Monday</option>
                                         <option value="1" <?php echo $settings['WEEKLY_REPORT_DAY'] == 1 ? 'selected' : ''; ?>>Tuesday</option>
                                         <option value="2" <?php echo $settings['WEEKLY_REPORT_DAY'] == 2 ? 'selected' : ''; ?>>Wednesday</option>
@@ -1939,28 +2086,27 @@ if (file_exists($pidFile)) {
                                         <option value="5" <?php echo $settings['WEEKLY_REPORT_DAY'] == 5 ? 'selected' : ''; ?>>Saturday</option>
                                         <option value="6" <?php echo $settings['WEEKLY_REPORT_DAY'] == 6 ? 'selected' : ''; ?>>Sunday</option>
                                     </select>
-                                </div>
-                                <div class="lsi-form-group">
-                                    <label>Send at Hour</label>
-                                    <input type="number" name="WEEKLY_REPORT_HOUR" id="setting_WEEKLY_REPORT_HOUR" value="<?php echo $settings['WEEKLY_REPORT_HOUR']; ?>" min="0" max="23">
+                                    <label>@</label>
+                                    <input type="number" name="WEEKLY_REPORT_HOUR" id="setting_WEEKLY_REPORT_HOUR" value="<?php echo $settings['WEEKLY_REPORT_HOUR']; ?>" min="0" max="23" style="width: 70px;">
+                                    <span class="lsi-form-hint">:00</span>
                                 </div>
                             </div>
 
-                            <div class="lsi-section-header">Monthly Report</div>
-                            <div class="lsi-form-row">
-                                <div class="lsi-form-group">
-                                    <label>
+                            <!-- Monthly Report - compact row -->
+                            <div class="lsi-report-row">
+                                <div class="lsi-report-toggle">
+                                    <label class="lsi-switch">
                                         <input type="checkbox" name="MONTHLY_REPORT_ENABLED" id="setting_MONTHLY_REPORT_ENABLED" <?php echo $settings['MONTHLY_REPORT_ENABLED'] ? 'checked' : ''; ?>>
-                                        Enable Monthly Report
+                                        <span class="lsi-slider"></span>
                                     </label>
+                                    <span class="lsi-report-label"><i class="fa fa-calendar"></i> Monthly Report</span>
                                 </div>
-                                <div class="lsi-form-group">
-                                    <label>Day of Month</label>
-                                    <input type="number" name="MONTHLY_REPORT_DAY" id="setting_MONTHLY_REPORT_DAY" value="<?php echo $settings['MONTHLY_REPORT_DAY']; ?>" min="1" max="28">
-                                </div>
-                                <div class="lsi-form-group">
-                                    <label>Send at Hour</label>
-                                    <input type="number" name="MONTHLY_REPORT_HOUR" id="setting_MONTHLY_REPORT_HOUR" value="<?php echo $settings['MONTHLY_REPORT_HOUR']; ?>" min="0" max="23">
+                                <div class="lsi-report-time">
+                                    <label>Day</label>
+                                    <input type="number" name="MONTHLY_REPORT_DAY" id="setting_MONTHLY_REPORT_DAY" value="<?php echo $settings['MONTHLY_REPORT_DAY']; ?>" min="1" max="28" style="width: 60px;">
+                                    <label>@</label>
+                                    <input type="number" name="MONTHLY_REPORT_HOUR" id="setting_MONTHLY_REPORT_HOUR" value="<?php echo $settings['MONTHLY_REPORT_HOUR']; ?>" min="0" max="23" style="width: 70px;">
+                                    <span class="lsi-form-hint">:00</span>
                                 </div>
                             </div>
                         </div>
@@ -1987,8 +2133,8 @@ if (file_exists($pidFile)) {
                 </div>
             </div>
 
-            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-                <button type="submit" class="lsi-btn lsi-btn-primary">
+            <div style="display: flex; gap: 15px; justify-content: center; margin-top: 30px; padding: 20px; background: var(--lsi-card-bg); border-radius: 8px; border: 1px solid var(--lsi-border);">
+                <button type="submit" class="lsi-btn lsi-btn-primary" style="padding: 14px 40px; font-size: 15px;">
                     <i class="fa fa-save"></i> Save Settings
                 </button>
             </div>
@@ -3143,7 +3289,7 @@ import hashlib
 
 PLUGIN_NAME = "atp_lsi_monitor"
 DEFAULT_PORT = 39800
-VERSION = "2026.01.31b"
+VERSION = "2026.01.31c"
 
 # Paths
 DATA_DIR = f"/mnt/user/appdata/{PLUGIN_NAME}"
@@ -3234,15 +3380,30 @@ def setup_logging():
 
     level = getattr(logging, settings.get("LOG_LEVEL", "INFO"))
 
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[
-            logging.FileHandler(LOG_FILE),
-            logging.StreamHandler(sys.stdout)
-        ]
+    # Get the root logger
+    logger = logging.getLogger()
+    logger.setLevel(level)
+
+    # Remove any existing handlers to prevent duplicates
+    logger.handlers.clear()
+
+    # Create formatter
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
+
+    # File handler
+    file_handler = logging.FileHandler(LOG_FILE)
+    file_handler.setLevel(level)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(level)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
 # ============================================
 # SETTINGS
@@ -3485,28 +3646,52 @@ def get_firmware_info():
         "chip_name": None,
         "chip_revision": None,
         "board_name": None,
+        "it_mode": False,
         "raw": output
     }
 
-    # Parse firmware version
-    fw_match = re.search(r'Firmware\s+(?:Version)?\s*[:\s]?\s*(\S+)', output, re.IGNORECASE)
+    # Parse firmware version - multiple formats
+    # Format 1: "Firmware Version 14000700" (hex that decodes to 20.00.07.00)
+    # Format 2: "Firmware: 20.00.07.00"
+    fw_match = re.search(r'Firmware\s*(?:Version)?\s*[:\s]+([0-9A-Fa-f.]+)', output, re.IGNORECASE)
     if fw_match:
-        info["firmware_version"] = fw_match.group(1)
+        fw_raw = fw_match.group(1)
+        # If it's a hex number without dots, try to decode it
+        if '.' not in fw_raw and len(fw_raw) >= 8:
+            try:
+                # Convert hex like 14000700 to version format 20.00.07.00
+                fw_int = int(fw_raw, 16) if not fw_raw.isdigit() else int(fw_raw)
+                major = (fw_int >> 24) & 0xFF
+                minor = (fw_int >> 16) & 0xFF
+                patch = (fw_int >> 8) & 0xFF
+                build = fw_int & 0xFF
+                info["firmware_version"] = f"{major}.{minor:02d}.{patch:02d}.{build:02d}"
+            except ValueError:
+                info["firmware_version"] = fw_raw
+        else:
+            info["firmware_version"] = fw_raw
 
     # Parse BIOS version
-    bios_match = re.search(r'BIOS\s+(?:Version)?\s*[:\s]?\s*(\S+)', output, re.IGNORECASE)
+    bios_match = re.search(r'BIOS\s*(?:Version)?\s*[:\s]+(\S+)', output, re.IGNORECASE)
     if bios_match:
         info["bios_version"] = bios_match.group(1)
 
-    # Parse chip name
-    chip_match = re.search(r'Chip\s*(?:Name)?\s*[:\s]?\s*(\S+)', output, re.IGNORECASE)
+    # Parse chip name - look for patterns like "SAS2308" or "Chip: SAS2308"
+    chip_match = re.search(r'(?:Chip|Controller)\s*(?:Name)?\s*[:\s]*(SAS\d+|LSI\s*\w+)', output, re.IGNORECASE)
+    if not chip_match:
+        # Also try to find standalone SAS#### pattern
+        chip_match = re.search(r'\b(SAS\d{4})\b', output)
     if chip_match:
         info["chip_name"] = chip_match.group(1)
 
-    # Parse board name
-    board_match = re.search(r'Board\s*(?:Name)?\s*[:\s]?\s*(.*?)(?:\n|$)', output, re.IGNORECASE)
+    # Parse board name/assembly - multiple patterns
+    board_match = re.search(r'(?:Board|Assembly)\s*(?:Name)?\s*[:\s]*(.*?)(?:\n|$)', output, re.IGNORECASE)
     if board_match:
         info["board_name"] = board_match.group(1).strip()
+
+    # Check for IT Mode
+    if re.search(r'IT\s*(?:mode|firmware)', output, re.IGNORECASE):
+        info["it_mode"] = True
 
     return info
 
@@ -3591,25 +3776,63 @@ def get_connected_devices():
         return {"success": False, "error": output}
 
     devices = []
+    sata_count = 0
+    sas_initiator_count = 0
+
+    # Parse device summary line: "X SATA Target(s), Y SAS Initiator(s)"
+    summary_match = re.search(r'(\d+)\s+SATA\s+Target', output)
+    if summary_match:
+        sata_count = int(summary_match.group(1))
+
+    sas_init_match = re.search(r'(\d+)\s+SAS\s+Initiator', output)
+    if sas_init_match:
+        sas_initiator_count = int(sas_init_match.group(1))
 
     # Parse device entries - format varies by card/firmware
-    # Look for SAS Address patterns
+    # Look for SAS Address patterns (16 hex chars or 0x format)
     sas_pattern = re.findall(
-        r'(?:SAS Address|Handle)\s*[:\s]?\s*([0-9A-Fa-f]{16}|0x[0-9A-Fa-f]+)',
+        r'(?:SAS\s*Address|Handle|Device)\s*[:\s]*([0-9A-Fa-f]{16}|0x[0-9A-Fa-f]+)',
         output, re.IGNORECASE
     )
 
+    seen_addresses = set()
     for sas_addr in sas_pattern:
-        devices.append({
-            "sas_address": sas_addr,
-            "device_name": None,
-            "device_type": "Unknown"
-        })
+        # Clean up address
+        addr = sas_addr.replace('0x', '').upper()
+        if addr not in seen_addresses:
+            seen_addresses.add(addr)
+            devices.append({
+                "sas_address": addr,
+                "device_name": None,
+                "device_type": "SAS/SATA"
+            })
+
+    # Parse "B___T___L" format entries (Bus_Target_LUN)
+    btl_pattern = re.findall(r'B(\d+)\s*T(\d+)\s*L(\d+)', output)
+    for bus, target, lun in btl_pattern:
+        device_id = f"B{bus}T{target}L{lun}"
+        if device_id not in [d.get('sas_address') for d in devices]:
+            devices.append({
+                "sas_address": device_id,
+                "device_name": f"Bus {bus}, Target {target}, LUN {lun}",
+                "device_type": "SATA Target" if int(target) < 100 else "SAS Initiator"
+            })
+
+    # If we found SATA count but no parsed devices, create placeholder entries
+    if sata_count > 0 and len(devices) == 0:
+        for i in range(sata_count):
+            devices.append({
+                "sas_address": f"SATA-Target-{i}",
+                "device_name": f"SATA Target {i}",
+                "device_type": "SATA Target"
+            })
 
     return {
         "success": True,
         "devices": devices,
-        "device_count": len(devices),
+        "device_count": len(devices) if devices else (sata_count + sas_initiator_count),
+        "sata_targets": sata_count,
+        "sas_initiators": sas_initiator_count,
         "raw": output
     }
 
@@ -4927,10 +5150,7 @@ Monitor LSI SAS HBA cards (SAS2308, 9207-8i, etc.) - temperature, PHY errors, fi
 <URL>https://raw.githubusercontent.com/latchdevel/LSIUtil/master/release/LSIUtil_v1.72_binaries/Linux/lsiutil.x86_64</URL>
 </FILE>
 
-<!-- Plugin Icon (download from GitHub) -->
-<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/hdd-o">
-<URL>https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/assets/icons/hdd-o</URL>
-</FILE>
+<!-- Using Font Awesome icon: microchip (no custom PNG) -->
 
 <!-- Post-install: Set up directories and auto-start -->
 <FILE Run="/bin/bash">
@@ -4938,7 +5158,7 @@ Monitor LSI SAS HBA cards (SAS2308, 9207-8i, etc.) - temperature, PHY errors, fi
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_lsi_monitor"
-PLUGIN_VERSION="2026.01.31b"
+PLUGIN_VERSION="2026.01.31c"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
