@@ -30,18 +30,18 @@
 ## ATP Emby Smart Cache
 
 ### 🟡 Medium Priority
-- [ ] Improve logging and statistics
-- [ ] Create proper documentation
+- [x] ~~Improve logging and statistics~~ *(Already implemented - SQLite activity_log, /api/stats, Statistics tab)*
+- [x] ~~Create proper documentation~~ *(Already complete in README.md)*
 
 ---
 
 ## Shared Components
 
 ### 🟡 Medium Priority
-- [ ] Document CSS class naming convention
+- [x] ~~Document CSS class naming convention~~ *(Added shared/README.md)*
 - [ ] Fix plugin display names in Unraid Plugins list
 - [ ] Create plugin template for new plugins
-- [ ] Automated version bumping in build.py
+- [x] ~~Automated version bumping in build.py~~ *(Implemented --bump flag)*
 
 ---
 

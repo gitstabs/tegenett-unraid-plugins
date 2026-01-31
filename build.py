@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ATP Plugin Build System - v2026.01.30
+ATP Plugin Build System - v2026.01.31
 Master build script for all ATP (A Tegenett Plugin) plugins
 
 Usage:
@@ -8,13 +8,15 @@ Usage:
     python build.py backup       # Build only atp_backup
     python build.py emby         # Build only atp_emby_smart_cache
     python build.py --validate   # Validate without building
-    python build.py --bump       # Bump version (YYYY.MM.DD format)
+    python build.py --bump       # Bump version for all plugins
+    python build.py --bump backup  # Bump version for specific plugin
 
 Features:
 - Builds PLG files from source components
 - Injects shared CSS/JS automatically
 - Validates XML structure
 - Validates Python syntax
+- Automatic version bumping (YYYY.MM.DDx format)
 - Reports file sizes
 """
 
@@ -22,6 +24,7 @@ import os
 import sys
 import re
 import subprocess
+import string
 from datetime import datetime
 from pathlib import Path
 
@@ -73,6 +76,80 @@ def get_shared_js() -> str:
     if SHARED_JS.exists():
         return read_file(SHARED_JS)
     return ''
+
+
+def bump_version(plugin_key: str) -> bool:
+    """
+    Bump version in plugin's .page file.
+    Version format: YYYY.MM.DDx where x is a letter (a-z).
+
+    Logic:
+    - If current version is from today, increment letter (a→b, b→c, etc.)
+    - If current version is from a different day, use today's date + 'a'
+    """
+    plugin = PLUGINS.get(plugin_key)
+    if not plugin:
+        print(f"Unknown plugin: {plugin_key}")
+        return False
+
+    src_dir = plugin['dir'] / 'src'
+
+    # Find the .page file
+    page_files = list(src_dir.glob('*.page'))
+    if not page_files:
+        print(f"  No .page file found in {src_dir}")
+        return False
+
+    page_file = page_files[0]
+    content = read_file(page_file)
+
+    # Find current version: $version = "v2026.01.30l" or $version = "2026.01.30l"
+    version_pattern = r'(\$version\s*=\s*["\'])v?(\d{4})\.(\d{2})\.(\d{2})([a-z]?)(["\'])'
+    match = re.search(version_pattern, content)
+
+    if not match:
+        print(f"  Could not find version in {page_file.name}")
+        return False
+
+    prefix = match.group(1)  # '$version = "'
+    year = match.group(2)
+    month = match.group(3)
+    day = match.group(4)
+    letter = match.group(5)  # Could be empty
+    suffix = match.group(6)  # Closing quote
+
+    old_version = f"{year}.{month}.{day}{letter}"
+
+    # Get today's date
+    today = datetime.now()
+    today_str = today.strftime('%Y.%m.%d')
+
+    # Determine new version
+    current_date = f"{year}.{month}.{day}"
+
+    if current_date == today_str:
+        # Same day - increment letter
+        if not letter:
+            new_letter = 'a'
+        elif letter == 'z':
+            print(f"  ERROR: Already at version 'z' for today. Cannot bump further.")
+            return False
+        else:
+            # Increment letter (a→b, b→c, etc.)
+            new_letter = chr(ord(letter) + 1)
+        new_version = f"{today_str}{new_letter}"
+    else:
+        # Different day - use today + 'a'
+        new_version = f"{today_str}a"
+
+    # Replace version in content
+    new_version_str = f'{prefix}v{new_version}{suffix}'
+    new_content = re.sub(version_pattern, new_version_str, content, count=1)
+
+    write_file(page_file, new_content)
+
+    print(f"  {plugin['display_name']}: v{old_version} -> v{new_version}")
+    return True
 
 
 def validate_xml(plg_path: Path) -> bool:
@@ -763,6 +840,27 @@ def main():
     print("=" * 50)
 
     args = sys.argv[1:]
+
+    # Handle --bump flag
+    if '--bump' in args:
+        print("\nBumping versions...")
+
+        # Remove --bump from args to check for specific plugins
+        args_without_bump = [a for a in args if a != '--bump']
+
+        if not args_without_bump:
+            # Bump all plugins
+            bump_version('backup')
+            bump_version('emby')
+        else:
+            # Bump specific plugins
+            if 'backup' in args_without_bump:
+                bump_version('backup')
+            if 'emby' in args_without_bump:
+                bump_version('emby')
+
+        print("\nVersions bumped. Run 'python build.py' to rebuild.")
+        return 0
 
     # Determine what to build
     build_all = len(args) == 0 or '--all' in args
