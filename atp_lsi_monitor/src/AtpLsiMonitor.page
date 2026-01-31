@@ -9,7 +9,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31c";
+$version = "v2026.01.31d";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -164,28 +164,37 @@ if (file_exists($pidFile)) {
     font-size: 0.85em;
 }
 
-/* Tabs - ESC style (full button highlight, tight spacing) */
+/* Tabs - tight spacing, no gaps */
 .lsi-tabs {
-    display: flex;
-    gap: 2px;
+    display: inline-flex;
+    gap: 0;
     margin-bottom: 20px;
     border-bottom: 1px solid var(--lsi-border);
     padding-bottom: 0;
-    flex-wrap: wrap;
 }
 
 .lsi-tab {
-    padding: 10px 18px;
+    padding: 8px 14px;
     background: var(--lsi-card-bg);
     border: 1px solid var(--lsi-border);
     border-bottom: none;
-    border-radius: 5px 5px 0 0;
+    border-left: none;
+    border-radius: 0;
     color: var(--lsi-text-muted);
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
     margin-bottom: -1px;
+}
+
+.lsi-tab:first-child {
+    border-left: 1px solid var(--lsi-border);
+    border-radius: 4px 0 0 0;
+}
+
+.lsi-tab:last-child {
+    border-radius: 0 4px 0 0;
 }
 
 .lsi-tab:hover {
@@ -201,7 +210,7 @@ if (file_exists($pidFile)) {
 }
 
 .lsi-tab i {
-    margin-right: 6px;
+    margin-right: 5px;
 }
 
 /* Panels */
@@ -810,7 +819,7 @@ if (file_exists($pidFile)) {
                         <option value="168">Last 7 days</option>
                         <option value="720">Last 30 days</option>
                     </select>
-                    <button class="lsi-btn lsi-btn-primary lsi-btn-sm" onclick="readTemperature()">
+                    <button class="lsi-btn lsi-btn-primary" onclick="readTemperature()" style="padding: 8px 16px;">
                         <i class="fa fa-thermometer"></i> Read Now
                     </button>
                 </div>
@@ -1482,7 +1491,9 @@ function loadTempChart() {
                     borderColor: '#e67e22',
                     backgroundColor: 'rgba(230, 126, 34, 0.1)',
                     tension: 0.3,
-                    fill: true
+                    fill: true,
+                    pointRadius: 2,
+                    pointHoverRadius: 5
                 }]
             },
             options: {
@@ -1490,7 +1501,14 @@ function loadTempChart() {
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    y: { beginAtZero: false, suggestedMin: 20, suggestedMax: 80 }
+                    y: {
+                        min: 20,
+                        max: 80,
+                        ticks: {
+                            stepSize: 10,
+                            callback: function(value) { return value + '°C'; }
+                        }
+                    }
                 }
             }
         });
@@ -1564,13 +1582,25 @@ function loadTempHistory() {
                     borderColor: '#e67e22',
                     backgroundColor: 'rgba(230, 126, 34, 0.1)',
                     tension: 0.3,
-                    fill: true
+                    fill: true,
+                    pointRadius: 2,
+                    pointHoverRadius: 5
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } }
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: {
+                        min: 20,
+                        max: 80,
+                        ticks: {
+                            stepSize: 10,
+                            callback: function(value) { return value + '°C'; }
+                        }
+                    }
+                }
             }
         });
     });

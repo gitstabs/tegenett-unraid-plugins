@@ -40,7 +40,7 @@ import hashlib
 
 PLUGIN_NAME = "atp_lsi_monitor"
 DEFAULT_PORT = 39800
-VERSION = "2026.01.31c"
+VERSION = "2026.01.31d"
 
 # Paths
 DATA_DIR = f"/mnt/user/appdata/{PLUGIN_NAME}"
@@ -126,17 +126,19 @@ scheduler_thread = None
 # ============================================
 
 def setup_logging():
-    """Configure logging to file and console."""
+    """Configure logging to file only (no console to avoid duplicates from systemd)."""
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 
     level = getattr(logging, settings.get("LOG_LEVEL", "INFO"))
 
     # Get the root logger
     logger = logging.getLogger()
-    logger.setLevel(level)
 
-    # Remove any existing handlers to prevent duplicates
-    logger.handlers.clear()
+    # Only setup if not already configured
+    if logger.handlers:
+        return
+
+    logger.setLevel(level)
 
     # Create formatter
     formatter = logging.Formatter(
@@ -144,17 +146,11 @@ def setup_logging():
         datefmt="%Y-%m-%d %H:%M:%S"
     )
 
-    # File handler
+    # File handler only - console causes duplicates when run as service
     file_handler = logging.FileHandler(LOG_FILE)
     file_handler.setLevel(level)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
-
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(level)
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
 
 # ============================================
 # SETTINGS
@@ -401,47 +397,60 @@ def get_firmware_info():
         "raw": output
     }
 
-    # Parse firmware version - multiple formats
-    # Format 1: "Firmware Version 14000700" (hex that decodes to 20.00.07.00)
-    # Format 2: "Firmware: 20.00.07.00"
-    fw_match = re.search(r'Firmware\s*(?:Version)?\s*[:\s]+([0-9A-Fa-f.]+)', output, re.IGNORECASE)
-    if fw_match:
-        fw_raw = fw_match.group(1)
-        # If it's a hex number without dots, try to decode it
-        if '.' not in fw_raw and len(fw_raw) >= 8:
-            try:
-                # Convert hex like 14000700 to version format 20.00.07.00
-                fw_int = int(fw_raw, 16) if not fw_raw.isdigit() else int(fw_raw)
-                major = (fw_int >> 24) & 0xFF
-                minor = (fw_int >> 16) & 0xFF
-                patch = (fw_int >> 8) & 0xFF
-                build = fw_int & 0xFF
-                info["firmware_version"] = f"{major}.{minor:02d}.{patch:02d}.{build:02d}"
-            except ValueError:
-                info["firmware_version"] = fw_raw
+    # Parse firmware version from "Firmware image's version is MPTFW-20.00.07.00-IT"
+    fw_image_match = re.search(r"Firmware\s+image's\s+version\s+is\s+\S*?(\d+\.\d+\.\d+\.\d+)", output, re.IGNORECASE)
+    if fw_image_match:
+        info["firmware_version"] = fw_image_match.group(1)
+    else:
+        # Fallback: "firmware version is 14000700 (20.00.07)"
+        fw_match = re.search(r'firmware\s+version\s+is\s+[0-9A-Fa-f]+\s*\(([0-9.]+)\)', output, re.IGNORECASE)
+        if fw_match:
+            info["firmware_version"] = fw_match.group(1)
         else:
-            info["firmware_version"] = fw_raw
+            # Last fallback: raw hex
+            fw_hex_match = re.search(r'Firmware\s*(?:Rev|Version)?\s*[:\s]+([0-9A-Fa-f]{8})', output, re.IGNORECASE)
+            if fw_hex_match:
+                fw_raw = fw_hex_match.group(1)
+                try:
+                    fw_int = int(fw_raw, 16)
+                    major = (fw_int >> 24) & 0xFF
+                    minor = (fw_int >> 16) & 0xFF
+                    patch = (fw_int >> 8) & 0xFF
+                    build = fw_int & 0xFF
+                    info["firmware_version"] = f"{major}.{minor:02d}.{patch:02d}.{build:02d}"
+                except ValueError:
+                    info["firmware_version"] = fw_raw
 
-    # Parse BIOS version
-    bios_match = re.search(r'BIOS\s*(?:Version)?\s*[:\s]+(\S+)', output, re.IGNORECASE)
+    # Parse BIOS version from "x86 BIOS image's version is MPT2BIOS-7.39.02.00"
+    bios_match = re.search(r"BIOS\s+image's\s+version\s+is\s+\S*?(\d+\.\d+\.\d+\.\d+)", output, re.IGNORECASE)
     if bios_match:
         info["bios_version"] = bios_match.group(1)
+    else:
+        # Fallback pattern
+        bios_match = re.search(r'BIOS\s*(?:Version)?\s*[:\s]+(\d+\.\d+[\d.]*)', output, re.IGNORECASE)
+        if bios_match:
+            info["bios_version"] = bios_match.group(1)
 
-    # Parse chip name - look for patterns like "SAS2308" or "Chip: SAS2308"
-    chip_match = re.search(r'(?:Chip|Controller)\s*(?:Name)?\s*[:\s]*(SAS\d+|LSI\s*\w+)', output, re.IGNORECASE)
+    # Parse chip name - look for "LSI Logic SAS2308" pattern
+    chip_match = re.search(r'LSI\s*Logic\s*(SAS\d+)', output, re.IGNORECASE)
     if not chip_match:
         # Also try to find standalone SAS#### pattern
         chip_match = re.search(r'\b(SAS\d{4})\b', output)
     if chip_match:
         info["chip_name"] = chip_match.group(1)
 
-    # Parse board name/assembly - multiple patterns
+    # Parse board name/assembly - look for "LSI Logic" and "Not Packaged Yet"
     board_match = re.search(r'(?:Board|Assembly)\s*(?:Name)?\s*[:\s]*(.*?)(?:\n|$)', output, re.IGNORECASE)
-    if board_match:
+    if board_match and board_match.group(1).strip():
         info["board_name"] = board_match.group(1).strip()
+    else:
+        # Try to extract from LSI Logic line
+        lsi_match = re.search(r'^\s*(LSI Logic)\s*$', output, re.MULTILINE)
+        if lsi_match:
+            info["board_name"] = "LSI Logic"
 
-    # Check for IT Mode
-    if re.search(r'IT\s*(?:mode|firmware)', output, re.IGNORECASE):
+    # Check for IT Mode - look for "-IT" in firmware string
+    if re.search(r'-IT\b', output) or re.search(r'IT\s*(?:mode|firmware)', output, re.IGNORECASE):
         info["it_mode"] = True
 
     return info
@@ -762,10 +771,17 @@ def get_severity_color(severity):
 
 def send_discord_notification(title, message, severity):
     """Send Discord webhook notification."""
-    webhook_url = settings.get("DISCORD_WEBHOOK")
+    webhook_url = settings.get("DISCORD_WEBHOOK", "").strip()
     if not webhook_url:
         logging.warning("Discord webhook not configured")
         return
+
+    # Validate webhook URL format
+    if not webhook_url.startswith("https://discord.com/api/webhooks/"):
+        logging.error(f"Invalid Discord webhook URL format. Must start with https://discord.com/api/webhooks/")
+        return
+
+    logging.debug(f"Sending Discord notification to webhook: {webhook_url[:60]}...")
 
     color = get_severity_color(severity)
     hostname = os.uname().nodename if hasattr(os, 'uname') else "Unknown"
@@ -783,10 +799,21 @@ def send_discord_notification(title, message, severity):
         }]
     }
 
-    req = Request(webhook_url, data=json.dumps(payload).encode())
-    req.add_header('Content-Type', 'application/json')
-    urlopen(req, timeout=10)
-    logging.info(f"Discord notification sent: {title}")
+    try:
+        req = Request(webhook_url, data=json.dumps(payload).encode())
+        req.add_header('Content-Type', 'application/json')
+        req.add_header('User-Agent', 'ATP-LSI-Monitor/1.0')
+        response = urlopen(req, timeout=10)
+        logging.info(f"Discord notification sent: {title}")
+    except URLError as e:
+        # Log more details about the error
+        if hasattr(e, 'code'):
+            logging.error(f"Discord webhook returned HTTP {e.code}: {e.reason}")
+            if e.code == 403:
+                logging.error("403 Forbidden - Check that the webhook URL is correct and not expired")
+        else:
+            logging.error(f"Discord webhook connection error: {e.reason}")
+        raise
 
 def send_notifiarr_notification(title, message, severity):
     """Send Notifiarr notification."""

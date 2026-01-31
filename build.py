@@ -1042,6 +1042,16 @@ def build_atp_lsi_monitor() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="{icon_attr}" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31d
+- UI: Tabs completely redesigned - no gaps, connected styling
+- UI: Temperature chart Y-axis fixed 20-80°C range
+- UI: Read Now button properly styled
+- FIX: Double logging resolved (file-only logging)
+- FIX: Firmware parsing for "image's version" format (MPTFW-20.00.07.00-IT)
+- FIX: BIOS version parsing improved
+- FIX: Discord webhook error handling with better debugging
+- FIX: Discord 403 error - now validates webhook URL format
+
 ##2026.01.31c
 - UI: Tab spacing reduced (tight gaps like Emby Smart Cache)
 - UI: Tabs now connect directly to border line (no gap)
