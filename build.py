@@ -35,6 +35,13 @@ ROOT = Path(__file__).parent
 SHARED_CSS = ROOT / 'shared' / 'css' / 'atp-common.css'
 SHARED_JS = ROOT / 'shared' / 'js' / 'atp-common.js'
 
+# Plugin icons
+ICONS_DIR = ROOT / 'assets' / 'icons'
+PLUGIN_ICONS = {
+    'backup': 'atp-backup.png',
+    'emby': 'atp-emby-smart-cache.png',
+}
+
 # Plugin definitions
 PLUGINS = {
     'backup': {
@@ -42,12 +49,14 @@ PLUGINS = {
         'display_name': 'ATP Backup',
         'dir': ROOT / 'atp_backup',
         'has_build_script': True,  # Uses existing build logic in PLG
+        'icon': 'atp-backup.png',  # Custom PNG icon
     },
     'emby': {
         'name': 'atp_emby_smart_cache',
         'display_name': 'ATP Emby Smart Cache',
         'dir': ROOT / 'atp_emby_smart_cache',
         'has_build_script': True,
+        'icon': 'atp-emby-smart-cache.png',  # Custom PNG icon
     }
 }
 
@@ -76,6 +85,26 @@ def get_shared_js() -> str:
     if SHARED_JS.exists():
         return read_file(SHARED_JS)
     return ''
+
+
+def get_icon_path(plugin_key: str) -> Path:
+    """Get the path to a plugin's icon file."""
+    icon_name = PLUGIN_ICONS.get(plugin_key)
+    if icon_name:
+        return ICONS_DIR / icon_name
+    return None
+
+
+def read_binary_file(path: Path) -> bytes:
+    """Read binary file content."""
+    with open(path, 'rb') as f:
+        return f.read()
+
+
+def write_binary_file(path: Path, content: bytes):
+    """Write binary file content."""
+    with open(path, 'wb') as f:
+        f.write(content)
 
 
 def bump_version(plugin_key: str) -> bool:
@@ -268,6 +297,13 @@ def build_atp_emby_smart_cache() -> bool:
         print(f"  Error: Missing source file - {e}")
         return False
 
+    # Check for custom icon
+    icon_path = get_icon_path('emby')
+    has_custom_icon = icon_path and icon_path.exists()
+    icon_attr = plugin['icon'] if has_custom_icon else 'bolt'
+    if has_custom_icon:
+        print(f"  Using custom icon: {plugin['icon']}")
+
     # Inject shared CSS/JS into page content
     page_content = inject_shared_resources(page_content, prefix='esc')
     print("  Injected shared CSS/JS")
@@ -286,9 +322,13 @@ def build_atp_emby_smart_cache() -> bool:
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="{icon_attr}" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31e
+- NEW: Custom plugin icon (Play + T design by Tegenett)
+- UI: Icon now displays in Unraid plugin list
+
 ##2026.01.30l
 - FIX: Logs tab no longer auto-refreshes (easier to copy text)
 - FIX: Logs load once when switching to tab
@@ -472,6 +512,11 @@ echo "$(date): Pre-install complete" >> "$LOG"
 </INLINE>
 </FILE>
 
+<!-- Plugin Icon -->
+<FILE Name="/usr/local/emhttp/plugins/atp_emby_smart_cache/{icon_attr}">
+<URL>https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/assets/icons/{icon_attr}</URL>
+</FILE>
+
 <!-- Post-install: Set up directories and auto-start -->
 <FILE Run="/bin/bash">
 <INLINE>
@@ -611,6 +656,13 @@ def build_atp_backup() -> bool:
         print(f"  Error: Missing source file - {e}")
         return False
 
+    # Check for custom icon
+    icon_path = get_icon_path('backup')
+    has_custom_icon = icon_path and icon_path.exists()
+    icon_attr = plugin['icon'] if has_custom_icon else 'shield'
+    if has_custom_icon:
+        print(f"  Using custom icon: {plugin['icon']}")
+
     # Inject shared CSS/JS into page content
     page_content = inject_shared_resources(page_content, prefix='tb')
     print("  Injected shared CSS/JS")
@@ -629,9 +681,13 @@ def build_atp_backup() -> bool:
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="{icon_attr}" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31f
+- NEW: Custom plugin icon (Shield + T design by Tegenett)
+- UI: Icon now displays in Unraid plugin list
+
 ##2026.01.30g
 - FIX: Dashboard cards (Upcoming Jobs, Recent Activity) now stack vertically on tablet/mobile
 - FIX: Improved responsive layout for smaller screens
@@ -795,6 +851,11 @@ echo "$(date): Pre-install complete" >> "$LOG"
 {plugin_info_content}
 ]]>
 </INLINE>
+</FILE>
+
+<!-- Plugin Icon -->
+<FILE Name="/usr/local/emhttp/plugins/atp_backup/{icon_attr}">
+<URL>https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/assets/icons/{icon_attr}</URL>
 </FILE>
 
 <!-- Post-install: Set up directories and auto-start -->

@@ -3,14 +3,18 @@
 <!ENTITY name        "atp_backup">
 <!ENTITY displayName "ATP Backup">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.01.31e">
+<!ENTITY version     "2026.01.31f">
 <!ENTITY launch      "Settings/AtpBackup">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="shield" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="atp-backup.png" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31f
+- NEW: Custom plugin icon (Shield + T design by Tegenett)
+- UI: Icon now displays in Unraid plugin list
+
 ##2026.01.30g
 - FIX: Dashboard cards (Upcoming Jobs, Recent Activity) now stack vertically on tablet/mobile
 - FIX: Improved responsive layout for smaller screens
@@ -137,11 +141,11 @@ echo "$(date): Pre-install complete" >> "$LOG"
 <![CDATA[
 Menu="Utilities"
 Title="ATP Backup"
-Icon="shield"
+Icon="atp-backup.png"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.01.31e";
+$version = "v2026.01.31f";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 
@@ -6317,13 +6321,18 @@ Smart backup solution for Unraid with local, remote SMB, Wake-on-LAN, and Discor
 </INLINE>
 </FILE>
 
+<!-- Plugin Icon -->
+<FILE Name="/usr/local/emhttp/plugins/atp_backup/atp-backup.png">
+<URL>https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/assets/icons/atp-backup.png</URL>
+</FILE>
+
 <!-- Post-install: Set up directories and auto-start -->
 <FILE Run="/bin/bash">
 <INLINE>
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_backup"
-PLUGIN_VERSION="2026.01.31e"
+PLUGIN_VERSION="2026.01.31f"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"

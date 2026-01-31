@@ -3,14 +3,18 @@
 <!ENTITY name        "atp_emby_smart_cache">
 <!ENTITY displayName "ATP Emby Smart Cache">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.01.31d">
+<!ENTITY version     "2026.01.31e">
 <!ENTITY launch      "Settings/AtpEmbySmartCache">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="bolt" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="atp-emby-smart-cache.png" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31e
+- NEW: Custom plugin icon (Play + T design by Tegenett)
+- UI: Icon now displays in Unraid plugin list
+
 ##2026.01.30l
 - FIX: Logs tab no longer auto-refreshes (easier to copy text)
 - FIX: Logs load once when switching to tab
@@ -155,7 +159,7 @@ echo "$(date): Pre-install complete" >> "$LOG"
 <![CDATA[
 Menu="Utilities"
 Title="ATP Emby Smart Cache"
-Icon="bolt"
+Icon="atp-emby-smart-cache.png"
 Markdown="false"
 ---
 <?php
@@ -164,7 +168,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.01.31d";
+$version = "v2026.01.31e";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -4951,13 +4955,18 @@ Intelligent media caching for Emby - automatically moves actively watched conten
 </INLINE>
 </FILE>
 
+<!-- Plugin Icon -->
+<FILE Name="/usr/local/emhttp/plugins/atp_emby_smart_cache/atp-emby-smart-cache.png">
+<URL>https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/assets/icons/atp-emby-smart-cache.png</URL>
+</FILE>
+
 <!-- Post-install: Set up directories and auto-start -->
 <FILE Run="/bin/bash">
 <INLINE>
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_emby_smart_cache"
-PLUGIN_VERSION="2026.01.31d"
+PLUGIN_VERSION="2026.01.31e"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"

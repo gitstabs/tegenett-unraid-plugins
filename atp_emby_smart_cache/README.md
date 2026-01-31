@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../assets/icons/atp-emby-smart-cache.png" alt="ATP Emby Smart Cache" width="96">
+</p>
+
 # ATP Emby Smart Cache
 
 Intelligent media caching for Emby - automatically moves actively watched content to fast storage (SSD/NVMe cache).

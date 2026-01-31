@@ -1,10 +1,10 @@
 Menu="Utilities"
 Title="ATP Backup"
-Icon="shield"
+Icon="atp-backup.png"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.01.31e";
+$version = "v2026.01.31f";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../assets/icons/atp-backup.png" alt="ATP Backup" width="96">
+</p>
+
 # ATP Backup
 
 Smart backup solution for Unraid with local, remote SMB, Wake-on-LAN support.
