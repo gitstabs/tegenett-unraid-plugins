@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icons/favicon.png" alt="Tegenett Logo" width="128">
+</p>
+
 # Tegenett Unraid Plugins
 
 Personal Unraid 7.x plugins by Tegenett. **ATP** = A Tegenett Plugin.
