@@ -9,7 +9,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31d";
+$version = "v2026.01.31e";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -164,37 +164,26 @@ if (file_exists($pidFile)) {
     font-size: 0.85em;
 }
 
-/* Tabs - tight spacing, no gaps */
+/* Tabs - matches Emby Smart Cache style */
 .lsi-tabs {
-    display: inline-flex;
-    gap: 0;
+    display: flex;
+    gap: 5px;
     margin-bottom: 20px;
     border-bottom: 1px solid var(--lsi-border);
-    padding-bottom: 0;
+    padding-bottom: 10px;
+    flex-wrap: wrap;
 }
 
 .lsi-tab {
-    padding: 8px 14px;
+    padding: 10px 20px;
     background: var(--lsi-card-bg);
     border: 1px solid var(--lsi-border);
-    border-bottom: none;
-    border-left: none;
-    border-radius: 0;
+    border-radius: 5px 5px 0 0;
     color: var(--lsi-text-muted);
     cursor: pointer;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
-    transition: all 0.15s ease;
-    margin-bottom: -1px;
-}
-
-.lsi-tab:first-child {
-    border-left: 1px solid var(--lsi-border);
-    border-radius: 4px 0 0 0;
-}
-
-.lsi-tab:last-child {
-    border-radius: 0 4px 0 0;
+    transition: all 0.2s ease;
 }
 
 .lsi-tab:hover {
@@ -206,11 +195,10 @@ if (file_exists($pidFile)) {
     background: var(--lsi-primary);
     color: #fff;
     border-color: var(--lsi-primary);
-    border-bottom: 1px solid var(--lsi-primary);
 }
 
 .lsi-tab i {
-    margin-right: 5px;
+    margin-right: 8px;
 }
 
 /* Panels */
@@ -819,7 +807,7 @@ if (file_exists($pidFile)) {
                         <option value="168">Last 7 days</option>
                         <option value="720">Last 30 days</option>
                     </select>
-                    <button class="lsi-btn lsi-btn-primary" onclick="readTemperature()" style="padding: 8px 16px;">
+                    <button class="lsi-btn lsi-btn-primary" onclick="readTemperature()" style="padding: 10px 24px; min-width: 130px;">
                         <i class="fa fa-thermometer"></i> Read Now
                     </button>
                 </div>
@@ -1678,9 +1666,11 @@ function loadFirmwareInfo() {
             return;
         }
 
+        const itModeHtml = data.it_mode ? '<span style="background: var(--lsi-success); color: white; padding: 2px 8px; border-radius: 3px; font-size: 11px; margin-left: 10px;">IT Mode</span>' : '';
+
         el.innerHTML = `
             <table class="lsi-table">
-                <tr><td style="width: 150px;"><strong>Firmware</strong></td><td>${data.firmware_version || 'Unknown'}</td></tr>
+                <tr><td style="width: 150px;"><strong>Firmware</strong></td><td>${data.firmware_version || 'Unknown'}${itModeHtml}</td></tr>
                 <tr><td><strong>BIOS</strong></td><td>${data.bios_version || 'Unknown'}</td></tr>
                 <tr><td><strong>Chip</strong></td><td>${data.chip_name || 'Unknown'}</td></tr>
                 <tr><td><strong>Board</strong></td><td>${data.board_name || 'Unknown'}</td></tr>

@@ -1042,6 +1042,11 @@ def build_atp_lsi_monitor() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="{icon_attr}" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31e
+- UI: Tabs now match Emby Smart Cache exactly (gap: 5px, padding-bottom: 10px)
+- UI: Read Now button wider with min-width for better appearance
+- UI: IT Mode badge shown next to firmware version when detected
+
 ##2026.01.31d
 - UI: Tabs completely redesigned - no gaps, connected styling
 - UI: Temperature chart Y-axis fixed 20-80°C range
