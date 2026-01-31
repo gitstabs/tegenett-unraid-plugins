@@ -1,0 +1,473 @@
+Menu="Utilities"
+Title="ATP Template"
+Icon="fa-puzzle-piece"
+Markdown="false"
+---
+<?php
+/**
+ * ATP Template - Web UI
+ * v2026.01.31
+ *
+ * A minimal template for ATP plugin UIs.
+ * Replace 'template' with your plugin name throughout.
+ */
+
+// Get CSRF token for Unraid 7.x
+$csrf_token = $var['csrf_token'] ?? '';
+?>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<style>
+/* ============================================
+   SHARED ATP STYLES (injected by build.py)
+   ============================================ */
+
+/* ============================================
+   PLUGIN-SPECIFIC STYLES
+   Use prefix: .tpl- for template-specific classes
+   ============================================ */
+
+.tpl-example {
+    /* Your custom styles here */
+}
+</style>
+
+<!-- Hidden CSRF token for AJAX calls -->
+<input type="hidden" name="csrf_token" id="csrf_token" value="<?=$csrf_token?>">
+
+<div class="atp-container">
+    <!-- Header -->
+    <div class="atp-header">
+        <div class="atp-header-left">
+            <h1><i class="fa fa-puzzle-piece"></i> ATP Template</h1>
+        </div>
+        <div class="atp-header-right">
+            <span class="atp-status-badge stopped" id="service-status">
+                <i class="fa fa-circle"></i> <span>Loading...</span>
+            </span>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="atp-tabs">
+        <button class="atp-tab active" data-tab="dashboard">
+            <i class="fa fa-gauge"></i> Dashboard
+        </button>
+        <button class="atp-tab" data-tab="items">
+            <i class="fa fa-list"></i> Items
+        </button>
+        <button class="atp-tab" data-tab="settings">
+            <i class="fa fa-cog"></i> Settings
+        </button>
+        <button class="atp-tab" data-tab="logs">
+            <i class="fa fa-file-lines"></i> Logs
+        </button>
+    </div>
+
+    <!-- Dashboard Panel -->
+    <div class="atp-panel active" id="panel-dashboard">
+        <div class="atp-grid">
+            <div class="atp-stat-card">
+                <div class="atp-stat-value" id="stat-items">-</div>
+                <div class="atp-stat-label">Total Items</div>
+            </div>
+            <div class="atp-stat-card">
+                <div class="atp-stat-value" id="stat-enabled">-</div>
+                <div class="atp-stat-label">Enabled</div>
+            </div>
+            <div class="atp-stat-card">
+                <div class="atp-stat-value" id="stat-status">-</div>
+                <div class="atp-stat-label">Status</div>
+            </div>
+        </div>
+
+        <div class="atp-card atp-mt-lg">
+            <h3>Welcome to ATP Template</h3>
+            <p>This is a starter template for creating Unraid plugins.</p>
+            <p>Replace this content with your plugin's dashboard.</p>
+        </div>
+    </div>
+
+    <!-- Items Panel -->
+    <div class="atp-panel" id="panel-items">
+        <div class="atp-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 style="margin: 0;">Items</h3>
+                <button class="atp-btn atp-btn-primary" onclick="showAddItemModal()">
+                    <i class="fa fa-plus"></i> Add Item
+                </button>
+            </div>
+
+            <div class="atp-table-wrapper">
+                <table class="atp-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="items-table">
+                        <tr><td colspan="5" class="atp-text-center">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div class="atp-panel" id="panel-settings">
+        <div class="atp-card">
+            <h3>Settings</h3>
+
+            <div class="atp-form-group">
+                <label>Example Setting:</label>
+                <input type="text" id="setting-example" placeholder="Enter value...">
+                <small>This is an example setting. Replace with your actual settings.</small>
+            </div>
+
+            <div class="atp-form-group">
+                <label>Log Level:</label>
+                <select id="setting-log-level">
+                    <option value="DEBUG">Debug</option>
+                    <option value="INFO">Info</option>
+                    <option value="WARNING">Warning</option>
+                    <option value="ERROR">Error</option>
+                </select>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <button class="atp-btn atp-btn-primary" onclick="saveSettings()">
+                    <i class="fa fa-save"></i> Save Settings
+                </button>
+            </div>
+        </div>
+
+        <div class="atp-card atp-mt-lg">
+            <h3>Service Control</h3>
+            <p>Manage the plugin daemon service.</p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="atp-btn atp-btn-success" onclick="serviceControl('start')">
+                    <i class="fa fa-play"></i> Start
+                </button>
+                <button class="atp-btn atp-btn-danger" onclick="serviceControl('stop')">
+                    <i class="fa fa-stop"></i> Stop
+                </button>
+                <button class="atp-btn" onclick="serviceControl('restart')">
+                    <i class="fa fa-rotate"></i> Restart
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logs Panel -->
+    <div class="atp-panel" id="panel-logs">
+        <div class="atp-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 style="margin: 0;">Logs</h3>
+                <button class="atp-btn atp-btn-sm" onclick="loadLogs()">
+                    <i class="fa fa-rotate"></i> Refresh
+                </button>
+            </div>
+            <div class="atp-log-viewer" id="log-content">Loading logs...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Item Modal -->
+<div class="atp-modal-overlay" id="item-modal" style="display: none;">
+    <div class="atp-modal">
+        <div class="atp-modal-header">
+            <h3 id="item-modal-title">Add Item</h3>
+            <button class="atp-modal-close" onclick="closeItemModal()">&times;</button>
+        </div>
+        <div class="atp-modal-body">
+            <input type="hidden" id="item-id">
+
+            <div class="atp-form-group">
+                <label>Name: *</label>
+                <input type="text" id="item-name" required>
+            </div>
+
+            <div class="atp-form-group">
+                <label>Description:</label>
+                <textarea id="item-description" rows="3"></textarea>
+            </div>
+        </div>
+        <div class="atp-modal-footer">
+            <button class="atp-btn" onclick="closeItemModal()">Cancel</button>
+            <button class="atp-btn atp-btn-primary" onclick="saveItem()">Save</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ============================================
+   SHARED ATP UTILITIES (injected by build.py)
+   ============================================ */
+
+/* ============================================
+   PLUGIN-SPECIFIC JAVASCRIPT
+   ============================================ */
+
+// Configuration
+const PLUGIN_NAME = 'atp_template';
+const AJAX_URL = `/plugins/${PLUGIN_NAME}/include/ajax.php`;
+
+// CSRF Token
+const csrfToken = document.getElementById('csrf_token')?.value || '';
+
+// ============================================
+// AJAX HELPER
+// ============================================
+
+function ajax(action, data = {}, callback = null) {
+    const params = new URLSearchParams();
+    params.append('action', action);
+    params.append('csrf_token', csrfToken);
+
+    for (const [key, value] of Object.entries(data)) {
+        params.append(key, value);
+    }
+
+    fetch(AJAX_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (callback) callback(data);
+    })
+    .catch(err => {
+        console.error('AJAX error:', err);
+        if (callback) callback({ success: false, error: err.message });
+    });
+}
+
+// ============================================
+// TAB NAVIGATION
+// ============================================
+
+document.querySelectorAll('.atp-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        // Update tab buttons
+        document.querySelectorAll('.atp-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        // Update panels
+        const tabName = tab.dataset.tab;
+        document.querySelectorAll('.atp-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById(`panel-${tabName}`).classList.add('active');
+
+        // Load data for specific tabs
+        if (tabName === 'items') loadItems();
+        if (tabName === 'logs') loadLogs();
+        if (tabName === 'settings') loadSettings();
+    });
+});
+
+// ============================================
+// DASHBOARD
+// ============================================
+
+function loadDashboard() {
+    ajax('status', {}, data => {
+        const badge = document.getElementById('service-status');
+        if (data.success && data.status === 'running') {
+            badge.className = 'atp-status-badge running';
+            badge.querySelector('span').textContent = 'Running';
+            document.getElementById('stat-status').textContent = 'Online';
+        } else {
+            badge.className = 'atp-status-badge stopped';
+            badge.querySelector('span').textContent = 'Stopped';
+            document.getElementById('stat-status').textContent = 'Offline';
+        }
+    });
+
+    ajax('get_items', {}, data => {
+        if (data.success && data.items) {
+            document.getElementById('stat-items').textContent = data.items.length;
+            const enabled = data.items.filter(i => i.enabled).length;
+            document.getElementById('stat-enabled').textContent = enabled;
+        }
+    });
+}
+
+// ============================================
+// ITEMS
+// ============================================
+
+function loadItems() {
+    ajax('get_items', {}, data => {
+        const tbody = document.getElementById('items-table');
+
+        if (!data.success || !data.items || data.items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="atp-text-center atp-text-muted">No items found</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.items.map(item => `
+            <tr>
+                <td>${escapeHtml(item.name)}</td>
+                <td>${escapeHtml(item.description || '-')}</td>
+                <td>
+                    <span class="atp-badge ${item.enabled ? 'atp-badge-success' : 'atp-badge-muted'}">
+                        ${item.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                </td>
+                <td>${item.created_at || '-'}</td>
+                <td>
+                    <button class="atp-btn atp-btn-sm" onclick="editItem(${item.id})" title="Edit">
+                        <i class="fa fa-edit"></i>
+                    </button>
+                    <button class="atp-btn atp-btn-sm atp-btn-danger" onclick="deleteItem(${item.id})" title="Delete">
+                        <i class="fa fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    });
+}
+
+function showAddItemModal() {
+    document.getElementById('item-modal-title').textContent = 'Add Item';
+    document.getElementById('item-id').value = '';
+    document.getElementById('item-name').value = '';
+    document.getElementById('item-description').value = '';
+    document.getElementById('item-modal').style.display = 'flex';
+}
+
+function editItem(id) {
+    ajax('get_item', { id }, data => {
+        if (data.success && data.item) {
+            document.getElementById('item-modal-title').textContent = 'Edit Item';
+            document.getElementById('item-id').value = data.item.id;
+            document.getElementById('item-name').value = data.item.name;
+            document.getElementById('item-description').value = data.item.description || '';
+            document.getElementById('item-modal').style.display = 'flex';
+        }
+    });
+}
+
+function closeItemModal() {
+    document.getElementById('item-modal').style.display = 'none';
+}
+
+function saveItem() {
+    const id = document.getElementById('item-id').value;
+    const name = document.getElementById('item-name').value.trim();
+    const description = document.getElementById('item-description').value.trim();
+
+    if (!name) {
+        alert('Name is required');
+        return;
+    }
+
+    const action = id ? 'update_item' : 'create_item';
+    const data = { name, description };
+    if (id) data.id = id;
+
+    ajax(action, data, result => {
+        if (result.success) {
+            closeItemModal();
+            loadItems();
+            loadDashboard();
+        } else {
+            alert('Error: ' + (result.error || 'Unknown error'));
+        }
+    });
+}
+
+function deleteItem(id) {
+    if (!confirm('Are you sure you want to delete this item?')) return;
+
+    ajax('delete_item', { id }, result => {
+        if (result.success) {
+            loadItems();
+            loadDashboard();
+        } else {
+            alert('Error: ' + (result.error || 'Unknown error'));
+        }
+    });
+}
+
+// ============================================
+// SETTINGS
+// ============================================
+
+function loadSettings() {
+    ajax('get_settings', {}, data => {
+        if (data.success) {
+            document.getElementById('setting-example').value = data.EXAMPLE_SETTING || '';
+            document.getElementById('setting-log-level').value = data.LOG_LEVEL || 'INFO';
+        }
+    });
+}
+
+function saveSettings() {
+    const data = {
+        EXAMPLE_SETTING: document.getElementById('setting-example').value,
+        LOG_LEVEL: document.getElementById('setting-log-level').value
+    };
+
+    ajax('save_settings', data, result => {
+        if (result.success) {
+            alert('Settings saved!');
+        } else {
+            alert('Error: ' + (result.error || 'Unknown error'));
+        }
+    });
+}
+
+// ============================================
+// SERVICE CONTROL
+// ============================================
+
+function serviceControl(cmd) {
+    ajax('service', { cmd }, result => {
+        setTimeout(loadDashboard, 1000);
+    });
+}
+
+// ============================================
+// LOGS
+// ============================================
+
+function loadLogs() {
+    ajax('get_logs', { lines: 200 }, data => {
+        const content = document.getElementById('log-content');
+        if (data.success && data.logs) {
+            content.textContent = data.logs;
+            content.scrollTop = content.scrollHeight;
+        } else {
+            content.textContent = 'Failed to load logs';
+        }
+    });
+}
+
+// ============================================
+// UTILITIES
+// ============================================
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ============================================
+// INITIALIZATION
+// ============================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadDashboard();
+    loadSettings();
+
+    // Auto-refresh dashboard every 10 seconds
+    setInterval(loadDashboard, 10000);
+});
+</script>

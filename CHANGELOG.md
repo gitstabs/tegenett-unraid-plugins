@@ -4,6 +4,24 @@ All notable changes to Tegenett Unraid Plugins.
 
 ---
 
+## [2026.01.31b] - Plugin Template & TODO Cleanup
+
+### Plugin Template
+- **NEW**: Complete plugin template in `plugin_template/`
+  - `atp_template.py` - Python daemon with SQLite, HTTP API, logging
+  - `AtpTemplate.page` - Web UI with tabs, modals, CRUD operations
+  - `ajax.php` - AJAX handler with CSRF validation
+  - `rc.atp_template` - Service control script
+  - `README.md` - Usage instructions and naming conventions
+
+### TODO Updates
+- **REMOVED**: Web-based file browser (not feasible in Unraid WebGUI)
+- **REMOVED**: Development guide & Unit tests (not needed for personal plugins)
+- **MOVED**: Snapshot/versioned backups to Future Considerations
+- **MOVED**: Alternative notifications to Future Considerations with privacy comparison table
+
+---
+
 ## [2026.01.31a] - ATP Backup Major Features
 
 ### Bandwidth Scheduling

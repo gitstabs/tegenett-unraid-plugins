@@ -11,21 +11,29 @@
 ## ATP Backup
 
 ### 🟠 High Priority
-- [x] ~~Bandwidth scheduling (different limits at different times)~~ *(v2026.01.31 - Two profiles with start times)*
+- [x] ~~Bandwidth scheduling (different limits at different times)~~ *(v2026.01.31a - Two profiles with start times)*
 
 ### 🟡 Medium Priority
-- [ ] Snapshot/versioned backups (date-stamped folders)
-- [x] ~~Export/import job configurations~~ *(v2026.01.31 - Export/Import jobs and settings as JSON)*
-- [x] ~~Weekly/monthly Discord summary reports~~ *(v2026.01.31 - Configurable day/time for weekly and monthly)*
+- [x] ~~Export/import job configurations~~ *(v2026.01.31a - Export/Import jobs and settings as JSON)*
+- [x] ~~Weekly/monthly Discord summary reports~~ *(v2026.01.31a - Configurable day/time for weekly and monthly)*
 - [ ] Cloud backup support via rclone Docker container
-- [ ] Telegram/Pushover/Slack notifications
 
 ### 🟢 Nice to Have
-- [ ] Web-based file browser for source/destination selection
-- [x] ~~Backup verification (checksum comparison)~~ *(v2026.01.31 - Per-job rsync --checksum option)*
+- [x] ~~Backup verification (checksum comparison)~~ *(v2026.01.31a - Per-job rsync --checksum option)*
 
 ### 🔮 Future Considerations
 - [ ] Compression option for backups (tar.gz) - *Significant architecture change needed*
+- [ ] Snapshot/versioned backups (date-stamped folders) - *Useful for rollback, needs storage planning*
+- [ ] Alternative notification channels:
+
+| Service | Privacy | Self-Hosted | Notes |
+|---------|---------|-------------|-------|
+| Discord | Medium | No | Current implementation, requires Discord account |
+| Telegram | Low | No | Phone number required, linked to identity |
+| Pushover | High | No | Paid ($5 one-time), no personal data required |
+| Slack | Medium | No | Requires workspace, good for teams |
+| Gotify | High | Yes | Self-hosted, fully private, recommended |
+| ntfy | High | Yes/No | Can self-host or use public server |
 
 ---
 
@@ -42,16 +50,8 @@
 ### 🟡 Medium Priority
 - [x] ~~Document CSS class naming convention~~ *(Added shared/README.md)*
 - [ ] Fix plugin display names in Unraid Plugins list
-- [ ] Create plugin template for new plugins
+- [x] ~~Create plugin template for new plugins~~ *(v2026.01.31 - Full template in plugin_template/)*
 - [x] ~~Automated version bumping in build.py~~ *(Implemented --bump flag)*
-
----
-
-## Infrastructure
-
-### 🟡 Medium Priority
-- [ ] Create development/testing guide
-- [ ] Unit tests for Python daemon
 
 ---
 
