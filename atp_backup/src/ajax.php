@@ -25,7 +25,8 @@ if (file_exists($CONFIG_FILE)) {
 $modifying_actions = [
     'create_job', 'update_job', 'toggle_job', 'delete_job', 'run_job',
     'save_settings', 'service', 'abort',
-    'clear_history', 'reset_statistics', 'reset_database'
+    'clear_history', 'reset_statistics', 'reset_database',
+    'import_jobs', 'import_settings'
 ];
 
 $action = $_REQUEST['action'] ?? '';
@@ -261,6 +262,28 @@ switch ($action) {
         echo json_encode(apiCall('/api/database/reset', 'POST'));
         break;
     
+    case 'export_jobs':
+        echo json_encode(apiCall('/api/export/jobs'));
+        break;
+
+    case 'export_settings':
+        echo json_encode(apiCall('/api/export/settings'));
+        break;
+
+    case 'import_jobs':
+        $data = getPostData();
+        echo json_encode(apiCall('/api/import/jobs', 'POST', $data));
+        break;
+
+    case 'import_settings':
+        $data = getPostData();
+        echo json_encode(apiCall('/api/import/settings', 'POST', $data));
+        break;
+
+    case 'bandwidth_status':
+        echo json_encode(apiCall('/api/bandwidth/status'));
+        break;
+
     default:
         echo json_encode(['success' => false, 'error' => 'Unknown action']);
         break;

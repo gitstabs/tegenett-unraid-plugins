@@ -4,7 +4,7 @@ Icon="shield"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.01.30g";
+$version = "v2026.01.31a";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 
@@ -845,10 +845,58 @@ if (file_exists($pidFile)) {
                         <div class="tb-form-group">
                             <label>Default Bandwidth Limit (KB/s)</label>
                             <input type="number" name="DEFAULT_BANDWIDTH_LIMIT" id="setBandwidth" min="0" placeholder="0 = unlimited">
-                            <div class="tb-form-hint">Applied to new jobs. 0 = no limit.</div>
+                            <div class="tb-form-hint">Fallback limit when scheduling is disabled. 0 = unlimited. Examples: 50000 = ~50 MB/s, 10000 = ~10 MB/s</div>
                         </div>
                 </div>
-                
+
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-clock"></i> Bandwidth Scheduling</h3>
+                    </div>
+                    <div class="tb-form-group">
+                        <label class="tb-checkbox-label">
+                            <input type="checkbox" name="BANDWIDTH_SCHEDULE_ENABLED" id="setBwScheduleEnabled">
+                            <span>Enable bandwidth scheduling</span>
+                        </label>
+                        <div class="tb-form-hint">Use different speed limits at different times of day</div>
+                    </div>
+                    <div id="bwScheduleOptions" style="margin-top: 15px;">
+                        <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                            <label style="color: var(--tb-primary); font-weight: 600; margin-bottom: 10px; display: block;">
+                                <i class="fas fa-moon"></i> Profile A (Night - typically unlimited)
+                            </label>
+                            <div class="tb-form-row">
+                                <div class="tb-form-group">
+                                    <label>Starts at</label>
+                                    <input type="time" id="setBwProfileAStart" value="22:00">
+                                </div>
+                                <div class="tb-form-group">
+                                    <label>Limit (KB/s)</label>
+                                    <input type="number" id="setBwProfileALimit" min="0" value="0" placeholder="0 = unlimited">
+                                </div>
+                            </div>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px;">
+                            <label style="color: var(--tb-primary); font-weight: 600; margin-bottom: 10px; display: block;">
+                                <i class="fas fa-sun"></i> Profile B (Day - typically limited)
+                            </label>
+                            <div class="tb-form-row">
+                                <div class="tb-form-group">
+                                    <label>Starts at</label>
+                                    <input type="time" id="setBwProfileBStart" value="06:00">
+                                </div>
+                                <div class="tb-form-group">
+                                    <label>Limit (KB/s)</label>
+                                    <input type="number" id="setBwProfileBLimit" min="0" value="50000" placeholder="0 = unlimited">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tb-form-hint" style="margin-top: 10px;">
+                            <strong>Example:</strong> Profile A (22:00-06:00) unlimited, Profile B (06:00-22:00) limited to 50 MB/s
+                        </div>
+                    </div>
+                </div>
+
                 <div class="tb-card">
                     <div class="tb-card-header">
                         <h3 class="tb-card-title"><i class="fas fa-redo"></i> Auto-Retry</h3>
@@ -919,15 +967,62 @@ if (file_exists($pidFile)) {
                         </div>
                     </div>
                     <div class="tb-form-group" style="border-top: 1px solid var(--tb-border); padding-top: 15px; margin-top: 10px;">
-                        <label class="tb-checkbox-label" style="padding: 0;">
-                            <input type="checkbox" name="DISCORD_DAILY_SUMMARY" id="setDailySummary">
-                            <span>Send daily summary</span>
-                        </label>
-                        <div class="tb-form-row" style="margin-top: 10px;">
-                            <div class="tb-form-group" style="margin-bottom: 0;">
-                                <label>Summary Time</label>
-                                <input type="number" name="DISCORD_SUMMARY_HOUR" id="setSummaryHour" min="0" max="23" value="20">
-                                <div class="tb-form-hint">Hour (0-23)</div>
+                        <label style="font-weight: 600; margin-bottom: 10px; display: block;">Summary Reports</label>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Daily Summary -->
+                            <div style="background: rgba(0,0,0,0.15); padding: 12px; border-radius: 6px;">
+                                <label class="tb-checkbox-label" style="padding: 0; margin-bottom: 8px;">
+                                    <input type="checkbox" name="DISCORD_DAILY_SUMMARY" id="setDailySummary">
+                                    <span>Daily summary</span>
+                                </label>
+                                <div class="tb-form-row" style="margin-top: 8px;">
+                                    <div class="tb-form-group" style="margin-bottom: 0;">
+                                        <label>Time (hour)</label>
+                                        <input type="number" name="DISCORD_SUMMARY_HOUR" id="setSummaryHour" min="0" max="23" value="20">
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Weekly Summary -->
+                            <div style="background: rgba(0,0,0,0.15); padding: 12px; border-radius: 6px;">
+                                <label class="tb-checkbox-label" style="padding: 0; margin-bottom: 8px;">
+                                    <input type="checkbox" name="DISCORD_WEEKLY_SUMMARY" id="setWeeklySummary">
+                                    <span>Weekly summary</span>
+                                </label>
+                                <div class="tb-form-row" style="margin-top: 8px;">
+                                    <div class="tb-form-group" style="margin-bottom: 0;">
+                                        <label>Day</label>
+                                        <select id="setWeeklyDay">
+                                            <option value="0">Monday</option>
+                                            <option value="1">Tuesday</option>
+                                            <option value="2">Wednesday</option>
+                                            <option value="3">Thursday</option>
+                                            <option value="4">Friday</option>
+                                            <option value="5">Saturday</option>
+                                            <option value="6">Sunday</option>
+                                        </select>
+                                    </div>
+                                    <div class="tb-form-group" style="margin-bottom: 0;">
+                                        <label>Hour</label>
+                                        <input type="number" id="setWeeklyHour" min="0" max="23" value="9">
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Monthly Summary -->
+                            <div style="background: rgba(0,0,0,0.15); padding: 12px; border-radius: 6px;">
+                                <label class="tb-checkbox-label" style="padding: 0; margin-bottom: 8px;">
+                                    <input type="checkbox" name="DISCORD_MONTHLY_SUMMARY" id="setMonthlySummary">
+                                    <span>Monthly summary</span>
+                                </label>
+                                <div class="tb-form-row" style="margin-top: 8px;">
+                                    <div class="tb-form-group" style="margin-bottom: 0;">
+                                        <label>Day of month</label>
+                                        <input type="number" id="setMonthlyDay" min="1" max="28" value="1">
+                                    </div>
+                                    <div class="tb-form-group" style="margin-bottom: 0;">
+                                        <label>Hour</label>
+                                        <input type="number" id="setMonthlyHour" min="0" max="23" value="9">
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -949,6 +1044,34 @@ if (file_exists($pidFile)) {
                     </div>
                 </div>
                 
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-file-export"></i> Export / Import</h3>
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Export Configuration</label>
+                        <div style="display: flex; gap: 10px; margin-top: 5px;">
+                            <button type="button" class="tb-btn tb-btn-secondary" onclick="exportJobs()">
+                                <i class="fas fa-download"></i> Export Jobs
+                            </button>
+                            <button type="button" class="tb-btn tb-btn-secondary" onclick="exportSettings()">
+                                <i class="fas fa-download"></i> Export Settings
+                            </button>
+                        </div>
+                        <div class="tb-form-hint">Downloads configuration as JSON file</div>
+                    </div>
+                    <div class="tb-form-group" style="border-top: 1px solid var(--tb-border); padding-top: 15px; margin-top: 10px;">
+                        <label>Import Configuration</label>
+                        <div style="display: flex; gap: 10px; margin-top: 5px; flex-wrap: wrap;">
+                            <input type="file" id="importFile" accept=".json" style="display: none;" onchange="handleImportFile(this)">
+                            <button type="button" class="tb-btn tb-btn-secondary" onclick="document.getElementById('importFile').click()">
+                                <i class="fas fa-upload"></i> Import File
+                            </button>
+                        </div>
+                        <div class="tb-form-hint">Import previously exported jobs or settings (JSON format)</div>
+                    </div>
+                </div>
+
                 <div class="tb-card">
                     <div class="tb-card-header">
                         <h3 class="tb-card-title"><i class="fas fa-database"></i> Data Management</h3>
@@ -1151,10 +1274,18 @@ if (file_exists($pidFile)) {
                     <div class="tb-form-group">
                         <label>Bandwidth Limit (KB/s)</label>
                         <input type="number" id="jobBandwidth" name="bandwidth_limit" min="0" value="0" placeholder="0 = unlimited">
-                        <div class="tb-form-hint">0 = use default from settings</div>
+                        <div class="tb-form-hint">0 = use scheduled/default limit. Examples: 50000 = ~50 MB/s</div>
                     </div>
                 </div>
-                
+
+                <div class="tb-form-group">
+                    <label class="tb-checkbox-label">
+                        <input type="checkbox" id="jobVerifyChecksum" name="verify_checksum">
+                        <span>Verify with checksum</span>
+                    </label>
+                    <div class="tb-form-hint">Uses file checksums instead of size/time to detect changes. More accurate but slower.</div>
+                </div>
+
                 <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
                     <i class="fas fa-archive"></i> Backup Retention
                 </h4>
@@ -1591,6 +1722,7 @@ async function loadJobForEdit(jobId) {
         document.getElementById('jobScheduleDay').value = job.schedule_day || 0;
         document.getElementById('jobScheduleCron').value = job.schedule_cron || '';
         document.getElementById('jobBandwidth').value = job.bandwidth_limit || 0;
+        document.getElementById('jobVerifyChecksum').checked = !!job.verify_checksum;
         document.getElementById('jobRetentionCount').value = job.retention_count || 0;
         document.getElementById('jobRetentionDays').value = job.retention_days || 0;
         document.getElementById('jobEnabled').checked = !!job.enabled;
@@ -1645,7 +1777,8 @@ async function saveJob() {
     data.shutdown_after = document.getElementById('jobShutdown').checked ? 1 : 0;
     data.use_wol = data.job_type.includes('wol') ? 1 : 0;
     data.retry_on_failure = document.getElementById('jobRetryOnFailure').checked ? 1 : 0;
-    
+    data.verify_checksum = document.getElementById('jobVerifyChecksum').checked ? 1 : 0;
+
     // Convert numeric fields
     data.retention_count = parseInt(data.retention_count) || 0;
     data.retention_days = parseInt(data.retention_days) || 0;
@@ -1786,7 +1919,7 @@ async function loadLogs() {
 
 async function loadSettings() {
     const result = await apiCall('get_settings');
-    
+
     if (result.success && result.settings) {
         const s = result.settings;
         document.getElementById('setLogLevel').value = s.LOG_LEVEL || 'INFO';
@@ -1797,6 +1930,13 @@ async function loadSettings() {
         document.getElementById('setDiscordFailure').checked = s.DISCORD_NOTIFY_FAILURE !== false;
         document.getElementById('setDailySummary').checked = !!s.DISCORD_DAILY_SUMMARY;
         document.getElementById('setSummaryHour').value = s.DISCORD_SUMMARY_HOUR || 20;
+        // Weekly/Monthly summaries
+        document.getElementById('setWeeklySummary').checked = !!s.DISCORD_WEEKLY_SUMMARY;
+        document.getElementById('setWeeklyDay').value = s.DISCORD_WEEKLY_DAY || 0;
+        document.getElementById('setWeeklyHour').value = s.DISCORD_WEEKLY_HOUR || 9;
+        document.getElementById('setMonthlySummary').checked = !!s.DISCORD_MONTHLY_SUMMARY;
+        document.getElementById('setMonthlyDay').value = s.DISCORD_MONTHLY_DAY || 1;
+        document.getElementById('setMonthlyHour').value = s.DISCORD_MONTHLY_HOUR || 9;
         document.getElementById('setUnraidNotify').checked = s.UNRAID_NOTIFICATIONS !== false;
         document.getElementById('setRetryOnFailure').checked = s.RETRY_ON_FAILURE !== false;
         document.getElementById('setRetryInterval').value = s.RETRY_INTERVAL_MINUTES || 60;
@@ -1806,12 +1946,18 @@ async function loadSettings() {
         document.getElementById('setHistoryDays').value = s.HISTORY_RETENTION_DAYS || 90;
         document.getElementById('setLogMaxSize').value = s.LOG_MAX_SIZE_KB || 5000;
         document.getElementById('setLogKeepCount').value = s.LOG_KEEP_COUNT || 5;
+        // Bandwidth scheduling
+        document.getElementById('setBwScheduleEnabled').checked = !!s.BANDWIDTH_SCHEDULE_ENABLED;
+        document.getElementById('setBwProfileAStart').value = s.BANDWIDTH_PROFILE_A_START || '22:00';
+        document.getElementById('setBwProfileALimit').value = s.BANDWIDTH_PROFILE_A_LIMIT || 0;
+        document.getElementById('setBwProfileBStart').value = s.BANDWIDTH_PROFILE_B_START || '06:00';
+        document.getElementById('setBwProfileBLimit').value = s.BANDWIDTH_PROFILE_B_LIMIT || 50000;
     }
 }
 
 document.getElementById('settingsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    
+
     const data = {
         LOG_LEVEL: document.getElementById('setLogLevel').value,
         DEFAULT_BANDWIDTH_LIMIT: parseInt(document.getElementById('setBandwidth').value) || 0,
@@ -1821,6 +1967,13 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
         DISCORD_NOTIFY_FAILURE: document.getElementById('setDiscordFailure').checked,
         DISCORD_DAILY_SUMMARY: document.getElementById('setDailySummary').checked,
         DISCORD_SUMMARY_HOUR: parseInt(document.getElementById('setSummaryHour').value) || 20,
+        // Weekly/Monthly summaries
+        DISCORD_WEEKLY_SUMMARY: document.getElementById('setWeeklySummary').checked,
+        DISCORD_WEEKLY_DAY: parseInt(document.getElementById('setWeeklyDay').value) || 0,
+        DISCORD_WEEKLY_HOUR: parseInt(document.getElementById('setWeeklyHour').value) || 9,
+        DISCORD_MONTHLY_SUMMARY: document.getElementById('setMonthlySummary').checked,
+        DISCORD_MONTHLY_DAY: parseInt(document.getElementById('setMonthlyDay').value) || 1,
+        DISCORD_MONTHLY_HOUR: parseInt(document.getElementById('setMonthlyHour').value) || 9,
         UNRAID_NOTIFICATIONS: document.getElementById('setUnraidNotify').checked,
         RETRY_ON_FAILURE: document.getElementById('setRetryOnFailure').checked,
         RETRY_INTERVAL_MINUTES: parseInt(document.getElementById('setRetryInterval').value) || 60,
@@ -1829,11 +1982,17 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
         WOL_PING_INTERVAL: parseInt(document.getElementById('setWolInterval').value) || 5,
         HISTORY_RETENTION_DAYS: parseInt(document.getElementById('setHistoryDays').value) || 90,
         LOG_MAX_SIZE_KB: parseInt(document.getElementById('setLogMaxSize').value) || 5000,
-        LOG_KEEP_COUNT: parseInt(document.getElementById('setLogKeepCount').value) || 5
+        LOG_KEEP_COUNT: parseInt(document.getElementById('setLogKeepCount').value) || 5,
+        // Bandwidth scheduling
+        BANDWIDTH_SCHEDULE_ENABLED: document.getElementById('setBwScheduleEnabled').checked,
+        BANDWIDTH_PROFILE_A_START: document.getElementById('setBwProfileAStart').value || '22:00',
+        BANDWIDTH_PROFILE_A_LIMIT: parseInt(document.getElementById('setBwProfileALimit').value) || 0,
+        BANDWIDTH_PROFILE_B_START: document.getElementById('setBwProfileBStart').value || '06:00',
+        BANDWIDTH_PROFILE_B_LIMIT: parseInt(document.getElementById('setBwProfileBLimit').value) || 50000
     };
-    
+
     const result = await apiPost('save_settings', data);
-    
+
     if (result.success) {
         alert('Settings saved successfully!');
     } else {
@@ -1857,14 +2016,103 @@ async function testWol() {
         alert('Please enter a MAC address first');
         return;
     }
-    
+
     const result = await apiCall('test_wol', { mac_address: mac });
-    
+
     if (result.success) {
         alert('WOL packet sent to ' + mac);
     } else {
         alert('Error: ' + (result.error || 'Failed to send'));
     }
+}
+
+// ====== Export / Import ======
+
+async function exportJobs() {
+    const result = await apiCall('export_jobs');
+
+    if (result.success && result.data) {
+        const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'atp_backup_jobs_' + new Date().toISOString().split('T')[0] + '.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } else {
+        alert('Error exporting jobs: ' + (result.error || 'Unknown error'));
+    }
+}
+
+async function exportSettings() {
+    const result = await apiCall('export_settings');
+
+    if (result.success && result.data) {
+        const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'atp_backup_settings_' + new Date().toISOString().split('T')[0] + '.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } else {
+        alert('Error exporting settings: ' + (result.error || 'Unknown error'));
+    }
+}
+
+function handleImportFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        try {
+            const importData = JSON.parse(e.target.result);
+
+            if (!importData.export_type || !importData.version) {
+                alert('Invalid export file format');
+                return;
+            }
+
+            const exportType = importData.export_type;
+            const itemCount = exportType === 'jobs' ? (importData.jobs || []).length : 'all';
+
+            if (!confirm(`Import ${exportType}?\n\nThis file contains ${itemCount} ${exportType}.\nExported from version ${importData.version} on ${importData.export_date}\n\nContinue?`)) {
+                return;
+            }
+
+            let result;
+            if (exportType === 'jobs') {
+                result = await apiPost('import_jobs', { data: importData });
+            } else if (exportType === 'settings') {
+                result = await apiPost('import_settings', { data: importData });
+            } else {
+                alert('Unknown export type: ' + exportType);
+                return;
+            }
+
+            if (result.success) {
+                alert(result.message || 'Import successful!');
+                if (exportType === 'jobs') {
+                    loadJobs();
+                } else {
+                    loadSettings();
+                }
+            } else {
+                alert('Import failed: ' + (result.error || 'Unknown error'));
+            }
+        } catch (err) {
+            alert('Error parsing file: ' + err.message);
+        }
+    };
+    reader.readAsText(file);
+
+    // Reset input so same file can be selected again
+    input.value = '';
 }
 
 // ====== Database Management ======

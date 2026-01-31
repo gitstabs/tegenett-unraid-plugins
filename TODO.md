@@ -11,19 +11,21 @@
 ## ATP Backup
 
 ### 🟠 High Priority
-- [ ] Bandwidth scheduling (different limits at different times)
+- [x] ~~Bandwidth scheduling (different limits at different times)~~ *(v2026.01.31 - Two profiles with start times)*
 
 ### 🟡 Medium Priority
 - [ ] Snapshot/versioned backups (date-stamped folders)
-- [ ] Export/import job configurations
-- [ ] Weekly/monthly Discord summary reports
+- [x] ~~Export/import job configurations~~ *(v2026.01.31 - Export/Import jobs and settings as JSON)*
+- [x] ~~Weekly/monthly Discord summary reports~~ *(v2026.01.31 - Configurable day/time for weekly and monthly)*
 - [ ] Cloud backup support via rclone Docker container
 - [ ] Telegram/Pushover/Slack notifications
 
 ### 🟢 Nice to Have
 - [ ] Web-based file browser for source/destination selection
-- [ ] Backup verification (checksum comparison)
-- [ ] Compression option for backups
+- [x] ~~Backup verification (checksum comparison)~~ *(v2026.01.31 - Per-job rsync --checksum option)*
+
+### 🔮 Future Considerations
+- [ ] Compression option for backups (tar.gz) - *Significant architecture change needed*
 
 ---
 

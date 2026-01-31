@@ -4,6 +4,35 @@ All notable changes to Tegenett Unraid Plugins.
 
 ---
 
+## [2026.01.31a] - ATP Backup Major Features
+
+### Bandwidth Scheduling
+- **NEW**: Two bandwidth profiles (Night/Day) with configurable start times
+- Profile A: Typically unlimited (night hours, e.g., 22:00-06:00)
+- Profile B: Typically limited (day hours, e.g., 06:00-22:00)
+- Jobs can override with their own bandwidth limit
+
+### Export / Import
+- **NEW**: Export jobs to JSON file (passwords excluded for security)
+- **NEW**: Export settings to JSON file (webhook excluded for security)
+- **NEW**: Import previously exported configurations
+- Allows easy migration between Unraid systems
+
+### Discord Summary Reports
+- **NEW**: Weekly summary reports (configurable day and hour)
+- **NEW**: Monthly summary reports (configurable day and hour)
+- Shows total jobs, success rate, data transferred, duration
+
+### Checksum Verification
+- **NEW**: Per-job option to use rsync `--checksum` flag
+- More accurate file comparison (detects corruption)
+- Slower but recommended for critical data
+
+### Database Schema
+- Migration to v4: Added `verify_checksum` column to jobs table
+
+---
+
 ## [2026.01.31] - Build System & Documentation
 
 ### Build System
@@ -15,10 +44,6 @@ All notable changes to Tegenett Unraid Plugins.
 ### Documentation
 - **NEW**: `shared/README.md` - CSS class naming convention guide
 - **UPDATE**: TODO.md - marked completed tasks
-
-### Verified Already Complete
-- ATP Emby logging/statistics (SQLite activity_log, /api/stats, Statistics tab)
-- ATP Emby documentation (README.md with full setup guide)
 
 ---
 

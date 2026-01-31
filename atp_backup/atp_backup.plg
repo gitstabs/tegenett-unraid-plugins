@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "atp_backup">
 <!ENTITY author    "Tegenett">
-<!ENTITY version   "2026.01.30g">
+<!ENTITY version   "2026.01.31a">
 <!ENTITY launch    "Settings/AtpBackup">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>
@@ -120,7 +120,7 @@ Icon="shield"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.01.30g";
+$version = "v2026.01.31a";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 
@@ -1724,10 +1724,58 @@ if (file_exists($pidFile)) {
                         <div class="tb-form-group">
                             <label>Default Bandwidth Limit (KB/s)</label>
                             <input type="number" name="DEFAULT_BANDWIDTH_LIMIT" id="setBandwidth" min="0" placeholder="0 = unlimited">
-                            <div class="tb-form-hint">Applied to new jobs. 0 = no limit.</div>
+                            <div class="tb-form-hint">Fallback limit when scheduling is disabled. 0 = unlimited. Examples: 50000 = ~50 MB/s, 10000 = ~10 MB/s</div>
                         </div>
                 </div>
-                
+
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-clock"></i> Bandwidth Scheduling</h3>
+                    </div>
+                    <div class="tb-form-group">
+                        <label class="tb-checkbox-label">
+                            <input type="checkbox" name="BANDWIDTH_SCHEDULE_ENABLED" id="setBwScheduleEnabled">
+                            <span>Enable bandwidth scheduling</span>
+                        </label>
+                        <div class="tb-form-hint">Use different speed limits at different times of day</div>
+                    </div>
+                    <div id="bwScheduleOptions" style="margin-top: 15px;">
+                        <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                            <label style="color: var(--tb-primary); font-weight: 600; margin-bottom: 10px; display: block;">
+                                <i class="fas fa-moon"></i> Profile A (Night - typically unlimited)
+                            </label>
+                            <div class="tb-form-row">
+                                <div class="tb-form-group">
+                                    <label>Starts at</label>
+                                    <input type="time" id="setBwProfileAStart" value="22:00">
+                                </div>
+                                <div class="tb-form-group">
+                                    <label>Limit (KB/s)</label>
+                                    <input type="number" id="setBwProfileALimit" min="0" value="0" placeholder="0 = unlimited">
+                                </div>
+                            </div>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px;">
+                            <label style="color: var(--tb-primary); font-weight: 600; margin-bottom: 10px; display: block;">
+                                <i class="fas fa-sun"></i> Profile B (Day - typically limited)
+                            </label>
+                            <div class="tb-form-row">
+                                <div class="tb-form-group">
+                                    <label>Starts at</label>
+                                    <input type="time" id="setBwProfileBStart" value="06:00">
+                                </div>
+                                <div class="tb-form-group">
+                                    <label>Limit (KB/s)</label>
+                                    <input type="number" id="setBwProfileBLimit" min="0" value="50000" placeholder="0 = unlimited">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tb-form-hint" style="margin-top: 10px;">
+                            <strong>Example:</strong> Profile A (22:00-06:00) unlimited, Profile B (06:00-22:00) limited to 50 MB/s
+                        </div>
+                    </div>
+                </div>
+
                 <div class="tb-card">
                     <div class="tb-card-header">
                         <h3 class="tb-card-title"><i class="fas fa-redo"></i> Auto-Retry</h3>
@@ -1798,15 +1846,62 @@ if (file_exists($pidFile)) {
                         </div>
                     </div>
                     <div class="tb-form-group" style="border-top: 1px solid var(--tb-border); padding-top: 15px; margin-top: 10px;">
-                        <label class="tb-checkbox-label" style="padding: 0;">
-                            <input type="checkbox" name="DISCORD_DAILY_SUMMARY" id="setDailySummary">
-                            <span>Send daily summary</span>
-                        </label>
-                        <div class="tb-form-row" style="margin-top: 10px;">
-                            <div class="tb-form-group" style="margin-bottom: 0;">
-                                <label>Summary Time</label>
-                                <input type="number" name="DISCORD_SUMMARY_HOUR" id="setSummaryHour" min="0" max="23" value="20">
-                                <div class="tb-form-hint">Hour (0-23)</div>
+                        <label style="font-weight: 600; margin-bottom: 10px; display: block;">Summary Reports</label>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Daily Summary -->
+                            <div style="background: rgba(0,0,0,0.15); padding: 12px; border-radius: 6px;">
+                                <label class="tb-checkbox-label" style="padding: 0; margin-bottom: 8px;">
+                                    <input type="checkbox" name="DISCORD_DAILY_SUMMARY" id="setDailySummary">
+                                    <span>Daily summary</span>
+                                </label>
+                                <div class="tb-form-row" style="margin-top: 8px;">
+                                    <div class="tb-form-group" style="margin-bottom: 0;">
+                                        <label>Time (hour)</label>
+                                        <input type="number" name="DISCORD_SUMMARY_HOUR" id="setSummaryHour" min="0" max="23" value="20">
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Weekly Summary -->
+                            <div style="background: rgba(0,0,0,0.15); padding: 12px; border-radius: 6px;">
+                                <label class="tb-checkbox-label" style="padding: 0; margin-bottom: 8px;">
+                                    <input type="checkbox" name="DISCORD_WEEKLY_SUMMARY" id="setWeeklySummary">
+                                    <span>Weekly summary</span>
+                                </label>
+                                <div class="tb-form-row" style="margin-top: 8px;">
+                                    <div class="tb-form-group" style="margin-bottom: 0;">
+                                        <label>Day</label>
+                                        <select id="setWeeklyDay">
+                                            <option value="0">Monday</option>
+                                            <option value="1">Tuesday</option>
+                                            <option value="2">Wednesday</option>
+                                            <option value="3">Thursday</option>
+                                            <option value="4">Friday</option>
+                                            <option value="5">Saturday</option>
+                                            <option value="6">Sunday</option>
+                                        </select>
+                                    </div>
+                                    <div class="tb-form-group" style="margin-bottom: 0;">
+                                        <label>Hour</label>
+                                        <input type="number" id="setWeeklyHour" min="0" max="23" value="9">
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Monthly Summary -->
+                            <div style="background: rgba(0,0,0,0.15); padding: 12px; border-radius: 6px;">
+                                <label class="tb-checkbox-label" style="padding: 0; margin-bottom: 8px;">
+                                    <input type="checkbox" name="DISCORD_MONTHLY_SUMMARY" id="setMonthlySummary">
+                                    <span>Monthly summary</span>
+                                </label>
+                                <div class="tb-form-row" style="margin-top: 8px;">
+                                    <div class="tb-form-group" style="margin-bottom: 0;">
+                                        <label>Day of month</label>
+                                        <input type="number" id="setMonthlyDay" min="1" max="28" value="1">
+                                    </div>
+                                    <div class="tb-form-group" style="margin-bottom: 0;">
+                                        <label>Hour</label>
+                                        <input type="number" id="setMonthlyHour" min="0" max="23" value="9">
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1828,6 +1923,34 @@ if (file_exists($pidFile)) {
                     </div>
                 </div>
                 
+                <div class="tb-card">
+                    <div class="tb-card-header">
+                        <h3 class="tb-card-title"><i class="fas fa-file-export"></i> Export / Import</h3>
+                    </div>
+                    <div class="tb-form-group">
+                        <label>Export Configuration</label>
+                        <div style="display: flex; gap: 10px; margin-top: 5px;">
+                            <button type="button" class="tb-btn tb-btn-secondary" onclick="exportJobs()">
+                                <i class="fas fa-download"></i> Export Jobs
+                            </button>
+                            <button type="button" class="tb-btn tb-btn-secondary" onclick="exportSettings()">
+                                <i class="fas fa-download"></i> Export Settings
+                            </button>
+                        </div>
+                        <div class="tb-form-hint">Downloads configuration as JSON file</div>
+                    </div>
+                    <div class="tb-form-group" style="border-top: 1px solid var(--tb-border); padding-top: 15px; margin-top: 10px;">
+                        <label>Import Configuration</label>
+                        <div style="display: flex; gap: 10px; margin-top: 5px; flex-wrap: wrap;">
+                            <input type="file" id="importFile" accept=".json" style="display: none;" onchange="handleImportFile(this)">
+                            <button type="button" class="tb-btn tb-btn-secondary" onclick="document.getElementById('importFile').click()">
+                                <i class="fas fa-upload"></i> Import File
+                            </button>
+                        </div>
+                        <div class="tb-form-hint">Import previously exported jobs or settings (JSON format)</div>
+                    </div>
+                </div>
+
                 <div class="tb-card">
                     <div class="tb-card-header">
                         <h3 class="tb-card-title"><i class="fas fa-database"></i> Data Management</h3>
@@ -2030,10 +2153,18 @@ if (file_exists($pidFile)) {
                     <div class="tb-form-group">
                         <label>Bandwidth Limit (KB/s)</label>
                         <input type="number" id="jobBandwidth" name="bandwidth_limit" min="0" value="0" placeholder="0 = unlimited">
-                        <div class="tb-form-hint">0 = use default from settings</div>
+                        <div class="tb-form-hint">0 = use scheduled/default limit. Examples: 50000 = ~50 MB/s</div>
                     </div>
                 </div>
-                
+
+                <div class="tb-form-group">
+                    <label class="tb-checkbox-label">
+                        <input type="checkbox" id="jobVerifyChecksum" name="verify_checksum">
+                        <span>Verify with checksum</span>
+                    </label>
+                    <div class="tb-form-hint">Uses file checksums instead of size/time to detect changes. More accurate but slower.</div>
+                </div>
+
                 <h4 style="color: var(--tb-primary); margin: 20px 0 10px;">
                     <i class="fas fa-archive"></i> Backup Retention
                 </h4>
@@ -2470,6 +2601,7 @@ async function loadJobForEdit(jobId) {
         document.getElementById('jobScheduleDay').value = job.schedule_day || 0;
         document.getElementById('jobScheduleCron').value = job.schedule_cron || '';
         document.getElementById('jobBandwidth').value = job.bandwidth_limit || 0;
+        document.getElementById('jobVerifyChecksum').checked = !!job.verify_checksum;
         document.getElementById('jobRetentionCount').value = job.retention_count || 0;
         document.getElementById('jobRetentionDays').value = job.retention_days || 0;
         document.getElementById('jobEnabled').checked = !!job.enabled;
@@ -2524,7 +2656,8 @@ async function saveJob() {
     data.shutdown_after = document.getElementById('jobShutdown').checked ? 1 : 0;
     data.use_wol = data.job_type.includes('wol') ? 1 : 0;
     data.retry_on_failure = document.getElementById('jobRetryOnFailure').checked ? 1 : 0;
-    
+    data.verify_checksum = document.getElementById('jobVerifyChecksum').checked ? 1 : 0;
+
     // Convert numeric fields
     data.retention_count = parseInt(data.retention_count) || 0;
     data.retention_days = parseInt(data.retention_days) || 0;
@@ -2665,7 +2798,7 @@ async function loadLogs() {
 
 async function loadSettings() {
     const result = await apiCall('get_settings');
-    
+
     if (result.success && result.settings) {
         const s = result.settings;
         document.getElementById('setLogLevel').value = s.LOG_LEVEL || 'INFO';
@@ -2676,6 +2809,13 @@ async function loadSettings() {
         document.getElementById('setDiscordFailure').checked = s.DISCORD_NOTIFY_FAILURE !== false;
         document.getElementById('setDailySummary').checked = !!s.DISCORD_DAILY_SUMMARY;
         document.getElementById('setSummaryHour').value = s.DISCORD_SUMMARY_HOUR || 20;
+        // Weekly/Monthly summaries
+        document.getElementById('setWeeklySummary').checked = !!s.DISCORD_WEEKLY_SUMMARY;
+        document.getElementById('setWeeklyDay').value = s.DISCORD_WEEKLY_DAY || 0;
+        document.getElementById('setWeeklyHour').value = s.DISCORD_WEEKLY_HOUR || 9;
+        document.getElementById('setMonthlySummary').checked = !!s.DISCORD_MONTHLY_SUMMARY;
+        document.getElementById('setMonthlyDay').value = s.DISCORD_MONTHLY_DAY || 1;
+        document.getElementById('setMonthlyHour').value = s.DISCORD_MONTHLY_HOUR || 9;
         document.getElementById('setUnraidNotify').checked = s.UNRAID_NOTIFICATIONS !== false;
         document.getElementById('setRetryOnFailure').checked = s.RETRY_ON_FAILURE !== false;
         document.getElementById('setRetryInterval').value = s.RETRY_INTERVAL_MINUTES || 60;
@@ -2685,12 +2825,18 @@ async function loadSettings() {
         document.getElementById('setHistoryDays').value = s.HISTORY_RETENTION_DAYS || 90;
         document.getElementById('setLogMaxSize').value = s.LOG_MAX_SIZE_KB || 5000;
         document.getElementById('setLogKeepCount').value = s.LOG_KEEP_COUNT || 5;
+        // Bandwidth scheduling
+        document.getElementById('setBwScheduleEnabled').checked = !!s.BANDWIDTH_SCHEDULE_ENABLED;
+        document.getElementById('setBwProfileAStart').value = s.BANDWIDTH_PROFILE_A_START || '22:00';
+        document.getElementById('setBwProfileALimit').value = s.BANDWIDTH_PROFILE_A_LIMIT || 0;
+        document.getElementById('setBwProfileBStart').value = s.BANDWIDTH_PROFILE_B_START || '06:00';
+        document.getElementById('setBwProfileBLimit').value = s.BANDWIDTH_PROFILE_B_LIMIT || 50000;
     }
 }
 
 document.getElementById('settingsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    
+
     const data = {
         LOG_LEVEL: document.getElementById('setLogLevel').value,
         DEFAULT_BANDWIDTH_LIMIT: parseInt(document.getElementById('setBandwidth').value) || 0,
@@ -2700,6 +2846,13 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
         DISCORD_NOTIFY_FAILURE: document.getElementById('setDiscordFailure').checked,
         DISCORD_DAILY_SUMMARY: document.getElementById('setDailySummary').checked,
         DISCORD_SUMMARY_HOUR: parseInt(document.getElementById('setSummaryHour').value) || 20,
+        // Weekly/Monthly summaries
+        DISCORD_WEEKLY_SUMMARY: document.getElementById('setWeeklySummary').checked,
+        DISCORD_WEEKLY_DAY: parseInt(document.getElementById('setWeeklyDay').value) || 0,
+        DISCORD_WEEKLY_HOUR: parseInt(document.getElementById('setWeeklyHour').value) || 9,
+        DISCORD_MONTHLY_SUMMARY: document.getElementById('setMonthlySummary').checked,
+        DISCORD_MONTHLY_DAY: parseInt(document.getElementById('setMonthlyDay').value) || 1,
+        DISCORD_MONTHLY_HOUR: parseInt(document.getElementById('setMonthlyHour').value) || 9,
         UNRAID_NOTIFICATIONS: document.getElementById('setUnraidNotify').checked,
         RETRY_ON_FAILURE: document.getElementById('setRetryOnFailure').checked,
         RETRY_INTERVAL_MINUTES: parseInt(document.getElementById('setRetryInterval').value) || 60,
@@ -2708,11 +2861,17 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
         WOL_PING_INTERVAL: parseInt(document.getElementById('setWolInterval').value) || 5,
         HISTORY_RETENTION_DAYS: parseInt(document.getElementById('setHistoryDays').value) || 90,
         LOG_MAX_SIZE_KB: parseInt(document.getElementById('setLogMaxSize').value) || 5000,
-        LOG_KEEP_COUNT: parseInt(document.getElementById('setLogKeepCount').value) || 5
+        LOG_KEEP_COUNT: parseInt(document.getElementById('setLogKeepCount').value) || 5,
+        // Bandwidth scheduling
+        BANDWIDTH_SCHEDULE_ENABLED: document.getElementById('setBwScheduleEnabled').checked,
+        BANDWIDTH_PROFILE_A_START: document.getElementById('setBwProfileAStart').value || '22:00',
+        BANDWIDTH_PROFILE_A_LIMIT: parseInt(document.getElementById('setBwProfileALimit').value) || 0,
+        BANDWIDTH_PROFILE_B_START: document.getElementById('setBwProfileBStart').value || '06:00',
+        BANDWIDTH_PROFILE_B_LIMIT: parseInt(document.getElementById('setBwProfileBLimit').value) || 50000
     };
-    
+
     const result = await apiPost('save_settings', data);
-    
+
     if (result.success) {
         alert('Settings saved successfully!');
     } else {
@@ -2736,14 +2895,103 @@ async function testWol() {
         alert('Please enter a MAC address first');
         return;
     }
-    
+
     const result = await apiCall('test_wol', { mac_address: mac });
-    
+
     if (result.success) {
         alert('WOL packet sent to ' + mac);
     } else {
         alert('Error: ' + (result.error || 'Failed to send'));
     }
+}
+
+// ====== Export / Import ======
+
+async function exportJobs() {
+    const result = await apiCall('export_jobs');
+
+    if (result.success && result.data) {
+        const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'atp_backup_jobs_' + new Date().toISOString().split('T')[0] + '.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } else {
+        alert('Error exporting jobs: ' + (result.error || 'Unknown error'));
+    }
+}
+
+async function exportSettings() {
+    const result = await apiCall('export_settings');
+
+    if (result.success && result.data) {
+        const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'atp_backup_settings_' + new Date().toISOString().split('T')[0] + '.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } else {
+        alert('Error exporting settings: ' + (result.error || 'Unknown error'));
+    }
+}
+
+function handleImportFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        try {
+            const importData = JSON.parse(e.target.result);
+
+            if (!importData.export_type || !importData.version) {
+                alert('Invalid export file format');
+                return;
+            }
+
+            const exportType = importData.export_type;
+            const itemCount = exportType === 'jobs' ? (importData.jobs || []).length : 'all';
+
+            if (!confirm(`Import ${exportType}?\n\nThis file contains ${itemCount} ${exportType}.\nExported from version ${importData.version} on ${importData.export_date}\n\nContinue?`)) {
+                return;
+            }
+
+            let result;
+            if (exportType === 'jobs') {
+                result = await apiPost('import_jobs', { data: importData });
+            } else if (exportType === 'settings') {
+                result = await apiPost('import_settings', { data: importData });
+            } else {
+                alert('Unknown export type: ' + exportType);
+                return;
+            }
+
+            if (result.success) {
+                alert(result.message || 'Import successful!');
+                if (exportType === 'jobs') {
+                    loadJobs();
+                } else {
+                    loadSettings();
+                }
+            } else {
+                alert('Import failed: ' + (result.error || 'Unknown error'));
+            }
+        } catch (err) {
+            alert('Error parsing file: ' + err.message);
+        }
+    };
+    reader.readAsText(file);
+
+    // Reset input so same file can be selected again
+    input.value = '';
 }
 
 // ====== Database Management ======
@@ -3478,6 +3726,12 @@ class Config:
         "DISCORD_SUMMARY_HOUR": 20,
         "UNRAID_NOTIFICATIONS": True,
         "DEFAULT_BANDWIDTH_LIMIT": 0,
+        # Bandwidth scheduling (two profiles with start times)
+        "BANDWIDTH_SCHEDULE_ENABLED": False,
+        "BANDWIDTH_PROFILE_A_LIMIT": 0,       # 0 = unlimited (typically night)
+        "BANDWIDTH_PROFILE_A_START": "22:00", # Night profile starts at 22:00
+        "BANDWIDTH_PROFILE_B_LIMIT": 50000,   # 50 MB/s during day
+        "BANDWIDTH_PROFILE_B_START": "06:00", # Day profile starts at 06:00
         "RSYNC_OPTIONS": "-avh --delete --stats --progress",
         "UD_MOUNT_TIMEOUT": 60,
         "WOL_WAIT_TIMEOUT": 120,
@@ -3486,7 +3740,14 @@ class Config:
         "RETRY_ON_FAILURE": True,
         "RETRY_INTERVAL_MINUTES": 60,
         "RETRY_MAX_ATTEMPTS": 3,
-        "HISTORY_RETENTION_DAYS": 90
+        "HISTORY_RETENTION_DAYS": 90,
+        # Discord summary reports (weekly/monthly)
+        "DISCORD_WEEKLY_SUMMARY": False,
+        "DISCORD_WEEKLY_DAY": 0,              # 0=Monday, 6=Sunday
+        "DISCORD_WEEKLY_HOUR": 9,             # 09:00
+        "DISCORD_MONTHLY_SUMMARY": False,
+        "DISCORD_MONTHLY_DAY": 1,             # 1st of month
+        "DISCORD_MONTHLY_HOUR": 9             # 09:00
     }
     
     C = DEFAULTS.copy()
@@ -3539,6 +3800,103 @@ class Config:
             return False, str(e)
 
 Config.load()
+
+
+# ============================================
+# BANDWIDTH SCHEDULER
+# ============================================
+
+class BandwidthScheduler:
+    """Calculates effective bandwidth limit based on time-of-day profiles"""
+
+    @staticmethod
+    def get_effective_limit(job_limit=0):
+        """
+        Get the effective bandwidth limit considering:
+        1. Job-specific limit (highest priority if > 0)
+        2. Scheduled profile limit (if scheduling enabled)
+        3. Default limit (fallback)
+
+        Returns: bandwidth limit in KB/s (0 = unlimited)
+        """
+        # If job has specific limit, use it
+        if job_limit and int(job_limit) > 0:
+            return int(job_limit)
+
+        # Check if scheduling is enabled
+        if not Config.C.get("BANDWIDTH_SCHEDULE_ENABLED", False):
+            return int(Config.C.get("DEFAULT_BANDWIDTH_LIMIT", 0) or 0)
+
+        # Get current time
+        now = datetime.now()
+        current_minutes = now.hour * 60 + now.minute
+
+        # Parse profile start times
+        try:
+            a_start = Config.C.get("BANDWIDTH_PROFILE_A_START", "22:00")
+            b_start = Config.C.get("BANDWIDTH_PROFILE_B_START", "06:00")
+
+            a_parts = a_start.split(":")
+            b_parts = b_start.split(":")
+
+            a_minutes = int(a_parts[0]) * 60 + int(a_parts[1])
+            b_minutes = int(b_parts[0]) * 60 + int(b_parts[1])
+        except (ValueError, IndexError):
+            # Fallback to default if parsing fails
+            return int(Config.C.get("DEFAULT_BANDWIDTH_LIMIT", 0) or 0)
+
+        # Determine which profile is active
+        # Profile A: from A_START to B_START
+        # Profile B: from B_START to A_START
+
+        a_limit = int(Config.C.get("BANDWIDTH_PROFILE_A_LIMIT", 0) or 0)
+        b_limit = int(Config.C.get("BANDWIDTH_PROFILE_B_LIMIT", 0) or 0)
+
+        if a_minutes < b_minutes:
+            # Simple case: A starts before B (e.g., A=06:00, B=22:00)
+            if a_minutes <= current_minutes < b_minutes:
+                return a_limit
+            else:
+                return b_limit
+        else:
+            # Wrapped case: A starts after B (e.g., A=22:00, B=06:00)
+            # Profile A is active from 22:00 to 23:59 and 00:00 to 06:00
+            if current_minutes >= a_minutes or current_minutes < b_minutes:
+                return a_limit
+            else:
+                return b_limit
+
+    @staticmethod
+    def get_current_profile():
+        """Get the name of the currently active profile"""
+        if not Config.C.get("BANDWIDTH_SCHEDULE_ENABLED", False):
+            return "Default"
+
+        now = datetime.now()
+        current_minutes = now.hour * 60 + now.minute
+
+        try:
+            a_start = Config.C.get("BANDWIDTH_PROFILE_A_START", "22:00")
+            b_start = Config.C.get("BANDWIDTH_PROFILE_B_START", "06:00")
+
+            a_parts = a_start.split(":")
+            b_parts = b_start.split(":")
+
+            a_minutes = int(a_parts[0]) * 60 + int(a_parts[1])
+            b_minutes = int(b_parts[0]) * 60 + int(b_parts[1])
+        except (ValueError, IndexError):
+            return "Default"
+
+        if a_minutes < b_minutes:
+            if a_minutes <= current_minutes < b_minutes:
+                return "Profile A (Night)"
+            else:
+                return "Profile B (Day)"
+        else:
+            if current_minutes >= a_minutes or current_minutes < b_minutes:
+                return "Profile A (Night)"
+            else:
+                return "Profile B (Day)"
 
 # ============================================
 # LOGGING
@@ -3636,7 +3994,7 @@ START_TIME = time.time()
 
 class Database:
     # Schema version for migrations
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
     
     def __init__(self):
         self.db_path = os.path.join(Config.DATA_DIR, Config.DB_FILE)
@@ -3761,19 +4119,32 @@ class Database:
             if current_version < 3:
                 # Migration to v3: Add pre/post script columns
                 logger.info("[Database] Migrating to schema v3...")
-                
+
                 columns = [row['name'] for row in conn.execute("PRAGMA table_info(backup_jobs)").fetchall()]
-                
+
                 if 'pre_script' not in columns:
                     conn.execute("ALTER TABLE backup_jobs ADD COLUMN pre_script TEXT")
                     logger.info("[Database] Added pre_script column")
-                
+
                 if 'post_script' not in columns:
                     conn.execute("ALTER TABLE backup_jobs ADD COLUMN post_script TEXT")
                     logger.info("[Database] Added post_script column")
-                
+
                 conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", (3,))
                 logger.info("[Database] Migration to v3 complete")
+
+            if current_version < 4:
+                # Migration to v4: Add checksum verification column
+                logger.info("[Database] Migrating to schema v4...")
+
+                columns = [row['name'] for row in conn.execute("PRAGMA table_info(backup_jobs)").fetchall()]
+
+                if 'verify_checksum' not in columns:
+                    conn.execute("ALTER TABLE backup_jobs ADD COLUMN verify_checksum INTEGER DEFAULT 0")
+                    logger.info("[Database] Added verify_checksum column")
+
+                conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", (4,))
+                logger.info("[Database] Migration to v4 complete")
     
     @contextmanager
     def _conn(self):
@@ -3844,13 +4215,13 @@ class Database:
         logger.info(f"[Database] Creating job: {job_data.get('name')}")
         with self._conn() as conn:
             cursor = conn.execute('''
-                INSERT INTO backup_jobs (name, job_type, source_path, dest_path, 
+                INSERT INTO backup_jobs (name, job_type, source_path, dest_path,
                     remote_host, remote_share, remote_mount_point, remote_user, remote_pass,
-                    mac_address, use_wol, shutdown_after, schedule_type, 
+                    mac_address, use_wol, shutdown_after, schedule_type,
                     schedule_hour, schedule_minute, schedule_day, schedule_cron,
-                    bandwidth_limit, exclude_patterns, retention_count, retention_days, 
-                    enabled, retry_on_failure, pre_script, post_script)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    bandwidth_limit, exclude_patterns, retention_count, retention_days,
+                    enabled, retry_on_failure, pre_script, post_script, verify_checksum)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 job_data.get('name'),
                 job_data.get('job_type', 'local'),
@@ -3876,7 +4247,8 @@ class Database:
                 int(job_data.get('enabled', 1)),
                 int(job_data.get('retry_on_failure', 1)),
                 job_data.get('pre_script'),
-                job_data.get('post_script')
+                job_data.get('post_script'),
+                int(job_data.get('verify_checksum', 0))
             ))
             return cursor.lastrowid
     
@@ -3891,7 +4263,7 @@ class Database:
                     mac_address = ?, use_wol = ?, shutdown_after = ?, schedule_type = ?,
                     schedule_hour = ?, schedule_minute = ?, schedule_day = ?, schedule_cron = ?,
                     bandwidth_limit = ?, exclude_patterns = ?, retention_count = ?, retention_days = ?,
-                    enabled = ?, retry_on_failure = ?, pre_script = ?, post_script = ?,
+                    enabled = ?, retry_on_failure = ?, pre_script = ?, post_script = ?, verify_checksum = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             ''', (
@@ -3920,6 +4292,7 @@ class Database:
                 int(job_data.get('retry_on_failure', 1)),
                 job_data.get('pre_script'),
                 job_data.get('post_script'),
+                int(job_data.get('verify_checksum', 0)),
                 job_id
             ))
     
@@ -4330,27 +4703,27 @@ class NotifyManager:
     def send_daily_summary(cls):
         if not Config.C.get("DISCORD_DAILY_SUMMARY", False):
             return
-        
+
         url = Config.C.get("DISCORD_WEBHOOK_URL", "")
         if not url:
             return
-        
+
         today = datetime.now().strftime('%Y-%m-%d')
         stats = DB.get_stats(1)
-        
+
         if not stats:
             return
-        
+
         stat = stats[0]
         total = stat.get('total_jobs_run', 0)
         success = stat.get('successful_jobs', 0)
         failed = stat.get('failed_jobs', 0)
         total_bytes = stat.get('total_bytes', 0)
-        
+
         gb = total_bytes / (1024**3) if total_bytes else 0
-        
+
         color = "green" if failed == 0 else ("orange" if success > 0 else "red")
-        
+
         cls.discord_notify(
             f"📊 Daily Summary - {today}",
             f"Total jobs: {total}\nSuccessful: {success}\nFailed: {failed}",
@@ -4360,6 +4733,89 @@ class NotifyManager:
                 {"name": "Success Rate", "value": f"{(success/max(total,1))*100:.0f}%", "inline": True}
             ]
         )
+
+    @classmethod
+    def send_weekly_summary(cls):
+        """Send weekly summary report"""
+        if not Config.C.get("DISCORD_WEEKLY_SUMMARY", False):
+            return
+
+        url = Config.C.get("DISCORD_WEBHOOK_URL", "")
+        if not url:
+            return
+
+        stats = DB.get_stats(7)
+
+        if not stats:
+            return
+
+        # Aggregate weekly stats
+        total = sum(s.get('total_jobs_run', 0) for s in stats)
+        success = sum(s.get('successful_jobs', 0) for s in stats)
+        failed = sum(s.get('failed_jobs', 0) for s in stats)
+        total_bytes = sum(s.get('total_bytes', 0) for s in stats)
+        total_duration = sum(s.get('total_duration', 0) for s in stats)
+
+        gb = total_bytes / (1024**3) if total_bytes else 0
+        hours = total_duration / 3600 if total_duration else 0
+
+        color = "green" if failed == 0 else ("orange" if success > 0 else "red")
+
+        week_start = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        week_end = datetime.now().strftime('%Y-%m-%d')
+
+        cls.discord_notify(
+            f"📈 Weekly Summary ({week_start} to {week_end})",
+            f"Total jobs: {total}\nSuccessful: {success}\nFailed: {failed}",
+            color,
+            [
+                {"name": "Data Transferred", "value": f"{gb:.2f} GB", "inline": True},
+                {"name": "Success Rate", "value": f"{(success/max(total,1))*100:.0f}%", "inline": True},
+                {"name": "Total Duration", "value": f"{hours:.1f} hours", "inline": True}
+            ]
+        )
+        logger.info("[Notify] Weekly summary sent")
+
+    @classmethod
+    def send_monthly_summary(cls):
+        """Send monthly summary report"""
+        if not Config.C.get("DISCORD_MONTHLY_SUMMARY", False):
+            return
+
+        url = Config.C.get("DISCORD_WEBHOOK_URL", "")
+        if not url:
+            return
+
+        stats = DB.get_stats(30)
+
+        if not stats:
+            return
+
+        # Aggregate monthly stats
+        total = sum(s.get('total_jobs_run', 0) for s in stats)
+        success = sum(s.get('successful_jobs', 0) for s in stats)
+        failed = sum(s.get('failed_jobs', 0) for s in stats)
+        total_bytes = sum(s.get('total_bytes', 0) for s in stats)
+        total_duration = sum(s.get('total_duration', 0) for s in stats)
+
+        gb = total_bytes / (1024**3) if total_bytes else 0
+        hours = total_duration / 3600 if total_duration else 0
+
+        color = "green" if failed == 0 else ("orange" if success > 0 else "red")
+
+        month_name = datetime.now().strftime('%B %Y')
+
+        cls.discord_notify(
+            f"📊 Monthly Summary - {month_name}",
+            f"Total jobs: {total}\nSuccessful: {success}\nFailed: {failed}",
+            color,
+            [
+                {"name": "Data Transferred", "value": f"{gb:.2f} GB", "inline": True},
+                {"name": "Success Rate", "value": f"{(success/max(total,1))*100:.0f}%", "inline": True},
+                {"name": "Total Duration", "value": f"{hours:.1f} hours", "inline": True}
+            ]
+        )
+        logger.info("[Notify] Monthly summary sent")
 
 # ============================================
 # BACKUP ENGINE
@@ -4719,9 +5175,17 @@ class BackupEngine:
         options = Config.C.get("RSYNC_OPTIONS", "-avh --delete --stats")
         cmd.extend(options.split())
         
-        bw_limit = int(job.get('bandwidth_limit', 0) or 0) or int(Config.C.get("DEFAULT_BANDWIDTH_LIMIT", 0) or 0)
+        # Get effective bandwidth limit (considers job setting, schedule, and default)
+        job_bw = int(job.get('bandwidth_limit', 0) or 0)
+        bw_limit = BandwidthScheduler.get_effective_limit(job_bw)
         if bw_limit > 0:
             cmd.append(f'--bwlimit={bw_limit}')
+            logger.info(f"[BackupEngine] Bandwidth limit: {bw_limit} KB/s ({BandwidthScheduler.get_current_profile()})")
+
+        # Checksum verification (slower but more accurate)
+        if job.get('verify_checksum'):
+            cmd.append('--checksum')
+            logger.info("[BackupEngine] Checksum verification enabled")
         
         excludes = job.get('exclude_patterns', '') or ''
         for pattern in excludes.split('\n'):
@@ -4817,6 +5281,8 @@ class Scheduler:
     _stopped = False
     _last_run = {}
     _summary_sent_today = False
+    _weekly_sent_this_week = False
+    _monthly_sent_this_month = False
     
     @classmethod
     def start(cls):
@@ -4856,13 +5322,35 @@ class Scheduler:
     @classmethod
     def _check_daily_summary(cls, now):
         summary_hour = Config.C.get("DISCORD_SUMMARY_HOUR", 20)
-        
+
         if now.hour == summary_hour and now.minute == 0:
             if not cls._summary_sent_today:
                 NotifyManager.send_daily_summary()
                 cls._summary_sent_today = True
         elif now.hour != summary_hour:
             cls._summary_sent_today = False
+
+        # Check weekly summary
+        weekly_day = int(Config.C.get("DISCORD_WEEKLY_DAY", 0))  # 0=Monday
+        weekly_hour = int(Config.C.get("DISCORD_WEEKLY_HOUR", 9))
+
+        if now.weekday() == weekly_day and now.hour == weekly_hour and now.minute == 0:
+            if not cls._weekly_sent_this_week:
+                NotifyManager.send_weekly_summary()
+                cls._weekly_sent_this_week = True
+        elif now.weekday() != weekly_day:
+            cls._weekly_sent_this_week = False
+
+        # Check monthly summary
+        monthly_day = int(Config.C.get("DISCORD_MONTHLY_DAY", 1))
+        monthly_hour = int(Config.C.get("DISCORD_MONTHLY_HOUR", 9))
+
+        if now.day == monthly_day and now.hour == monthly_hour and now.minute == 0:
+            if not cls._monthly_sent_this_month:
+                NotifyManager.send_monthly_summary()
+                cls._monthly_sent_this_month = True
+        elif now.day != monthly_day:
+            cls._monthly_sent_this_month = False
     
     @classmethod
     def _check_jobs(cls, now):
@@ -5080,6 +5568,54 @@ class APIHandler(BaseHTTPRequestHandler):
             
             elif path == '/api/settings':
                 self._send_json({'success': True, 'settings': Config.C})
+
+            elif path == '/api/export/jobs':
+                # Export all jobs as JSON
+                jobs = DB.get_jobs()
+                # Remove sensitive fields for export
+                for job in jobs:
+                    job.pop('remote_pass', None)  # Don't export passwords
+                    job.pop('id', None)  # Remove IDs (will be recreated on import)
+                    job.pop('created_at', None)
+                    job.pop('updated_at', None)
+                    job.pop('retry_count', None)
+                    job.pop('last_retry_at', None)
+                export_data = {
+                    'version': Config.VERSION,
+                    'export_date': datetime.now().isoformat(),
+                    'export_type': 'jobs',
+                    'jobs': jobs
+                }
+                self._send_json({'success': True, 'data': export_data})
+
+            elif path == '/api/export/settings':
+                # Export settings (exclude sensitive data)
+                settings = Config.C.copy()
+                settings.pop('DISCORD_WEBHOOK_URL', None)  # Don't export webhook
+                export_data = {
+                    'version': Config.VERSION,
+                    'export_date': datetime.now().isoformat(),
+                    'export_type': 'settings',
+                    'settings': settings
+                }
+                self._send_json({'success': True, 'data': export_data})
+
+            elif path == '/api/bandwidth/status':
+                # Get current bandwidth profile status
+                self._send_json({
+                    'success': True,
+                    'scheduling_enabled': Config.C.get("BANDWIDTH_SCHEDULE_ENABLED", False),
+                    'current_profile': BandwidthScheduler.get_current_profile(),
+                    'effective_limit': BandwidthScheduler.get_effective_limit(0),
+                    'profile_a': {
+                        'start': Config.C.get("BANDWIDTH_PROFILE_A_START", "22:00"),
+                        'limit': Config.C.get("BANDWIDTH_PROFILE_A_LIMIT", 0)
+                    },
+                    'profile_b': {
+                        'start': Config.C.get("BANDWIDTH_PROFILE_B_START", "06:00"),
+                        'limit': Config.C.get("BANDWIDTH_PROFILE_B_LIMIT", 0)
+                    }
+                })
             
             else:
                 self._send_json({'success': False, 'error': 'Not found'}, 404)
@@ -5171,6 +5707,47 @@ class APIHandler(BaseHTTPRequestHandler):
                 else:
                     self._send_json({'success': False, 'error': 'Share required'})
             
+            elif path == '/api/import/jobs':
+                # Import jobs from JSON
+                import_data = data.get('data', {})
+                if import_data.get('export_type') != 'jobs':
+                    self._send_json({'success': False, 'error': 'Invalid export type'}, 400)
+                else:
+                    jobs = import_data.get('jobs', [])
+                    imported = 0
+                    skipped = 0
+                    for job in jobs:
+                        try:
+                            # Check if job with same name exists
+                            existing = [j for j in DB.get_jobs() if j.get('name') == job.get('name')]
+                            if existing:
+                                skipped += 1
+                                continue
+                            DB.create_job(job)
+                            imported += 1
+                        except Exception as e:
+                            logger.error(f"[API] Failed to import job: {e}")
+                            skipped += 1
+                    self._send_json({
+                        'success': True,
+                        'message': f'Imported {imported} jobs, skipped {skipped}',
+                        'imported': imported,
+                        'skipped': skipped
+                    })
+
+            elif path == '/api/import/settings':
+                # Import settings from JSON
+                import_data = data.get('data', {})
+                if import_data.get('export_type') != 'settings':
+                    self._send_json({'success': False, 'error': 'Invalid export type'}, 400)
+                else:
+                    settings = import_data.get('settings', {})
+                    # Don't overwrite sensitive settings
+                    settings.pop('DISCORD_WEBHOOK_URL', None)
+                    Config.C.update(settings)
+                    success, msg = Config.save()
+                    self._send_json({'success': success, 'message': msg})
+
             # Database management endpoints
             elif path == '/api/database/clear_history':
                 DB.clear_history()
@@ -5439,7 +6016,8 @@ if (file_exists($CONFIG_FILE)) {
 $modifying_actions = [
     'create_job', 'update_job', 'toggle_job', 'delete_job', 'run_job',
     'save_settings', 'service', 'abort',
-    'clear_history', 'reset_statistics', 'reset_database'
+    'clear_history', 'reset_statistics', 'reset_database',
+    'import_jobs', 'import_settings'
 ];
 
 $action = $_REQUEST['action'] ?? '';
@@ -5675,6 +6253,28 @@ switch ($action) {
         echo json_encode(apiCall('/api/database/reset', 'POST'));
         break;
     
+    case 'export_jobs':
+        echo json_encode(apiCall('/api/export/jobs'));
+        break;
+
+    case 'export_settings':
+        echo json_encode(apiCall('/api/export/settings'));
+        break;
+
+    case 'import_jobs':
+        $data = getPostData();
+        echo json_encode(apiCall('/api/import/jobs', 'POST', $data));
+        break;
+
+    case 'import_settings':
+        $data = getPostData();
+        echo json_encode(apiCall('/api/import/settings', 'POST', $data));
+        break;
+
+    case 'bandwidth_status':
+        echo json_encode(apiCall('/api/bandwidth/status'));
+        break;
+
     default:
         echo json_encode(['success' => false, 'error' => 'Unknown action']);
         break;
@@ -5722,7 +6322,7 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Backup v2026.01.30g installed!"
+echo "ATP Backup v2026.01.31a installed!"
 echo "Service will start in 5 seconds..."
 ]]>
 </INLINE>

@@ -49,6 +49,12 @@ class Config:
         "DISCORD_SUMMARY_HOUR": 20,
         "UNRAID_NOTIFICATIONS": True,
         "DEFAULT_BANDWIDTH_LIMIT": 0,
+        # Bandwidth scheduling (two profiles with start times)
+        "BANDWIDTH_SCHEDULE_ENABLED": False,
+        "BANDWIDTH_PROFILE_A_LIMIT": 0,       # 0 = unlimited (typically night)
+        "BANDWIDTH_PROFILE_A_START": "22:00", # Night profile starts at 22:00
+        "BANDWIDTH_PROFILE_B_LIMIT": 50000,   # 50 MB/s during day
+        "BANDWIDTH_PROFILE_B_START": "06:00", # Day profile starts at 06:00
         "RSYNC_OPTIONS": "-avh --delete --stats --progress",
         "UD_MOUNT_TIMEOUT": 60,
         "WOL_WAIT_TIMEOUT": 120,
@@ -57,7 +63,14 @@ class Config:
         "RETRY_ON_FAILURE": True,
         "RETRY_INTERVAL_MINUTES": 60,
         "RETRY_MAX_ATTEMPTS": 3,
-        "HISTORY_RETENTION_DAYS": 90
+        "HISTORY_RETENTION_DAYS": 90,
+        # Discord summary reports (weekly/monthly)
+        "DISCORD_WEEKLY_SUMMARY": False,
+        "DISCORD_WEEKLY_DAY": 0,              # 0=Monday, 6=Sunday
+        "DISCORD_WEEKLY_HOUR": 9,             # 09:00
+        "DISCORD_MONTHLY_SUMMARY": False,
+        "DISCORD_MONTHLY_DAY": 1,             # 1st of month
+        "DISCORD_MONTHLY_HOUR": 9             # 09:00
     }
     
     C = DEFAULTS.copy()
@@ -110,6 +123,103 @@ class Config:
             return False, str(e)
 
 Config.load()
+
+
+# ============================================
+# BANDWIDTH SCHEDULER
+# ============================================
+
+class BandwidthScheduler:
+    """Calculates effective bandwidth limit based on time-of-day profiles"""
+
+    @staticmethod
+    def get_effective_limit(job_limit=0):
+        """
+        Get the effective bandwidth limit considering:
+        1. Job-specific limit (highest priority if > 0)
+        2. Scheduled profile limit (if scheduling enabled)
+        3. Default limit (fallback)
+
+        Returns: bandwidth limit in KB/s (0 = unlimited)
+        """
+        # If job has specific limit, use it
+        if job_limit and int(job_limit) > 0:
+            return int(job_limit)
+
+        # Check if scheduling is enabled
+        if not Config.C.get("BANDWIDTH_SCHEDULE_ENABLED", False):
+            return int(Config.C.get("DEFAULT_BANDWIDTH_LIMIT", 0) or 0)
+
+        # Get current time
+        now = datetime.now()
+        current_minutes = now.hour * 60 + now.minute
+
+        # Parse profile start times
+        try:
+            a_start = Config.C.get("BANDWIDTH_PROFILE_A_START", "22:00")
+            b_start = Config.C.get("BANDWIDTH_PROFILE_B_START", "06:00")
+
+            a_parts = a_start.split(":")
+            b_parts = b_start.split(":")
+
+            a_minutes = int(a_parts[0]) * 60 + int(a_parts[1])
+            b_minutes = int(b_parts[0]) * 60 + int(b_parts[1])
+        except (ValueError, IndexError):
+            # Fallback to default if parsing fails
+            return int(Config.C.get("DEFAULT_BANDWIDTH_LIMIT", 0) or 0)
+
+        # Determine which profile is active
+        # Profile A: from A_START to B_START
+        # Profile B: from B_START to A_START
+
+        a_limit = int(Config.C.get("BANDWIDTH_PROFILE_A_LIMIT", 0) or 0)
+        b_limit = int(Config.C.get("BANDWIDTH_PROFILE_B_LIMIT", 0) or 0)
+
+        if a_minutes < b_minutes:
+            # Simple case: A starts before B (e.g., A=06:00, B=22:00)
+            if a_minutes <= current_minutes < b_minutes:
+                return a_limit
+            else:
+                return b_limit
+        else:
+            # Wrapped case: A starts after B (e.g., A=22:00, B=06:00)
+            # Profile A is active from 22:00 to 23:59 and 00:00 to 06:00
+            if current_minutes >= a_minutes or current_minutes < b_minutes:
+                return a_limit
+            else:
+                return b_limit
+
+    @staticmethod
+    def get_current_profile():
+        """Get the name of the currently active profile"""
+        if not Config.C.get("BANDWIDTH_SCHEDULE_ENABLED", False):
+            return "Default"
+
+        now = datetime.now()
+        current_minutes = now.hour * 60 + now.minute
+
+        try:
+            a_start = Config.C.get("BANDWIDTH_PROFILE_A_START", "22:00")
+            b_start = Config.C.get("BANDWIDTH_PROFILE_B_START", "06:00")
+
+            a_parts = a_start.split(":")
+            b_parts = b_start.split(":")
+
+            a_minutes = int(a_parts[0]) * 60 + int(a_parts[1])
+            b_minutes = int(b_parts[0]) * 60 + int(b_parts[1])
+        except (ValueError, IndexError):
+            return "Default"
+
+        if a_minutes < b_minutes:
+            if a_minutes <= current_minutes < b_minutes:
+                return "Profile A (Night)"
+            else:
+                return "Profile B (Day)"
+        else:
+            if current_minutes >= a_minutes or current_minutes < b_minutes:
+                return "Profile A (Night)"
+            else:
+                return "Profile B (Day)"
 
 # ============================================
 # LOGGING
@@ -207,7 +317,7 @@ START_TIME = time.time()
 
 class Database:
     # Schema version for migrations
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
     
     def __init__(self):
         self.db_path = os.path.join(Config.DATA_DIR, Config.DB_FILE)
@@ -332,19 +442,32 @@ class Database:
             if current_version < 3:
                 # Migration to v3: Add pre/post script columns
                 logger.info("[Database] Migrating to schema v3...")
-                
+
                 columns = [row['name'] for row in conn.execute("PRAGMA table_info(backup_jobs)").fetchall()]
-                
+
                 if 'pre_script' not in columns:
                     conn.execute("ALTER TABLE backup_jobs ADD COLUMN pre_script TEXT")
                     logger.info("[Database] Added pre_script column")
-                
+
                 if 'post_script' not in columns:
                     conn.execute("ALTER TABLE backup_jobs ADD COLUMN post_script TEXT")
                     logger.info("[Database] Added post_script column")
-                
+
                 conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", (3,))
                 logger.info("[Database] Migration to v3 complete")
+
+            if current_version < 4:
+                # Migration to v4: Add checksum verification column
+                logger.info("[Database] Migrating to schema v4...")
+
+                columns = [row['name'] for row in conn.execute("PRAGMA table_info(backup_jobs)").fetchall()]
+
+                if 'verify_checksum' not in columns:
+                    conn.execute("ALTER TABLE backup_jobs ADD COLUMN verify_checksum INTEGER DEFAULT 0")
+                    logger.info("[Database] Added verify_checksum column")
+
+                conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", (4,))
+                logger.info("[Database] Migration to v4 complete")
     
     @contextmanager
     def _conn(self):
@@ -415,13 +538,13 @@ class Database:
         logger.info(f"[Database] Creating job: {job_data.get('name')}")
         with self._conn() as conn:
             cursor = conn.execute('''
-                INSERT INTO backup_jobs (name, job_type, source_path, dest_path, 
+                INSERT INTO backup_jobs (name, job_type, source_path, dest_path,
                     remote_host, remote_share, remote_mount_point, remote_user, remote_pass,
-                    mac_address, use_wol, shutdown_after, schedule_type, 
+                    mac_address, use_wol, shutdown_after, schedule_type,
                     schedule_hour, schedule_minute, schedule_day, schedule_cron,
-                    bandwidth_limit, exclude_patterns, retention_count, retention_days, 
-                    enabled, retry_on_failure, pre_script, post_script)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    bandwidth_limit, exclude_patterns, retention_count, retention_days,
+                    enabled, retry_on_failure, pre_script, post_script, verify_checksum)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 job_data.get('name'),
                 job_data.get('job_type', 'local'),
@@ -447,7 +570,8 @@ class Database:
                 int(job_data.get('enabled', 1)),
                 int(job_data.get('retry_on_failure', 1)),
                 job_data.get('pre_script'),
-                job_data.get('post_script')
+                job_data.get('post_script'),
+                int(job_data.get('verify_checksum', 0))
             ))
             return cursor.lastrowid
     
@@ -462,7 +586,7 @@ class Database:
                     mac_address = ?, use_wol = ?, shutdown_after = ?, schedule_type = ?,
                     schedule_hour = ?, schedule_minute = ?, schedule_day = ?, schedule_cron = ?,
                     bandwidth_limit = ?, exclude_patterns = ?, retention_count = ?, retention_days = ?,
-                    enabled = ?, retry_on_failure = ?, pre_script = ?, post_script = ?,
+                    enabled = ?, retry_on_failure = ?, pre_script = ?, post_script = ?, verify_checksum = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             ''', (
@@ -491,6 +615,7 @@ class Database:
                 int(job_data.get('retry_on_failure', 1)),
                 job_data.get('pre_script'),
                 job_data.get('post_script'),
+                int(job_data.get('verify_checksum', 0)),
                 job_id
             ))
     
@@ -901,27 +1026,27 @@ class NotifyManager:
     def send_daily_summary(cls):
         if not Config.C.get("DISCORD_DAILY_SUMMARY", False):
             return
-        
+
         url = Config.C.get("DISCORD_WEBHOOK_URL", "")
         if not url:
             return
-        
+
         today = datetime.now().strftime('%Y-%m-%d')
         stats = DB.get_stats(1)
-        
+
         if not stats:
             return
-        
+
         stat = stats[0]
         total = stat.get('total_jobs_run', 0)
         success = stat.get('successful_jobs', 0)
         failed = stat.get('failed_jobs', 0)
         total_bytes = stat.get('total_bytes', 0)
-        
+
         gb = total_bytes / (1024**3) if total_bytes else 0
-        
+
         color = "green" if failed == 0 else ("orange" if success > 0 else "red")
-        
+
         cls.discord_notify(
             f"📊 Daily Summary - {today}",
             f"Total jobs: {total}\nSuccessful: {success}\nFailed: {failed}",
@@ -931,6 +1056,89 @@ class NotifyManager:
                 {"name": "Success Rate", "value": f"{(success/max(total,1))*100:.0f}%", "inline": True}
             ]
         )
+
+    @classmethod
+    def send_weekly_summary(cls):
+        """Send weekly summary report"""
+        if not Config.C.get("DISCORD_WEEKLY_SUMMARY", False):
+            return
+
+        url = Config.C.get("DISCORD_WEBHOOK_URL", "")
+        if not url:
+            return
+
+        stats = DB.get_stats(7)
+
+        if not stats:
+            return
+
+        # Aggregate weekly stats
+        total = sum(s.get('total_jobs_run', 0) for s in stats)
+        success = sum(s.get('successful_jobs', 0) for s in stats)
+        failed = sum(s.get('failed_jobs', 0) for s in stats)
+        total_bytes = sum(s.get('total_bytes', 0) for s in stats)
+        total_duration = sum(s.get('total_duration', 0) for s in stats)
+
+        gb = total_bytes / (1024**3) if total_bytes else 0
+        hours = total_duration / 3600 if total_duration else 0
+
+        color = "green" if failed == 0 else ("orange" if success > 0 else "red")
+
+        week_start = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        week_end = datetime.now().strftime('%Y-%m-%d')
+
+        cls.discord_notify(
+            f"📈 Weekly Summary ({week_start} to {week_end})",
+            f"Total jobs: {total}\nSuccessful: {success}\nFailed: {failed}",
+            color,
+            [
+                {"name": "Data Transferred", "value": f"{gb:.2f} GB", "inline": True},
+                {"name": "Success Rate", "value": f"{(success/max(total,1))*100:.0f}%", "inline": True},
+                {"name": "Total Duration", "value": f"{hours:.1f} hours", "inline": True}
+            ]
+        )
+        logger.info("[Notify] Weekly summary sent")
+
+    @classmethod
+    def send_monthly_summary(cls):
+        """Send monthly summary report"""
+        if not Config.C.get("DISCORD_MONTHLY_SUMMARY", False):
+            return
+
+        url = Config.C.get("DISCORD_WEBHOOK_URL", "")
+        if not url:
+            return
+
+        stats = DB.get_stats(30)
+
+        if not stats:
+            return
+
+        # Aggregate monthly stats
+        total = sum(s.get('total_jobs_run', 0) for s in stats)
+        success = sum(s.get('successful_jobs', 0) for s in stats)
+        failed = sum(s.get('failed_jobs', 0) for s in stats)
+        total_bytes = sum(s.get('total_bytes', 0) for s in stats)
+        total_duration = sum(s.get('total_duration', 0) for s in stats)
+
+        gb = total_bytes / (1024**3) if total_bytes else 0
+        hours = total_duration / 3600 if total_duration else 0
+
+        color = "green" if failed == 0 else ("orange" if success > 0 else "red")
+
+        month_name = datetime.now().strftime('%B %Y')
+
+        cls.discord_notify(
+            f"📊 Monthly Summary - {month_name}",
+            f"Total jobs: {total}\nSuccessful: {success}\nFailed: {failed}",
+            color,
+            [
+                {"name": "Data Transferred", "value": f"{gb:.2f} GB", "inline": True},
+                {"name": "Success Rate", "value": f"{(success/max(total,1))*100:.0f}%", "inline": True},
+                {"name": "Total Duration", "value": f"{hours:.1f} hours", "inline": True}
+            ]
+        )
+        logger.info("[Notify] Monthly summary sent")
 
 # ============================================
 # BACKUP ENGINE
@@ -1290,9 +1498,17 @@ class BackupEngine:
         options = Config.C.get("RSYNC_OPTIONS", "-avh --delete --stats")
         cmd.extend(options.split())
         
-        bw_limit = int(job.get('bandwidth_limit', 0) or 0) or int(Config.C.get("DEFAULT_BANDWIDTH_LIMIT", 0) or 0)
+        # Get effective bandwidth limit (considers job setting, schedule, and default)
+        job_bw = int(job.get('bandwidth_limit', 0) or 0)
+        bw_limit = BandwidthScheduler.get_effective_limit(job_bw)
         if bw_limit > 0:
             cmd.append(f'--bwlimit={bw_limit}')
+            logger.info(f"[BackupEngine] Bandwidth limit: {bw_limit} KB/s ({BandwidthScheduler.get_current_profile()})")
+
+        # Checksum verification (slower but more accurate)
+        if job.get('verify_checksum'):
+            cmd.append('--checksum')
+            logger.info("[BackupEngine] Checksum verification enabled")
         
         excludes = job.get('exclude_patterns', '') or ''
         for pattern in excludes.split('\n'):
@@ -1388,6 +1604,8 @@ class Scheduler:
     _stopped = False
     _last_run = {}
     _summary_sent_today = False
+    _weekly_sent_this_week = False
+    _monthly_sent_this_month = False
     
     @classmethod
     def start(cls):
@@ -1427,13 +1645,35 @@ class Scheduler:
     @classmethod
     def _check_daily_summary(cls, now):
         summary_hour = Config.C.get("DISCORD_SUMMARY_HOUR", 20)
-        
+
         if now.hour == summary_hour and now.minute == 0:
             if not cls._summary_sent_today:
                 NotifyManager.send_daily_summary()
                 cls._summary_sent_today = True
         elif now.hour != summary_hour:
             cls._summary_sent_today = False
+
+        # Check weekly summary
+        weekly_day = int(Config.C.get("DISCORD_WEEKLY_DAY", 0))  # 0=Monday
+        weekly_hour = int(Config.C.get("DISCORD_WEEKLY_HOUR", 9))
+
+        if now.weekday() == weekly_day and now.hour == weekly_hour and now.minute == 0:
+            if not cls._weekly_sent_this_week:
+                NotifyManager.send_weekly_summary()
+                cls._weekly_sent_this_week = True
+        elif now.weekday() != weekly_day:
+            cls._weekly_sent_this_week = False
+
+        # Check monthly summary
+        monthly_day = int(Config.C.get("DISCORD_MONTHLY_DAY", 1))
+        monthly_hour = int(Config.C.get("DISCORD_MONTHLY_HOUR", 9))
+
+        if now.day == monthly_day and now.hour == monthly_hour and now.minute == 0:
+            if not cls._monthly_sent_this_month:
+                NotifyManager.send_monthly_summary()
+                cls._monthly_sent_this_month = True
+        elif now.day != monthly_day:
+            cls._monthly_sent_this_month = False
     
     @classmethod
     def _check_jobs(cls, now):
@@ -1651,6 +1891,54 @@ class APIHandler(BaseHTTPRequestHandler):
             
             elif path == '/api/settings':
                 self._send_json({'success': True, 'settings': Config.C})
+
+            elif path == '/api/export/jobs':
+                # Export all jobs as JSON
+                jobs = DB.get_jobs()
+                # Remove sensitive fields for export
+                for job in jobs:
+                    job.pop('remote_pass', None)  # Don't export passwords
+                    job.pop('id', None)  # Remove IDs (will be recreated on import)
+                    job.pop('created_at', None)
+                    job.pop('updated_at', None)
+                    job.pop('retry_count', None)
+                    job.pop('last_retry_at', None)
+                export_data = {
+                    'version': Config.VERSION,
+                    'export_date': datetime.now().isoformat(),
+                    'export_type': 'jobs',
+                    'jobs': jobs
+                }
+                self._send_json({'success': True, 'data': export_data})
+
+            elif path == '/api/export/settings':
+                # Export settings (exclude sensitive data)
+                settings = Config.C.copy()
+                settings.pop('DISCORD_WEBHOOK_URL', None)  # Don't export webhook
+                export_data = {
+                    'version': Config.VERSION,
+                    'export_date': datetime.now().isoformat(),
+                    'export_type': 'settings',
+                    'settings': settings
+                }
+                self._send_json({'success': True, 'data': export_data})
+
+            elif path == '/api/bandwidth/status':
+                # Get current bandwidth profile status
+                self._send_json({
+                    'success': True,
+                    'scheduling_enabled': Config.C.get("BANDWIDTH_SCHEDULE_ENABLED", False),
+                    'current_profile': BandwidthScheduler.get_current_profile(),
+                    'effective_limit': BandwidthScheduler.get_effective_limit(0),
+                    'profile_a': {
+                        'start': Config.C.get("BANDWIDTH_PROFILE_A_START", "22:00"),
+                        'limit': Config.C.get("BANDWIDTH_PROFILE_A_LIMIT", 0)
+                    },
+                    'profile_b': {
+                        'start': Config.C.get("BANDWIDTH_PROFILE_B_START", "06:00"),
+                        'limit': Config.C.get("BANDWIDTH_PROFILE_B_LIMIT", 0)
+                    }
+                })
             
             else:
                 self._send_json({'success': False, 'error': 'Not found'}, 404)
@@ -1742,6 +2030,47 @@ class APIHandler(BaseHTTPRequestHandler):
                 else:
                     self._send_json({'success': False, 'error': 'Share required'})
             
+            elif path == '/api/import/jobs':
+                # Import jobs from JSON
+                import_data = data.get('data', {})
+                if import_data.get('export_type') != 'jobs':
+                    self._send_json({'success': False, 'error': 'Invalid export type'}, 400)
+                else:
+                    jobs = import_data.get('jobs', [])
+                    imported = 0
+                    skipped = 0
+                    for job in jobs:
+                        try:
+                            # Check if job with same name exists
+                            existing = [j for j in DB.get_jobs() if j.get('name') == job.get('name')]
+                            if existing:
+                                skipped += 1
+                                continue
+                            DB.create_job(job)
+                            imported += 1
+                        except Exception as e:
+                            logger.error(f"[API] Failed to import job: {e}")
+                            skipped += 1
+                    self._send_json({
+                        'success': True,
+                        'message': f'Imported {imported} jobs, skipped {skipped}',
+                        'imported': imported,
+                        'skipped': skipped
+                    })
+
+            elif path == '/api/import/settings':
+                # Import settings from JSON
+                import_data = data.get('data', {})
+                if import_data.get('export_type') != 'settings':
+                    self._send_json({'success': False, 'error': 'Invalid export type'}, 400)
+                else:
+                    settings = import_data.get('settings', {})
+                    # Don't overwrite sensitive settings
+                    settings.pop('DISCORD_WEBHOOK_URL', None)
+                    Config.C.update(settings)
+                    success, msg = Config.save()
+                    self._send_json({'success': success, 'message': msg})
+
             # Database management endpoints
             elif path == '/api/database/clear_history':
                 DB.clear_history()
