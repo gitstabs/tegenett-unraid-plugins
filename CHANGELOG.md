@@ -4,6 +4,17 @@ All notable changes to Tegenett Unraid Plugins.
 
 ---
 
+## [2026.01.31e] - Improved Install/Remove Scripts
+
+### Install Script Improvements
+- **NEW**: Pre-install Unraid version check (requires 7.0.0+)
+- **NEW**: Standardized install output format (matches Community Applications style)
+- **NEW**: Remove script now cleans up PLG file from `/boot/config/plugins/`
+- **IMPROVED**: Better user feedback during install/remove
+- **PRESERVED**: Settings and data are kept on uninstall (user must manually delete if wanted)
+
+---
+
 ## [2026.01.31d] - Plugin Display Names (Fixed!)
 
 ### Display Names

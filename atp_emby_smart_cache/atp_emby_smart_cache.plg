@@ -3,7 +3,7 @@
 <!ENTITY name        "atp_emby_smart_cache">
 <!ENTITY displayName "ATP Emby Smart Cache">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.01.31b">
+<!ENTITY version     "2026.01.31c">
 <!ENTITY launch      "Settings/AtpEmbySmartCache">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
@@ -98,6 +98,26 @@
 - NEW: Speed/time tracking for cache operations
 </CHANGES>
 
+<!-- Pre-install: Version check -->
+<FILE Run="/usr/bin/php">
+<INLINE>
+<![CDATA[
+<?php
+$version = parse_ini_file("/etc/unraid-version");
+if (version_compare($version['version'], "7.0.0", "<")) {
+    echo "********************************************************************\n";
+    echo "\n";
+    echo "ATP Emby Smart Cache requires Unraid version 7.0.0 or newer\n";
+    echo "Your version: " . $version['version'] . "\n";
+    echo "\n";
+    echo "********************************************************************\n";
+    exit(1);
+}
+?>
+]]>
+</INLINE>
+</FILE>
+
 <!-- Pre-install: Stop existing service and clean up -->
 <FILE Run="/bin/bash">
 <INLINE>
@@ -144,7 +164,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.01.31b";
+$version = "v2026.01.31c";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -5078,6 +5098,7 @@ Issues: https://github.com/gitstabs/tegenett-unraid-plugins/issues
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_emby_smart_cache"
+PLUGIN_VERSION="2026.01.31c"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
@@ -5110,13 +5131,17 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Emby Smart Cache v2026.01.31b installed!"
-echo "Service will start in 5 seconds..."
+echo "----------------------------------------------------"
+echo " ATP Emby Smart Cache has been installed."
+echo " Copyright 2024-2026, Tegenett"
+echo " Version: $PLUGIN_VERSION"
+echo "----------------------------------------------------"
 echo ""
 echo "IMPORTANT: Configure settings before enabling:"
 echo "  - Emby Host URL"
 echo "  - Emby API Key"
 echo "  - Cache Path"
+echo ""
 ]]>
 </INLINE>
 </FILE>
@@ -5145,14 +5170,25 @@ if [ -f "$GO_FILE" ]; then
     sed -i "/rc.${PLUGIN_NAME}/d" "$GO_FILE"
 fi
 
-# Remove plugin files (keep config and data)
+# Remove plugin files from RAM
 rm -rf "/usr/local/emhttp/plugins/${PLUGIN_NAME}"
+
+# Remove PLG file from boot (keeps settings.json and database)
+rm -f "/boot/config/plugins/${PLUGIN_NAME}.plg"
+
+# Clean up log files
 rm -f "/var/log/${PLUGIN_NAME}_install.log"
 rm -f "/var/log/${PLUGIN_NAME}_startup.log"
 
-echo "ATP Emby Smart Cache removed."
-echo "Config preserved at: /boot/config/plugins/${PLUGIN_NAME}"
-echo "Data preserved at: /mnt/user/appdata/${PLUGIN_NAME}"
+echo ""
+echo "----------------------------------------------------"
+echo " ATP Emby Smart Cache has been removed."
+echo "----------------------------------------------------"
+echo ""
+echo "Settings preserved at: /boot/config/plugins/${PLUGIN_NAME}/"
+echo "Data preserved at: /mnt/user/appdata/${PLUGIN_NAME}/"
+echo ""
+echo "To completely remove all data, manually delete these folders."
 ]]>
 </INLINE>
 </FILE>

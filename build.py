@@ -375,6 +375,26 @@ def build_atp_emby_smart_cache() -> bool:
 - NEW: Speed/time tracking for cache operations
 </CHANGES>
 
+<!-- Pre-install: Version check -->
+<FILE Run="/usr/bin/php">
+<INLINE>
+<![CDATA[
+<?php
+$version = parse_ini_file("/etc/unraid-version");
+if (version_compare($version['version'], "7.0.0", "<")) {{
+    echo "********************************************************************\\n";
+    echo "\\n";
+    echo "ATP Emby Smart Cache requires Unraid version 7.0.0 or newer\\n";
+    echo "Your version: " . $version['version'] . "\\n";
+    echo "\\n";
+    echo "********************************************************************\\n";
+    exit(1);
+}}
+?>
+]]>
+</INLINE>
+</FILE>
+
 <!-- Pre-install: Stop existing service and clean up -->
 <FILE Run="/bin/bash">
 <INLINE>
@@ -457,6 +477,7 @@ echo "$(date): Pre-install complete" >> "$LOG"
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_emby_smart_cache"
+PLUGIN_VERSION="{version}"
 DATA_DIR="/mnt/user/appdata/${{PLUGIN_NAME}}"
 CONFIG_DIR="/boot/config/plugins/${{PLUGIN_NAME}}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${{PLUGIN_NAME}}/rc.${{PLUGIN_NAME}}"
@@ -489,13 +510,17 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Emby Smart Cache v{version} installed!"
-echo "Service will start in 5 seconds..."
+echo "----------------------------------------------------"
+echo " ATP Emby Smart Cache has been installed."
+echo " Copyright 2024-2026, Tegenett"
+echo " Version: $PLUGIN_VERSION"
+echo "----------------------------------------------------"
 echo ""
 echo "IMPORTANT: Configure settings before enabling:"
 echo "  - Emby Host URL"
 echo "  - Emby API Key"
 echo "  - Cache Path"
+echo ""
 ]]>
 </INLINE>
 </FILE>
@@ -524,14 +549,25 @@ if [ -f "$GO_FILE" ]; then
     sed -i "/rc.${{PLUGIN_NAME}}/d" "$GO_FILE"
 fi
 
-# Remove plugin files (keep config and data)
+# Remove plugin files from RAM
 rm -rf "/usr/local/emhttp/plugins/${{PLUGIN_NAME}}"
+
+# Remove PLG file from boot (keeps settings.json and database)
+rm -f "/boot/config/plugins/${{PLUGIN_NAME}}.plg"
+
+# Clean up log files
 rm -f "/var/log/${{PLUGIN_NAME}}_install.log"
 rm -f "/var/log/${{PLUGIN_NAME}}_startup.log"
 
-echo "ATP Emby Smart Cache removed."
-echo "Config preserved at: /boot/config/plugins/${{PLUGIN_NAME}}"
-echo "Data preserved at: /mnt/user/appdata/${{PLUGIN_NAME}}"
+echo ""
+echo "----------------------------------------------------"
+echo " ATP Emby Smart Cache has been removed."
+echo "----------------------------------------------------"
+echo ""
+echo "Settings preserved at: /boot/config/plugins/${{PLUGIN_NAME}}/"
+echo "Data preserved at: /mnt/user/appdata/${{PLUGIN_NAME}}/"
+echo ""
+echo "To completely remove all data, manually delete these folders."
 ]]>
 </INLINE>
 </FILE>
@@ -666,6 +702,26 @@ def build_atp_backup() -> bool:
 - Initial release
 </CHANGES>
 
+<!-- Pre-install: Version check -->
+<FILE Run="/usr/bin/php">
+<INLINE>
+<![CDATA[
+<?php
+$version = parse_ini_file("/etc/unraid-version");
+if (version_compare($version['version'], "7.0.0", "<")) {{
+    echo "********************************************************************\\n";
+    echo "\\n";
+    echo "ATP Backup requires Unraid version 7.0.0 or newer\\n";
+    echo "Your version: " . $version['version'] . "\\n";
+    echo "\\n";
+    echo "********************************************************************\\n";
+    exit(1);
+}}
+?>
+]]>
+</INLINE>
+</FILE>
+
 <!-- Pre-install: Stop existing service and clean up -->
 <FILE Run="/bin/bash">
 <INLINE>
@@ -745,6 +801,7 @@ echo "$(date): Pre-install complete" >> "$LOG"
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_backup"
+PLUGIN_VERSION="{version}"
 DATA_DIR="/mnt/user/appdata/${{PLUGIN_NAME}}"
 CONFIG_DIR="/boot/config/plugins/${{PLUGIN_NAME}}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${{PLUGIN_NAME}}/rc.${{PLUGIN_NAME}}"
@@ -777,8 +834,12 @@ fi
 
 echo "$(date): Post-install complete" >> "$LOG"
 echo ""
-echo "ATP Backup v{version} installed!"
-echo "Service will start in 5 seconds..."
+echo "----------------------------------------------------"
+echo " ATP Backup has been installed."
+echo " Copyright 2024-2026, Tegenett"
+echo " Version: $PLUGIN_VERSION"
+echo "----------------------------------------------------"
+echo ""
 ]]>
 </INLINE>
 </FILE>
@@ -807,14 +868,25 @@ if [ -f "$GO_FILE" ]; then
     sed -i "/rc.${{PLUGIN_NAME}}/d" "$GO_FILE"
 fi
 
-# Remove plugin files (keep config and data)
+# Remove plugin files from RAM
 rm -rf "/usr/local/emhttp/plugins/${{PLUGIN_NAME}}"
+
+# Remove PLG file from boot (keeps settings.json and database)
+rm -f "/boot/config/plugins/${{PLUGIN_NAME}}.plg"
+
+# Clean up log files
 rm -f "/var/log/${{PLUGIN_NAME}}_install.log"
 rm -f "/var/log/${{PLUGIN_NAME}}_startup.log"
 
-echo "ATP Backup removed."
-echo "Config preserved at: /boot/config/plugins/${{PLUGIN_NAME}}"
-echo "Data preserved at: /mnt/user/appdata/${{PLUGIN_NAME}}"
+echo ""
+echo "----------------------------------------------------"
+echo " ATP Backup has been removed."
+echo "----------------------------------------------------"
+echo ""
+echo "Settings preserved at: /boot/config/plugins/${{PLUGIN_NAME}}/"
+echo "Data preserved at: /mnt/user/appdata/${{PLUGIN_NAME}}/"
+echo ""
+echo "To completely remove all data, manually delete these folders."
 ]]>
 </INLINE>
 </FILE>
