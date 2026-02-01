@@ -1042,6 +1042,11 @@ def build_atp_lsi_monitor() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="{icon_attr}" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31m
+- NEW: Refresh button added to Temperature History tab
+- FIX: Chart timestamps now display in local timezone (was 1 hour off)
+- FIX: Alert timestamps also corrected
+
 ##2026.01.31l
 - UI: Tabs CSS refactored - border now uses ::after pseudo-element
 - UI: Cleaner implementation for connected tab bar design

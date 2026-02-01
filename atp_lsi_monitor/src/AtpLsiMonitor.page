@@ -9,7 +9,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31l";
+$version = "v2026.01.31m";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -836,6 +836,9 @@ if (file_exists($pidFile)) {
                         <option value="168">Last 7 days</option>
                         <option value="720">Last 30 days</option>
                     </select>
+                    <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadTempHistory()">
+                        <i class="fa fa-sync"></i> Refresh
+                    </button>
                     <button class="lsi-btn lsi-btn-primary" onclick="readTemperature()" style="padding: 10px 24px; min-width: 130px;">
                         <i class="fa fa-thermometer"></i> Read Now
                     </button>
@@ -1479,7 +1482,8 @@ function loadTempStats(period) {
         if (data.success) {
             const now = new Date();
             const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
-            const count = data.alerts.filter(a => new Date(a.timestamp) > dayAgo).length;
+            // Timestamp from SQLite is UTC, append 'Z' to parse correctly
+            const count = data.alerts.filter(a => new Date(a.timestamp.replace(' ', 'T') + 'Z') > dayAgo).length;
             document.getElementById('alertCount').textContent = count;
         }
     });
@@ -1493,7 +1497,8 @@ function loadTempChart() {
         if (tempChart) tempChart.destroy();
 
         const labels = data.history.map(h => {
-            const d = new Date(h.timestamp);
+            // Timestamp from SQLite is UTC, append 'Z' to parse correctly
+            const d = new Date(h.timestamp.replace(' ', 'T') + 'Z');
             return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         });
         const temps = data.history.map(h => h.ioc_temp);
@@ -1584,7 +1589,8 @@ function loadTempHistory() {
         if (tempHistoryChart) tempHistoryChart.destroy();
 
         const labels = data.history.map(h => {
-            const d = new Date(h.timestamp);
+            // Timestamp from SQLite is UTC, append 'Z' to parse correctly
+            const d = new Date(h.timestamp.replace(' ', 'T') + 'Z');
             return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         });
         const temps = data.history.map(h => h.ioc_temp);
@@ -1807,14 +1813,17 @@ function loadAlerts() {
             return;
         }
 
-        tbody.innerHTML = data.alerts.map(a => `
+        tbody.innerHTML = data.alerts.map(a => {
+            // Timestamp from SQLite is UTC, append 'Z' to parse correctly
+            const d = new Date(a.timestamp.replace(' ', 'T') + 'Z');
+            return `
             <tr>
-                <td>${new Date(a.timestamp).toLocaleString()}</td>
+                <td>${d.toLocaleString()}</td>
                 <td>${a.alert_type}</td>
                 <td><span class="lsi-status-badge ${a.severity}" style="padding: 2px 8px; font-size: 11px; height: auto; line-height: 1.5;">${a.severity}</span></td>
                 <td>${escapeHtml(a.message)}</td>
             </tr>
-        `).join('');
+        `}).join('');
     });
 }
 

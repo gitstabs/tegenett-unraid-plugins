@@ -3,7 +3,7 @@
 <!ENTITY name        "atp_lsi_monitor">
 <!ENTITY displayName "ATP LSI Monitor">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.01.31l">
+<!ENTITY version     "2026.01.31m">
 <!ENTITY launch      "Settings/AtpLsiMonitor">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_lsi_monitor/atp_lsi_monitor.plg">
 ]>
@@ -11,6 +11,11 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="atp-lsi-monitor.png" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31m
+- NEW: Refresh button added to Temperature History tab
+- FIX: Chart timestamps now display in local timezone (was 1 hour off)
+- FIX: Alert timestamps also corrected
+
 ##2026.01.31l
 - UI: Tabs CSS refactored - border now uses ::after pseudo-element
 - UI: Cleaner implementation for connected tab bar design
@@ -156,7 +161,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31l";
+$version = "v2026.01.31m";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -1746,6 +1751,9 @@ if (file_exists($pidFile)) {
                         <option value="168">Last 7 days</option>
                         <option value="720">Last 30 days</option>
                     </select>
+                    <button class="lsi-btn lsi-btn-secondary lsi-btn-sm" onclick="loadTempHistory()">
+                        <i class="fa fa-sync"></i> Refresh
+                    </button>
                     <button class="lsi-btn lsi-btn-primary" onclick="readTemperature()" style="padding: 10px 24px; min-width: 130px;">
                         <i class="fa fa-thermometer"></i> Read Now
                     </button>
@@ -2389,7 +2397,8 @@ function loadTempStats(period) {
         if (data.success) {
             const now = new Date();
             const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
-            const count = data.alerts.filter(a => new Date(a.timestamp) > dayAgo).length;
+            // Timestamp from SQLite is UTC, append 'Z' to parse correctly
+            const count = data.alerts.filter(a => new Date(a.timestamp.replace(' ', 'T') + 'Z') > dayAgo).length;
             document.getElementById('alertCount').textContent = count;
         }
     });
@@ -2403,7 +2412,8 @@ function loadTempChart() {
         if (tempChart) tempChart.destroy();
 
         const labels = data.history.map(h => {
-            const d = new Date(h.timestamp);
+            // Timestamp from SQLite is UTC, append 'Z' to parse correctly
+            const d = new Date(h.timestamp.replace(' ', 'T') + 'Z');
             return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         });
         const temps = data.history.map(h => h.ioc_temp);
@@ -2494,7 +2504,8 @@ function loadTempHistory() {
         if (tempHistoryChart) tempHistoryChart.destroy();
 
         const labels = data.history.map(h => {
-            const d = new Date(h.timestamp);
+            // Timestamp from SQLite is UTC, append 'Z' to parse correctly
+            const d = new Date(h.timestamp.replace(' ', 'T') + 'Z');
             return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         });
         const temps = data.history.map(h => h.ioc_temp);
@@ -2717,14 +2728,17 @@ function loadAlerts() {
             return;
         }
 
-        tbody.innerHTML = data.alerts.map(a => `
+        tbody.innerHTML = data.alerts.map(a => {
+            // Timestamp from SQLite is UTC, append 'Z' to parse correctly
+            const d = new Date(a.timestamp.replace(' ', 'T') + 'Z');
+            return `
             <tr>
-                <td>${new Date(a.timestamp).toLocaleString()}</td>
+                <td>${d.toLocaleString()}</td>
                 <td>${a.alert_type}</td>
                 <td><span class="lsi-status-badge ${a.severity}" style="padding: 2px 8px; font-size: 11px; height: auto; line-height: 1.5;">${a.severity}</span></td>
                 <td>${escapeHtml(a.message)}</td>
             </tr>
-        `).join('');
+        `}).join('');
     });
 }
 
@@ -3402,7 +3416,7 @@ import hashlib
 
 PLUGIN_NAME = "atp_lsi_monitor"
 DEFAULT_PORT = 39800
-VERSION = "2026.01.31l"
+VERSION = "2026.01.31m"
 
 # Paths
 DATA_DIR = f"/mnt/user/appdata/{PLUGIN_NAME}"
@@ -5314,7 +5328,7 @@ Monitor LSI SAS HBA cards (SAS2308, 9207-8i, etc.) - temperature, PHY errors, fi
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_lsi_monitor"
-PLUGIN_VERSION="2026.01.31l"
+PLUGIN_VERSION="2026.01.31m"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
