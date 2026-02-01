@@ -9,7 +9,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31f";
+$version = "v2026.01.31g";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -1707,27 +1707,45 @@ function loadDevices() {
 
         if (!data.devices || data.devices.length === 0) {
             el.innerHTML = `
-                <div class="lsi-alert lsi-alert-info">No devices detected via lsiutil</div>
+                <div class="lsi-alert lsi-alert-info">No SATA/SAS devices connected</div>
+                <p style="margin-top: 10px; color: var(--lsi-text-muted); font-size: 12px;">
+                    SAS Initiators: ${data.sas_initiators || 0} (HBA ports)
+                </p>
                 ${data.raw ? '<details style="margin-top: 15px;"><summary style="cursor: pointer; color: var(--lsi-text-muted);">Raw lsiutil output</summary><pre style="margin-top: 10px; background: var(--lsi-bg); padding: 10px; border-radius: 4px; font-size: 11px; white-space: pre-wrap;">' + escapeHtml(data.raw) + '</pre></details>' : ''}
             `;
             return;
         }
 
         el.innerHTML = `
-            <p style="margin-bottom: 10px;">Found <strong>${data.device_count}</strong> device(s)</p>
+            <p style="margin-bottom: 10px;">
+                <strong>${data.sata_targets}</strong> SATA device(s) connected
+                <span style="color: var(--lsi-text-muted); font-size: 12px; margin-left: 10px;">
+                    (${data.sas_initiators || 8} HBA ports available)
+                </span>
+            </p>
             <table class="lsi-table">
                 <thead>
-                    <tr><th>SAS Address</th><th>Type</th></tr>
+                    <tr>
+                        <th>SAS Address</th>
+                        <th>Location</th>
+                        <th>PHY</th>
+                        <th>Link Speed</th>
+                        <th>Type</th>
+                    </tr>
                 </thead>
                 <tbody>
                     ${data.devices.map(d => `
                         <tr>
-                            <td><code>${d.sas_address}</code></td>
-                            <td>${d.device_type}</td>
+                            <td><code style="font-size: 11px;">${d.sas_address}</code></td>
+                            <td>${d.device_name || '-'}</td>
+                            <td>${d.phy_num !== undefined ? d.phy_num : '-'}</td>
+                            <td>${d.link_speed || '-'}</td>
+                            <td><span style="background: var(--lsi-info); color: white; padding: 2px 8px; border-radius: 3px; font-size: 11px;">${d.device_type}</span></td>
                         </tr>
                     `).join('')}
                 </tbody>
             </table>
+            ${data.raw ? '<details style="margin-top: 15px;"><summary style="cursor: pointer; color: var(--lsi-text-muted);">Raw lsiutil output</summary><pre style="margin-top: 10px; background: var(--lsi-bg); padding: 10px; border-radius: 4px; font-size: 11px; white-space: pre-wrap;">' + escapeHtml(data.raw) + '</pre></details>' : ''}
         `;
     });
 }

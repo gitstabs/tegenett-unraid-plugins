@@ -1042,6 +1042,12 @@ def build_atp_lsi_monitor() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="{icon_attr}" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31g
+- NEW: Connected devices now shows SAS address, PHY number, link speed
+- NEW: Device table shows location (Bus/Target) and device type badges
+- FIX: Device parsing rewritten to handle lsiutil B___T format correctly
+- FIX: Link speeds parsed from "links are" line
+
 ##2026.01.31f
 - UI: Tabs redesigned - connected tab bar, no gaps between tabs
 - UI: Border line sits directly under tabs (no floating appearance)

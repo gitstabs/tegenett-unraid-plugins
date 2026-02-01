@@ -40,7 +40,7 @@ import hashlib
 
 PLUGIN_NAME = "atp_lsi_monitor"
 DEFAULT_PORT = 39800
-VERSION = "2026.01.31f"
+VERSION = "2026.01.31g"
 
 # Paths
 DATA_DIR = f"/mnt/user/appdata/{PLUGIN_NAME}"
@@ -536,63 +536,76 @@ def get_connected_devices():
         return {"success": False, "error": output}
 
     devices = []
-    sata_count = 0
-    sas_initiator_count = 0
+    sata_targets = []
+    sas_initiators = []
 
-    # Parse device summary line: "X SATA Target(s), Y SAS Initiator(s)"
-    summary_match = re.search(r'(\d+)\s+SATA\s+Target', output)
-    if summary_match:
-        sata_count = int(summary_match.group(1))
+    # Parse the device table format:
+    # B___T     SASAddress     PhyNum  Handle  Parent  Type
+    # 0   1  4433221101000000     1     0009    0001   SATA Target
+    # or without B___T for initiators:
+    #        500605b006c9f310           0001           SAS Initiator
 
-    sas_init_match = re.search(r'(\d+)\s+SAS\s+Initiator', output)
-    if sas_init_match:
-        sas_initiator_count = int(sas_init_match.group(1))
+    lines = output.split('\n')
+    for line in lines:
+        # Match SATA Target lines: " 0   1  4433221101000000     1     0009    0001   SATA Target"
+        sata_match = re.match(
+            r'\s*(\d+)\s+(\d+)\s+([0-9A-Fa-f]{16})\s+(\d+)\s+([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+)\s+SATA\s+Target',
+            line, re.IGNORECASE
+        )
+        if sata_match:
+            bus, target, sas_addr, phy_num, handle, parent = sata_match.groups()
+            sata_targets.append({
+                "sas_address": sas_addr.upper(),
+                "device_name": f"Bus {bus}, Target {target}",
+                "device_type": "SATA Target",
+                "phy_num": int(phy_num),
+                "handle": handle.upper()
+            })
+            continue
 
-    # Parse device entries - format varies by card/firmware
-    # Look for SAS Address patterns (16 hex chars or 0x format)
-    sas_pattern = re.findall(
-        r'(?:SAS\s*Address|Handle|Device)\s*[:\s]*([0-9A-Fa-f]{16}|0x[0-9A-Fa-f]+)',
-        output, re.IGNORECASE
-    )
-
-    seen_addresses = set()
-    for sas_addr in sas_pattern:
-        # Clean up address
-        addr = sas_addr.replace('0x', '').upper()
-        if addr not in seen_addresses:
-            seen_addresses.add(addr)
-            devices.append({
-                "sas_address": addr,
-                "device_name": None,
-                "device_type": "SAS/SATA"
+        # Match SAS Initiator lines: "        500605b006c9f310           0001           SAS Initiator"
+        sas_match = re.match(
+            r'\s+([0-9A-Fa-f]{16})\s+([0-9A-Fa-f]+)\s+SAS\s+Initiator',
+            line, re.IGNORECASE
+        )
+        if sas_match:
+            sas_addr, handle = sas_match.groups()
+            sas_initiators.append({
+                "sas_address": sas_addr.upper(),
+                "device_name": "SAS Initiator",
+                "device_type": "SAS Initiator",
+                "handle": handle.upper()
             })
 
-    # Parse "B___T___L" format entries (Bus_Target_LUN)
-    btl_pattern = re.findall(r'B(\d+)\s*T(\d+)\s*L(\d+)', output)
-    for bus, target, lun in btl_pattern:
-        device_id = f"B{bus}T{target}L{lun}"
-        if device_id not in [d.get('sas_address') for d in devices]:
-            devices.append({
-                "sas_address": device_id,
-                "device_name": f"Bus {bus}, Target {target}, LUN {lun}",
-                "device_type": "SATA Target" if int(target) < 100 else "SAS Initiator"
-            })
+    # Parse link speeds from: "SAS2308's links are down, 6.0 G, 6.0 G, 6.0 G, down, down, down, down"
+    link_speeds = []
+    link_match = re.search(r"links are\s+(.*?)(?:\n|$)", output, re.IGNORECASE)
+    if link_match:
+        speeds_str = link_match.group(1)
+        # Parse comma-separated speeds
+        for speed in speeds_str.split(','):
+            speed = speed.strip()
+            if 'down' in speed.lower():
+                link_speeds.append(None)
+            else:
+                link_speeds.append(speed)
 
-    # If we found SATA count but no parsed devices, create placeholder entries
-    if sata_count > 0 and len(devices) == 0:
-        for i in range(sata_count):
-            devices.append({
-                "sas_address": f"SATA-Target-{i}",
-                "device_name": f"SATA Target {i}",
-                "device_type": "SATA Target"
-            })
+    # Add link speeds to SATA targets based on PHY number
+    for device in sata_targets:
+        phy = device.get('phy_num', 0)
+        if phy > 0 and phy <= len(link_speeds):
+            device['link_speed'] = link_speeds[phy - 1]
+
+    # Combine devices - SATA targets are the actual drives
+    devices = sata_targets
 
     return {
         "success": True,
         "devices": devices,
-        "device_count": len(devices) if devices else (sata_count + sas_initiator_count),
-        "sata_targets": sata_count,
-        "sas_initiators": sas_initiator_count,
+        "device_count": len(sata_targets),
+        "sata_targets": len(sata_targets),
+        "sas_initiators": len(sas_initiators),
+        "link_speeds": link_speeds,
         "raw": output
     }
 
