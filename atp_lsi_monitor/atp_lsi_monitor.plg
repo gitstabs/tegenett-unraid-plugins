@@ -3,7 +3,7 @@
 <!ENTITY name        "atp_lsi_monitor">
 <!ENTITY displayName "ATP LSI Monitor">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.01.31j">
+<!ENTITY version     "2026.01.31k">
 <!ENTITY launch      "Settings/AtpLsiMonitor">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_lsi_monitor/atp_lsi_monitor.plg">
 ]>
@@ -11,6 +11,9 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="atp-lsi-monitor.png" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31k
+- FIX: Settings menu now shows custom icon (was microchip)
+
 ##2026.01.31j
 - UI: Tab size increased (padding 10px 20px, font 13px)
 - UI: Border line moved closer to tabs (padding-top 15px)
@@ -140,7 +143,7 @@ echo "$(date): Pre-install complete" >> "$LOG"
 <![CDATA[
 Menu="Utilities"
 Title="ATP LSI Monitor"
-Icon="microchip"
+Icon="atp-lsi-monitor.png"
 Markdown="false"
 ---
 <?php
@@ -149,7 +152,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31j";
+$version = "v2026.01.31k";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -3380,7 +3383,7 @@ import hashlib
 
 PLUGIN_NAME = "atp_lsi_monitor"
 DEFAULT_PORT = 39800
-VERSION = "2026.01.31j"
+VERSION = "2026.01.31k"
 
 # Paths
 DATA_DIR = f"/mnt/user/appdata/{PLUGIN_NAME}"
@@ -5292,7 +5295,7 @@ Monitor LSI SAS HBA cards (SAS2308, 9207-8i, etc.) - temperature, PHY errors, fi
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_lsi_monitor"
-PLUGIN_VERSION="2026.01.31j"
+PLUGIN_VERSION="2026.01.31k"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"

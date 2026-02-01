@@ -1042,6 +1042,9 @@ def build_atp_lsi_monitor() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="{icon_attr}" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31k
+- FIX: Settings menu now shows custom icon (was microchip)
+
 ##2026.01.31j
 - UI: Tab size increased (padding 10px 20px, font 13px)
 - UI: Border line moved closer to tabs (padding-top 15px)
