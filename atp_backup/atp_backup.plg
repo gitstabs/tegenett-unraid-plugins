@@ -1398,12 +1398,31 @@ if (file_exists($pidFile)) {
         text-align: center;
     }
 
+    /* Mobile tabs - simple scrollable row, no fancy borders */
+    .tb-tabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        gap: 5px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--tb-border);
+        margin-bottom: 15px;
+    }
+
+    .tb-tabs::after {
+        display: none;
+    }
+
     .tb-tab {
         padding: 8px 12px;
         font-size: 12px;
-        flex: 1 1 auto;
         text-align: center;
         min-width: 70px;
+        margin-right: 0;
+        margin-bottom: 0;
+        border-radius: 5px;
+        border: 1px solid var(--tb-border);
+        white-space: nowrap;
+        flex-shrink: 0;
     }
 
     .tb-tab i {
@@ -1412,7 +1431,11 @@ if (file_exists($pidFile)) {
 
     .tb-tab:first-child,
     .tb-tab:last-child {
-        border-radius: 0;
+        border-radius: 5px;
+    }
+
+    .tb-tab.active {
+        border-color: var(--tb-primary);
     }
 
     .tb-form-row {

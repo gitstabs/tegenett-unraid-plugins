@@ -487,19 +487,42 @@ if (file_exists($pidFile)) {
         text-align: center;
     }
 
+    /* Mobile tabs - simple scrollable row, no fancy borders */
+    .esc-tabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        gap: 5px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--esc-border);
+        margin-bottom: 15px;
+    }
+
+    .esc-tabs::after {
+        display: none;
+    }
+
     .esc-tab {
         padding: 8px 12px;
         font-size: 12px;
-        flex: 1 1 auto;
         text-align: center;
         min-width: 70px;
+        margin-right: 0;
+        margin-bottom: 0;
+        border-radius: 5px;
+        border: 1px solid var(--esc-border);
+        white-space: nowrap;
+        flex-shrink: 0;
     }
 
     .esc-tab i { margin-right: 5px; }
 
     .esc-tab:first-child,
     .esc-tab:last-child {
-        border-radius: 0;
+        border-radius: 5px;
+    }
+
+    .esc-tab.active {
+        border-color: var(--esc-primary);
     }
 
     .esc-form-row { grid-template-columns: 1fr; }
@@ -522,10 +545,10 @@ if (file_exists($pidFile)) {
     .esc-tab {
         padding: 6px 8px;
         font-size: 11px;
-        min-width: 50px;
+        min-width: 60px;
     }
 
-    .esc-tab i { margin-right: 0; }
+    .esc-tab i { display: none; }
 
     .esc-grid { grid-template-columns: 1fr 1fr; }
 

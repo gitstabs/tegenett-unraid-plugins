@@ -1507,9 +1507,36 @@ if (file_exists($pidFile)) {
         grid-template-columns: 1fr;
     }
 
+    /* Mobile tabs - simple scrollable row, no fancy borders */
     .lsi-tabs {
         overflow-x: auto;
         flex-wrap: nowrap;
+        gap: 5px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--lsi-border);
+        margin-bottom: 15px;
+    }
+
+    .lsi-tabs::after {
+        display: none;
+    }
+
+    .lsi-tab {
+        margin-right: 0;
+        margin-bottom: 0;
+        border-radius: 5px;
+        border: 1px solid var(--lsi-border);
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    .lsi-tab:first-child,
+    .lsi-tab:last-child {
+        border-radius: 5px;
+    }
+
+    .lsi-tab.active {
+        border-color: var(--lsi-primary);
     }
 
     .lsi-form-row {
