@@ -69,13 +69,83 @@ Theme colors defined in `:root`:
 --atp-radius-lg: 12px;
 ```
 
+### Tabs Component (Connected Tab Bar Design)
+
+The ATP tabs use a connected design where tabs share borders and an ::after pseudo-element creates the bottom border line. This design ensures the active tab visually "breaks" the border line.
+
+```css
+/* Tabs container with bottom border via ::after */
+.{prefix}-tabs {
+    display: flex;
+    gap: 0;
+    position: relative;
+    margin-bottom: 15px;
+}
+
+/* Border line under tabs - sits on same level as tab bottoms */
+.{prefix}-tabs::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--{prefix}-border);
+    z-index: 0;
+}
+
+/* Individual tab styling */
+.{prefix}-tab {
+    padding: 10px 20px;
+    background: var(--{prefix}-card-bg);
+    border: 1px solid var(--{prefix}-border);
+    border-bottom: 1px solid var(--{prefix}-border);
+    margin-right: -1px;           /* Overlap borders between tabs */
+    margin-bottom: -1px;          /* Sit on the ::after border line */
+    color: var(--{prefix}-text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    position: relative;
+    z-index: 1;
+}
+
+.{prefix}-tab:first-child { border-radius: 5px 0 0 0; }
+.{prefix}-tab:last-child {
+    border-right: 1px solid var(--{prefix}-border);
+    border-radius: 0 5px 0 0;
+    margin-right: 0;
+}
+
+.{prefix}-tab:hover {
+    background: rgba(255,255,255,0.05);
+    color: var(--{prefix}-text);
+}
+
+/* Active tab - orange background, hides bottom border */
+.{prefix}-tab.active {
+    background: var(--{prefix}-primary);
+    color: #fff;
+    border-color: var(--{prefix}-primary);
+    border-bottom: 1px solid var(--{prefix}-primary);  /* Same as bg = invisible */
+    z-index: 2;
+}
+
+/* Panels - simple, no border needed */
+.{prefix}-panel { display: none; }
+.{prefix}-panel.active { display: block; }
+```
+
+Replace `{prefix}` with your plugin prefix (e.g., `lsi`, `esc`, `tb`).
+
 ### Component Classes
 
 | Class | Purpose |
 |-------|---------|
 | `.atp-container` | Main container (max-width 1400px) |
 | `.atp-header` | Page header with title/controls |
-| `.atp-tabs` | Tab navigation |
+| `.atp-tabs` | Tab navigation (use CSS above) |
 | `.atp-tab` | Individual tab button |
 | `.atp-panel` | Tab content panel |
 | `.atp-card` | Content card with border |

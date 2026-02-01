@@ -8,28 +8,32 @@
 
 ---
 
+## UI/Design Tasks
+
+### 🟠 High Priority
+- [ ] Apply uniform tabs design to ATP Backup (use ::after pattern from LSI Monitor)
+- [ ] Apply uniform tabs design to ATP Emby Smart Cache (use ::after pattern from LSI Monitor)
+
+---
+
 ## ATP Backup
 
 ### 🟡 Medium Priority
 - [ ] Cloud backup support via rclone Docker container
 
 ### 🔮 Future Considerations
-- [ ] Compression option for backups (tar.gz) - *Significant architecture change needed*
-- [ ] Snapshot/versioned backups (date-stamped folders) - *Useful for rollback, needs storage planning*
-- [ ] Alternative notification channels:
-
-| Service | Privacy | Self-Hosted | Notes |
-|---------|---------|-------------|-------|
-| Discord | Medium | No | Current implementation, requires Discord account |
-| Telegram | Low | No | Phone number required, linked to identity |
-| Pushover | High | No | Paid ($5 one-time), no personal data required |
-| Slack | Medium | No | Requires workspace, good for teams |
-| Gotify | High | Yes | Self-hosted, fully private, recommended |
-| ntfy | High | Yes/No | Can self-host or use public server |
+- [ ] Compression option for backups (tar.gz)
+- [ ] Snapshot/versioned backups (date-stamped folders)
 
 ---
 
 ## ATP Emby Smart Cache
+
+*No pending tasks - feature complete for current needs*
+
+---
+
+## ATP LSI Monitor
 
 *No pending tasks - feature complete for current needs*
 

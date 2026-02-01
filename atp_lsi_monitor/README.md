@@ -157,6 +157,15 @@ Run manually to check:
 
 ## Changelog
 
+### v2026.01.31l
+- UI: Connected tab bar design using CSS ::after pseudo-element
+- UI: Custom plugin icon (Chip + T design)
+
+### v2026.01.31g
+- Connected devices now shows SAS address, PHY number, link speed
+- Device table shows location and device type badges
+- IT Mode badge shown next to firmware version
+
 ### v2026.01.31a
 - Initial release
 - IOC temperature monitoring

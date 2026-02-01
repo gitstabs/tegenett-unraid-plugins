@@ -4,6 +4,20 @@ All notable changes to Tegenett Unraid Plugins.
 
 ---
 
+## [2026.01.31l] - ATP LSI Monitor UI Polish
+
+### Tabs Design System
+- **NEW**: Connected tab bar design using CSS ::after pseudo-element
+- **UI**: Tabs now properly overlap the border line for seamless look
+- **UI**: Active tab visually "breaks" the border line
+- **DOC**: Added tabs CSS pattern to `shared/README.md` as template for all plugins
+
+### Icons
+- **NEW**: Custom ATP LSI Monitor icon (Chip + T design)
+- **FIX**: Settings menu now shows custom icon (was using Font Awesome fallback)
+
+---
+
 ## [2026.01.31g] - ATP LSI Monitor (New Plugin!)
 
 ### New Plugin: ATP LSI Monitor

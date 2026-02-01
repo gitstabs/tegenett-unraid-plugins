@@ -7,6 +7,7 @@
 | `favicon.png` | 128x128 | Tegenett "T." logo (GitHub README) |
 | `atp-backup.png` | 1024x1024 | ATP Backup plugin icon (Shield + T) |
 | `atp-emby-smart-cache.png` | 1024x1024 | ATP Emby Smart Cache icon (Play + T) |
+| `atp-lsi-monitor.png` | 256x256 | ATP LSI Monitor icon (Chip + T) |
 
 ## Color Palette
 

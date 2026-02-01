@@ -63,7 +63,16 @@ atp_new_plugin/
 Each plugin needs a unique port. Current allocations:
 - `39982` - ATP Backup
 - `39983` - ATP Emby Smart Cache
+- `39800` - ATP LSI Monitor
 - `39999` - Template (change this!)
+
+## UI Design System
+
+All ATP plugins share a consistent visual design. See `shared/README.md` for:
+- CSS variables and color scheme
+- Connected tab bar design (::after pseudo-element pattern)
+- Component classes (cards, buttons, forms, etc.)
+- Responsive breakpoints
 
 ## Key Paths on Unraid
 
