@@ -3,7 +3,7 @@
 <!ENTITY name        "atp_lsi_monitor">
 <!ENTITY displayName "ATP LSI Monitor">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.01.31g">
+<!ENTITY version     "2026.01.31h">
 <!ENTITY launch      "Settings/AtpLsiMonitor">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_lsi_monitor/atp_lsi_monitor.plg">
 ]>
@@ -11,6 +11,9 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="microchip" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31h
+- UI: Reduced tab spacing for more compact design
+
 ##2026.01.31g
 - NEW: Connected devices now shows SAS address, PHY number, link speed
 - NEW: Device table shows location (Bus/Target) and device type badges
