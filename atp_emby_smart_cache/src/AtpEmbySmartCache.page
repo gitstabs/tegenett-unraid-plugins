@@ -152,26 +152,51 @@ if (file_exists($pidFile)) {
     font-size: 0.85em;
 }
 
-/* Tabs - ESC style (full button highlight) - matches ATP Backup */
+/* Tabs - connected tab bar design */
 .esc-tabs {
     display: flex;
-    gap: 5px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid var(--esc-border);
-    padding-bottom: 10px;
+    gap: 0;
+    position: relative;
+    margin-bottom: 15px;
     flex-wrap: wrap;
+}
+
+/* Border line under tabs - sits on same level as tab bottoms */
+.esc-tabs::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--esc-border);
+    z-index: 0;
 }
 
 .esc-tab {
     padding: 10px 20px;
     background: var(--esc-card-bg);
     border: 1px solid var(--esc-border);
-    border-radius: 5px 5px 0 0;
+    border-bottom: 1px solid var(--esc-border);
+    margin-right: -1px;
+    margin-bottom: -1px;
     color: var(--esc-text-muted);
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
     transition: all 0.2s ease;
+    position: relative;
+    z-index: 1;
+}
+
+.esc-tab:first-child {
+    border-radius: 5px 0 0 0;
+}
+
+.esc-tab:last-child {
+    border-right: 1px solid var(--esc-border);
+    border-radius: 0 5px 0 0;
+    margin-right: 0;
 }
 
 .esc-tab:hover {
@@ -183,6 +208,12 @@ if (file_exists($pidFile)) {
     background: var(--esc-primary);
     color: #fff;
     border-color: var(--esc-primary);
+    border-bottom: 1px solid var(--esc-primary);
+    z-index: 2;
+}
+
+.esc-tab.active:last-child {
+    border-right-color: var(--esc-primary);
 }
 
 .esc-tab i {
@@ -456,8 +487,6 @@ if (file_exists($pidFile)) {
         text-align: center;
     }
 
-    .esc-tabs { gap: 3px; }
-
     .esc-tab {
         padding: 8px 12px;
         font-size: 12px;
@@ -467,6 +496,11 @@ if (file_exists($pidFile)) {
     }
 
     .esc-tab i { margin-right: 5px; }
+
+    .esc-tab:first-child,
+    .esc-tab:last-child {
+        border-radius: 0;
+    }
 
     .esc-form-row { grid-template-columns: 1fr; }
 
@@ -485,8 +519,6 @@ if (file_exists($pidFile)) {
 }
 
 @media (max-width: 480px) {
-    .esc-tabs { gap: 2px; }
-
     .esc-tab {
         padding: 6px 8px;
         font-size: 11px;

@@ -1015,28 +1015,52 @@ if (file_exists($pidFile)) {
     font-size: 0.85em;
 }
 
-/* Tabs - ESC style (full button highlight) */
+/* Tabs - connected tab bar design */
 .tb-tabs {
     display: flex;
-    gap: 5px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid var(--tb-border);
-    padding-bottom: 10px;
+    gap: 0;
+    position: relative;
+    margin-bottom: 15px;
     flex-wrap: wrap;
+}
+
+/* Border line under tabs - sits on same level as tab bottoms */
+.tb-tabs::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--tb-border);
+    z-index: 0;
 }
 
 .tb-tab {
     padding: 10px 20px;
-    margin: 0;
     background: var(--tb-card-bg);
     border: 1px solid var(--tb-border);
-    border-radius: 5px 5px 0 0;
+    border-bottom: 1px solid var(--tb-border);
+    margin-right: -1px;
+    margin-bottom: -1px;
     color: var(--tb-text-muted);
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
     transition: all 0.2s ease;
     font-family: inherit;
+    position: relative;
+    z-index: 1;
+}
+
+.tb-tab:first-child {
+    border-radius: 5px 0 0 0;
+}
+
+.tb-tab:last-child {
+    border-right: 1px solid var(--tb-border);
+    border-radius: 0 5px 0 0;
+    margin-right: 0;
 }
 
 .tb-tab:hover {
@@ -1048,6 +1072,12 @@ if (file_exists($pidFile)) {
     background: var(--tb-primary);
     color: #fff;
     border-color: var(--tb-primary);
+    border-bottom: 1px solid var(--tb-primary);
+    z-index: 2;
+}
+
+.tb-tab.active:last-child {
+    border-right-color: var(--tb-primary);
 }
 
 .tb-tab i {
@@ -1368,10 +1398,6 @@ if (file_exists($pidFile)) {
         text-align: center;
     }
 
-    .tb-tabs {
-        gap: 3px;
-    }
-
     .tb-tab {
         padding: 8px 12px;
         font-size: 12px;
@@ -1382,6 +1408,11 @@ if (file_exists($pidFile)) {
 
     .tb-tab i {
         margin-right: 5px;
+    }
+
+    .tb-tab:first-child,
+    .tb-tab:last-child {
+        border-radius: 0;
     }
 
     .tb-form-row {
@@ -1420,10 +1451,6 @@ if (file_exists($pidFile)) {
 }
 
 @media (max-width: 480px) {
-    .tb-tabs {
-        gap: 2px;
-    }
-
     .tb-tab {
         padding: 6px 8px;
         font-size: 11px;

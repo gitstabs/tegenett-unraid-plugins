@@ -10,9 +10,8 @@
 
 ## UI/Design Tasks
 
-### 🟠 High Priority
-- [ ] Apply uniform tabs design to ATP Backup (use ::after pattern from LSI Monitor)
-- [ ] Apply uniform tabs design to ATP Emby Smart Cache (use ::after pattern from LSI Monitor)
+### ✅ Completed
+- [x] Apply uniform tabs design to all ATP plugins (::after pattern)
 
 ---
 
