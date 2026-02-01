@@ -9,7 +9,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31i";
+$version = "v2026.01.31j";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -171,14 +171,14 @@ if (file_exists($pidFile)) {
 }
 
 .lsi-tab {
-    padding: 8px 16px;
+    padding: 10px 20px;
     background: var(--lsi-card-bg);
     border: 1px solid var(--lsi-border);
     border-bottom: 1px solid var(--lsi-border);
     margin-right: -1px;
     color: var(--lsi-text-muted);
     cursor: pointer;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     transition: all 0.2s ease;
     position: relative;
@@ -216,7 +216,7 @@ if (file_exists($pidFile)) {
 }
 
 /* Panels */
-.lsi-panel { display: none; border-top: 1px solid var(--lsi-border); padding-top: 20px; margin-top: -1px; }
+.lsi-panel { display: none; border-top: 1px solid var(--lsi-border); padding-top: 15px; margin-top: 0; }
 .lsi-panel.active { display: block; }
 
 /* Cards */
