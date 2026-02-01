@@ -1042,6 +1042,10 @@ def build_atp_lsi_monitor() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="{icon_attr}" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31l
+- UI: Tabs CSS refactored - border now uses ::after pseudo-element
+- UI: Cleaner implementation for connected tab bar design
+
 ##2026.01.31k
 - FIX: Settings menu now shows custom icon (was microchip)
 

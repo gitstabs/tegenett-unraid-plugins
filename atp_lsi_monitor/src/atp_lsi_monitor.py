@@ -40,7 +40,7 @@ import hashlib
 
 PLUGIN_NAME = "atp_lsi_monitor"
 DEFAULT_PORT = 39800
-VERSION = "2026.01.31k"
+VERSION = "2026.01.31l"
 
 # Paths
 DATA_DIR = f"/mnt/user/appdata/{PLUGIN_NAME}"
