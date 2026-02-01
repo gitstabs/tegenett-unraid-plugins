@@ -3,14 +3,20 @@
 <!ENTITY name        "atp_lsi_monitor">
 <!ENTITY displayName "ATP LSI Monitor">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.01.31h">
+<!ENTITY version     "2026.01.31i">
 <!ENTITY launch      "Settings/AtpLsiMonitor">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_lsi_monitor/atp_lsi_monitor.plg">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="microchip" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="atp-lsi-monitor.png" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31i
+- NEW: Custom plugin icon (Chip + T design by Tegenett)
+- UI: Removed header padding-bottom
+- UI: Tabs now overlap border for seamless connected look
+- UI: Active tab hides bottom border for "selected" effect
+
 ##2026.01.31h
 - UI: Reduced tab spacing for more compact design
 
@@ -139,7 +145,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31g";
+$version = "v2026.01.31i";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -1003,7 +1009,6 @@ if (file_exists($pidFile)) {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
-    padding-bottom: 15px;
     border-bottom: 1px solid var(--lsi-border);
 }
 
@@ -1060,23 +1065,21 @@ if (file_exists($pidFile)) {
 /* Tabs - connected tab bar design */
 .lsi-tabs {
     display: flex;
-    margin-bottom: 20px;
-    border-bottom: 1px solid var(--lsi-border);
+    margin-bottom: 0;
     gap: 0;
 }
 
 .lsi-tab {
-    padding: 10px 20px;
+    padding: 8px 16px;
     background: var(--lsi-card-bg);
     border: 1px solid var(--lsi-border);
-    border-bottom: none;
-    border-right: none;
+    border-bottom: 1px solid var(--lsi-border);
+    margin-right: -1px;
     color: var(--lsi-text-muted);
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     transition: all 0.2s ease;
-    margin-bottom: -1px;
     position: relative;
 }
 
@@ -1087,6 +1090,7 @@ if (file_exists($pidFile)) {
 .lsi-tab:last-child {
     border-right: 1px solid var(--lsi-border);
     border-radius: 0 5px 0 0;
+    margin-right: 0;
 }
 
 .lsi-tab:hover {
@@ -1098,7 +1102,7 @@ if (file_exists($pidFile)) {
     background: var(--lsi-primary);
     color: #fff;
     border-color: var(--lsi-primary);
-    border-bottom: 1px solid var(--lsi-primary);
+    border-bottom: 1px solid var(--lsi-bg);
     z-index: 1;
 }
 
@@ -1111,7 +1115,7 @@ if (file_exists($pidFile)) {
 }
 
 /* Panels */
-.lsi-panel { display: none; }
+.lsi-panel { display: none; border-top: 1px solid var(--lsi-border); padding-top: 20px; margin-top: -1px; }
 .lsi-panel.active { display: block; }
 
 /* Cards */
@@ -3372,7 +3376,7 @@ import hashlib
 
 PLUGIN_NAME = "atp_lsi_monitor"
 DEFAULT_PORT = 39800
-VERSION = "2026.01.31g"
+VERSION = "2026.01.31i"
 
 # Paths
 DATA_DIR = f"/mnt/user/appdata/{PLUGIN_NAME}"
@@ -5273,7 +5277,10 @@ Monitor LSI SAS HBA cards (SAS2308, 9207-8i, etc.) - temperature, PHY errors, fi
 <URL>https://raw.githubusercontent.com/latchdevel/LSIUtil/master/release/LSIUtil_v1.72_binaries/Linux/lsiutil.x86_64</URL>
 </FILE>
 
-<!-- Using Font Awesome icon: microchip (no custom PNG) -->
+<!-- Plugin Icon (download from GitHub) -->
+<FILE Name="/usr/local/emhttp/plugins/atp_lsi_monitor/atp-lsi-monitor.png">
+<URL>https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/assets/icons/atp-lsi-monitor.png</URL>
+</FILE>
 
 <!-- Post-install: Set up directories and auto-start -->
 <FILE Run="/bin/bash">
@@ -5281,7 +5288,7 @@ Monitor LSI SAS HBA cards (SAS2308, 9207-8i, etc.) - temperature, PHY errors, fi
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_lsi_monitor"
-PLUGIN_VERSION="2026.01.31g"
+PLUGIN_VERSION="2026.01.31i"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"

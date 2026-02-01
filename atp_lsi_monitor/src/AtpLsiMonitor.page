@@ -9,7 +9,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31h";
+$version = "v2026.01.31i";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -110,7 +110,6 @@ if (file_exists($pidFile)) {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
-    padding-bottom: 15px;
     border-bottom: 1px solid var(--lsi-border);
 }
 
@@ -167,8 +166,7 @@ if (file_exists($pidFile)) {
 /* Tabs - connected tab bar design */
 .lsi-tabs {
     display: flex;
-    margin-bottom: 20px;
-    border-bottom: 1px solid var(--lsi-border);
+    margin-bottom: 0;
     gap: 0;
 }
 
@@ -176,14 +174,13 @@ if (file_exists($pidFile)) {
     padding: 8px 16px;
     background: var(--lsi-card-bg);
     border: 1px solid var(--lsi-border);
-    border-bottom: none;
-    border-right: none;
+    border-bottom: 1px solid var(--lsi-border);
+    margin-right: -1px;
     color: var(--lsi-text-muted);
     cursor: pointer;
     font-size: 12px;
     font-weight: 500;
     transition: all 0.2s ease;
-    margin-bottom: -1px;
     position: relative;
 }
 
@@ -194,6 +191,7 @@ if (file_exists($pidFile)) {
 .lsi-tab:last-child {
     border-right: 1px solid var(--lsi-border);
     border-radius: 0 5px 0 0;
+    margin-right: 0;
 }
 
 .lsi-tab:hover {
@@ -205,7 +203,7 @@ if (file_exists($pidFile)) {
     background: var(--lsi-primary);
     color: #fff;
     border-color: var(--lsi-primary);
-    border-bottom: 1px solid var(--lsi-primary);
+    border-bottom: 1px solid var(--lsi-bg);
     z-index: 1;
 }
 
@@ -218,7 +216,7 @@ if (file_exists($pidFile)) {
 }
 
 /* Panels */
-.lsi-panel { display: none; }
+.lsi-panel { display: none; border-top: 1px solid var(--lsi-border); padding-top: 20px; margin-top: -1px; }
 .lsi-panel.active { display: block; }
 
 /* Cards */

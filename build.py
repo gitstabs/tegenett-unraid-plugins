@@ -1042,6 +1042,15 @@ def build_atp_lsi_monitor() -> bool:
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="{icon_attr}" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31i
+- NEW: Custom plugin icon (Chip + T design by Tegenett)
+- UI: Removed header padding-bottom
+- UI: Tabs now overlap border for seamless connected look
+- UI: Active tab hides bottom border for "selected" effect
+
+##2026.01.31h
+- UI: Reduced tab spacing for more compact design
+
 ##2026.01.31g
 - NEW: Connected devices now shows SAS address, PHY number, link speed
 - NEW: Device table shows location (Bus/Target) and device type badges
