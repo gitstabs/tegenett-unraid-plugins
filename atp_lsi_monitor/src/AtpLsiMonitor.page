@@ -9,7 +9,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31e";
+$version = "v2026.01.31f";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -164,26 +164,36 @@ if (file_exists($pidFile)) {
     font-size: 0.85em;
 }
 
-/* Tabs - matches Emby Smart Cache style */
+/* Tabs - connected tab bar design */
 .lsi-tabs {
     display: flex;
-    gap: 5px;
     margin-bottom: 20px;
     border-bottom: 1px solid var(--lsi-border);
-    padding-bottom: 10px;
-    flex-wrap: wrap;
+    gap: 0;
 }
 
 .lsi-tab {
     padding: 10px 20px;
     background: var(--lsi-card-bg);
     border: 1px solid var(--lsi-border);
-    border-radius: 5px 5px 0 0;
+    border-bottom: none;
+    border-right: none;
     color: var(--lsi-text-muted);
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
     transition: all 0.2s ease;
+    margin-bottom: -1px;
+    position: relative;
+}
+
+.lsi-tab:first-child {
+    border-radius: 5px 0 0 0;
+}
+
+.lsi-tab:last-child {
+    border-right: 1px solid var(--lsi-border);
+    border-radius: 0 5px 0 0;
 }
 
 .lsi-tab:hover {
@@ -195,6 +205,12 @@ if (file_exists($pidFile)) {
     background: var(--lsi-primary);
     color: #fff;
     border-color: var(--lsi-primary);
+    border-bottom: 1px solid var(--lsi-primary);
+    z-index: 1;
+}
+
+.lsi-tab.active:last-child {
+    border-right-color: var(--lsi-primary);
 }
 
 .lsi-tab i {

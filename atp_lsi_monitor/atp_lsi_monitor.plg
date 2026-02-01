@@ -3,7 +3,7 @@
 <!ENTITY name        "atp_lsi_monitor">
 <!ENTITY displayName "ATP LSI Monitor">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.01.31e">
+<!ENTITY version     "2026.01.31f">
 <!ENTITY launch      "Settings/AtpLsiMonitor">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_lsi_monitor/atp_lsi_monitor.plg">
 ]>
@@ -11,6 +11,11 @@
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="microchip" min="7.0.0" support="https://github.com/gitstabs/tegenett-unraid-plugins/issues">
 
 <CHANGES>
+##2026.01.31f
+- UI: Tabs redesigned - connected tab bar, no gaps between tabs
+- UI: Border line sits directly under tabs (no floating appearance)
+- UI: Active tab visually breaks the border line
+
 ##2026.01.31e
 - UI: Tabs now match Emby Smart Cache exactly (gap: 5px, padding-bottom: 10px)
 - UI: Read Now button wider with min-width for better appearance
@@ -125,7 +130,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.01.31e";
+$version = "v2026.01.31f";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -1043,26 +1048,36 @@ if (file_exists($pidFile)) {
     font-size: 0.85em;
 }
 
-/* Tabs - matches Emby Smart Cache style */
+/* Tabs - connected tab bar design */
 .lsi-tabs {
     display: flex;
-    gap: 5px;
     margin-bottom: 20px;
     border-bottom: 1px solid var(--lsi-border);
-    padding-bottom: 10px;
-    flex-wrap: wrap;
+    gap: 0;
 }
 
 .lsi-tab {
     padding: 10px 20px;
     background: var(--lsi-card-bg);
     border: 1px solid var(--lsi-border);
-    border-radius: 5px 5px 0 0;
+    border-bottom: none;
+    border-right: none;
     color: var(--lsi-text-muted);
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
     transition: all 0.2s ease;
+    margin-bottom: -1px;
+    position: relative;
+}
+
+.lsi-tab:first-child {
+    border-radius: 5px 0 0 0;
+}
+
+.lsi-tab:last-child {
+    border-right: 1px solid var(--lsi-border);
+    border-radius: 0 5px 0 0;
 }
 
 .lsi-tab:hover {
@@ -1074,6 +1089,12 @@ if (file_exists($pidFile)) {
     background: var(--lsi-primary);
     color: #fff;
     border-color: var(--lsi-primary);
+    border-bottom: 1px solid var(--lsi-primary);
+    z-index: 1;
+}
+
+.lsi-tab.active:last-child {
+    border-right-color: var(--lsi-primary);
 }
 
 .lsi-tab i {
@@ -3324,7 +3345,7 @@ import hashlib
 
 PLUGIN_NAME = "atp_lsi_monitor"
 DEFAULT_PORT = 39800
-VERSION = "2026.01.31e"
+VERSION = "2026.01.31f"
 
 # Paths
 DATA_DIR = f"/mnt/user/appdata/{PLUGIN_NAME}"
@@ -5220,7 +5241,7 @@ Monitor LSI SAS HBA cards (SAS2308, 9207-8i, etc.) - temperature, PHY errors, fi
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_lsi_monitor"
-PLUGIN_VERSION="2026.01.31e"
+PLUGIN_VERSION="2026.01.31f"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
