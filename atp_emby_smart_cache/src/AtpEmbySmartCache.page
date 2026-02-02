@@ -9,7 +9,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.02.02a";
+$version = "v2026.02.02b";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -1231,11 +1231,21 @@ function escRefreshStats() {
     }, 'json');
 }
 
+function escFormatDateShort(dateStr) {
+    // Convert YYYY-MM-DD to DD.MM
+    if (!dateStr) return dateStr;
+    var parts = dateStr.split('-');
+    if (parts.length === 3) {
+        return parts[2] + '.' + parts[1];
+    }
+    return dateStr;
+}
+
 function escUpdateActivityChart(data) {
     var ctx = document.getElementById('chart-activity');
     if (!ctx) return;
-    
-    var labels = data.map(function(d) { return d.date; });
+
+    var labels = data.map(function(d) { return escFormatDateShort(d.date); });
     var copies = data.map(function(d) { return d.copies || 0; });
     var cleanups = data.map(function(d) { return d.cleanups || 0; });
     
@@ -1267,8 +1277,8 @@ function escUpdateActivityChart(data) {
 function escUpdateStorageChart(data) {
     var ctx = document.getElementById('chart-storage');
     if (!ctx) return;
-    
-    var labels = data.map(function(d) { return d.date; });
+
+    var labels = data.map(function(d) { return escFormatDateShort(d.date); });
     var values = data.map(function(d) { return d.gb || 0; });
     
     if (escChartStorage) {

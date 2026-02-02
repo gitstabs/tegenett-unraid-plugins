@@ -3,7 +3,7 @@
 <!ENTITY name        "atp_lsi_monitor">
 <!ENTITY displayName "ATP LSI Monitor">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.02.02a">
+<!ENTITY version     "2026.02.02b">
 <!ENTITY launch      "Settings/AtpLsiMonitor">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_lsi_monitor/atp_lsi_monitor.plg">
 ]>
@@ -161,7 +161,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.02.02a";
+$version = "v2026.02.02b";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -1291,9 +1291,9 @@ if (file_exists($pidFile)) {
 }
 
 .lsi-btn-sm {
-    padding: 8px 16px;
+    padding: 9px 18px;
     font-size: 12px;
-    min-width: 90px;
+    min-width: 100px;
 }
 
 /* Tables */
@@ -5373,7 +5373,7 @@ Monitor LSI SAS HBA cards (SAS2308, 9207-8i, etc.) - temperature, PHY errors, fi
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_lsi_monitor"
-PLUGIN_VERSION="2026.02.02a"
+PLUGIN_VERSION="2026.02.02b"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"

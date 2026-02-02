@@ -3,7 +3,7 @@
 <!ENTITY name        "atp_backup">
 <!ENTITY displayName "ATP Backup">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.02.02a">
+<!ENTITY version     "2026.02.02b">
 <!ENTITY launch      "Settings/AtpBackup">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>
@@ -145,7 +145,7 @@ Icon="atp-backup.png"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.02.02a";
+$version = "v2026.02.02b";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 
@@ -2803,7 +2803,14 @@ async function loadStats() {
         chartCanvas.style.display = 'block';
         emptyDiv.style.display = 'none';
         
-        const labels = result.stats.map(s => s.date).reverse();
+        const labels = result.stats.map(s => {
+            // Convert YYYY-MM-DD to DD.MM
+            if (s.date && s.date.includes('-')) {
+                const parts = s.date.split('-');
+                return parts[2] + '.' + parts[1];
+            }
+            return s.date;
+        }).reverse();
         const successful = result.stats.map(s => s.successful_jobs).reverse();
         const failed = result.stats.map(s => s.failed_jobs).reverse();
         
@@ -6388,7 +6395,7 @@ Smart backup solution for Unraid with local, remote SMB, Wake-on-LAN, and Discor
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_backup"
-PLUGIN_VERSION="2026.02.02a"
+PLUGIN_VERSION="2026.02.02b"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"

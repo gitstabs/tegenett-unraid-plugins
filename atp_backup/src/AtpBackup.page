@@ -4,7 +4,7 @@ Icon="atp-backup.png"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.02.02a";
+$version = "v2026.02.02b";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 
@@ -1899,7 +1899,14 @@ async function loadStats() {
         chartCanvas.style.display = 'block';
         emptyDiv.style.display = 'none';
         
-        const labels = result.stats.map(s => s.date).reverse();
+        const labels = result.stats.map(s => {
+            // Convert YYYY-MM-DD to DD.MM
+            if (s.date && s.date.includes('-')) {
+                const parts = s.date.split('-');
+                return parts[2] + '.' + parts[1];
+            }
+            return s.date;
+        }).reverse();
         const successful = result.stats.map(s => s.successful_jobs).reverse();
         const failed = result.stats.map(s => s.failed_jobs).reverse();
         

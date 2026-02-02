@@ -9,7 +9,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.02.02a";
+$version = "v2026.02.02b";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -376,9 +376,9 @@ if (file_exists($pidFile)) {
 }
 
 .lsi-btn-sm {
-    padding: 8px 16px;
+    padding: 9px 18px;
     font-size: 12px;
-    min-width: 90px;
+    min-width: 100px;
 }
 
 /* Tables */
