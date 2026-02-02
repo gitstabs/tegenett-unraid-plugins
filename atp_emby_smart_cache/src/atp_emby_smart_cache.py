@@ -384,27 +384,36 @@ class Database:
             'daily_storage': [],
             'top_files': []
         }
-        
+
         try:
             with self._conn() as conn:
                 # Total moves (copy actions only - not recovery)
                 row = conn.execute("SELECT COUNT(*) as cnt FROM activity_log WHERE action = 'copy'").fetchone()
                 stats['total_moves'] = row['cnt'] if row else 0
-                
+
                 # Last move timestamp
                 row = conn.execute("SELECT timestamp FROM activity_log WHERE action = 'copy' ORDER BY timestamp DESC LIMIT 1").fetchone()
                 if row:
                     stats['last_move'] = row['timestamp']
-                
-                # Total GB from current managed files (this is accurate)
-                row = conn.execute("SELECT SUM(size_bytes) as total FROM managed_files").fetchone()
-                if row and row['total']:
-                    stats['total_gb'] = row['total'] / (2**30)
-                
-                # Average file size from current managed files
-                row = conn.execute("SELECT AVG(size_bytes) as avg FROM managed_files").fetchone()
-                if row and row['avg']:
-                    stats['avg_size_gb'] = row['avg'] / (2**30)
+
+                # Total GB moved (historical) - parse from activity_log details
+                total_gb_moved = 0.0
+                rows = conn.execute("SELECT details FROM activity_log WHERE action = 'copy' AND details IS NOT NULL").fetchall()
+                for r in rows:
+                    details = r['details'] or ''
+                    try:
+                        if 'Size:' in details:
+                            size_str = details.split('Size:')[1].strip().split()[0]
+                            total_gb_moved += float(size_str)
+                    except (ValueError, IndexError, AttributeError):
+                        pass
+                stats['total_gb'] = round(total_gb_moved, 2)
+
+                # Average file size (historical) - from activity_log
+                if stats['total_moves'] > 0:
+                    stats['avg_size_gb'] = total_gb_moved / stats['total_moves']
+                else:
+                    stats['avg_size_gb'] = 0
                 
                 # Daily activity for last 7 days
                 rows = conn.execute('''

@@ -9,7 +9,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_lsi_monitor";
-$version = "v2026.02.01a";
+$version = "v2026.02.02a";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/{$plugin}";
 
@@ -376,8 +376,9 @@ if (file_exists($pidFile)) {
 }
 
 .lsi-btn-sm {
-    padding: 8px 14px;
+    padding: 8px 16px;
     font-size: 12px;
+    min-width: 90px;
 }
 
 /* Tables */
@@ -1526,7 +1527,11 @@ function loadTempChart() {
         const labels = data.history.map(h => {
             // Timestamp from SQLite is UTC, append 'Z' to parse correctly
             const d = new Date(h.timestamp.replace(' ', 'T') + 'Z');
-            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const hour = String(d.getHours()).padStart(2, '0');
+            const min = String(d.getMinutes()).padStart(2, '0');
+            return `${day}.${month} ${hour}:${min}`;
         });
         const temps = data.history.map(h => h.ioc_temp);
 
@@ -1618,7 +1623,7 @@ function loadTempHistory() {
         const labels = data.history.map(h => {
             // Timestamp from SQLite is UTC, append 'Z' to parse correctly
             const d = new Date(h.timestamp.replace(' ', 'T') + 'Z');
-            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return formatDateNorwegian(d);
         });
         const temps = data.history.map(h => h.ioc_temp);
 
@@ -1845,7 +1850,7 @@ function loadAlerts() {
             const d = new Date(a.timestamp.replace(' ', 'T') + 'Z');
             return `
             <tr>
-                <td>${d.toLocaleString()}</td>
+                <td>${formatDateNorwegian(d)}</td>
                 <td>${a.alert_type}</td>
                 <td><span class="lsi-status-badge ${a.severity}" style="padding: 2px 8px; font-size: 11px; height: auto; line-height: 1.5;">${a.severity}</span></td>
                 <td>${escapeHtml(a.message)}</td>
@@ -2006,6 +2011,19 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Format date as Norwegian: DD.MM.YYYY HH:MM
+function formatDateNorwegian(date) {
+    if (!date) return '-';
+    const d = (date instanceof Date) ? date : new Date(date);
+    if (isNaN(d.getTime())) return '-';
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hour = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${day}.${month}.${year} ${hour}:${min}`;
 }
 
 // ============================================

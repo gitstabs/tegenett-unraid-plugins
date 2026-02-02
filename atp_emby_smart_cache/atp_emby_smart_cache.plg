@@ -3,7 +3,7 @@
 <!ENTITY name        "atp_emby_smart_cache">
 <!ENTITY displayName "ATP Emby Smart Cache">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.02.01a">
+<!ENTITY version     "2026.02.02a">
 <!ENTITY launch      "Settings/AtpEmbySmartCache">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
@@ -168,7 +168,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.02.01a";
+$version = "v2026.02.02a";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -2079,7 +2079,7 @@ function escRefreshDashboard() {
                 var fa = e.action === 'copy' ? 'fa-copy' : (e.action === 'cleanup' ? 'fa-trash' : 'fa-exclamation');
                 h += '<div class="esc-activity-item">';
                 h += '<div class="esc-activity-icon ' + ic + '"><i class="fa ' + fa + '"></i></div>';
-                h += '<div><strong>' + escEscape(e.filename) + '</strong><br><small style="color:#888;">' + escEscape(e.timestamp) + '</small></div>';
+                h += '<div><strong>' + escEscape(e.filename) + '</strong><br><small style="color:#888;">' + escFormatDate(e.timestamp) + '</small></div>';
                 h += '</div>';
             }
             $('#recent-activity').html(h);
@@ -2125,7 +2125,7 @@ function escRefreshStats() {
             var s = d.data;
             $('#stats-total-moves').text(s.total_moves || 0);
             $('#stats-total-gb').text((s.total_gb || 0).toFixed(1) + ' GB');
-            $('#stats-last-move').text(s.last_move || '-');
+            $('#stats-last-move').text(escFormatDate(s.last_move) || '-');
             $('#stats-avg-size').text((s.avg_size_gb || 0).toFixed(2) + ' GB');
             
             // Update charts
@@ -2223,7 +2223,7 @@ function escRefreshManaged() {
                 h += '<tr>';
                 h += '<td class="filename" title="' + escEscape(f.path) + '">' + escEscape(f.filename) + '</td>';
                 h += '<td>' + (f.size_gb || 0).toFixed(2) + ' GB</td>';
-                h += '<td>' + escEscape(f.cached_at || '-') + '</td>';
+                h += '<td>' + escFormatDate(f.cached_at || '-') + '</td>';
                 h += '<td>' + (f.cleanup_at ? '<span class="esc-countdown">Cleanup scheduled</span>' : '<span style="color:#4caf50;">Active</span>') + '</td>';
                 h += '<td><button class="esc-btn esc-btn-danger esc-btn-small" onclick="forceCleanup(\'' + escEscape(f.path).replace(/'/g, "\\'") + '\')">Cleanup</button></td>';
                 h += '</tr>';
@@ -2259,7 +2259,7 @@ function escRefreshQueue() {
                 var remaining = Math.max(0, (q.cleanup_time || 0) - now);
                 h += '<tr>';
                 h += '<td class="filename">' + escEscape(q.filename) + '</td>';
-                h += '<td>' + new Date((q.cleanup_time || 0) * 1000).toLocaleString() + '</td>';
+                h += '<td>' + escFormatDate(new Date((q.cleanup_time || 0) * 1000).toISOString()) + '</td>';
                 h += '<td class="esc-countdown">' + escFormatCountdown(remaining) + '</td>';
                 h += '<td><button class="esc-btn esc-btn-danger esc-btn-small" onclick="forceCleanup(\'' + escEscape(q.path).replace(/'/g, "\\'") + '\')">Clean Now</button></td>';
                 h += '</tr>';
@@ -2471,6 +2471,24 @@ function escEscape(str) {
     var div = document.createElement('div');
     div.appendChild(document.createTextNode(str));
     return div.innerHTML;
+}
+
+// Format date as Norwegian: DD.MM.YYYY HH:MM
+function escFormatDate(dateStr) {
+    if (!dateStr || dateStr === '-') return dateStr;
+    try {
+        // Handle SQLite datetime format (YYYY-MM-DD HH:MM:SS)
+        var d = new Date(dateStr.replace(' ', 'T'));
+        if (isNaN(d.getTime())) return dateStr;
+        var day = String(d.getDate()).padStart(2, '0');
+        var month = String(d.getMonth() + 1).padStart(2, '0');
+        var year = d.getFullYear();
+        var hour = String(d.getHours()).padStart(2, '0');
+        var min = String(d.getMinutes()).padStart(2, '0');
+        return day + '.' + month + '.' + year + ' ' + hour + ':' + min;
+    } catch (e) {
+        return dateStr;
+    }
 }
 
 function toggleService() {
@@ -3373,27 +3391,36 @@ class Database:
             'daily_storage': [],
             'top_files': []
         }
-        
+
         try:
             with self._conn() as conn:
                 # Total moves (copy actions only - not recovery)
                 row = conn.execute("SELECT COUNT(*) as cnt FROM activity_log WHERE action = 'copy'").fetchone()
                 stats['total_moves'] = row['cnt'] if row else 0
-                
+
                 # Last move timestamp
                 row = conn.execute("SELECT timestamp FROM activity_log WHERE action = 'copy' ORDER BY timestamp DESC LIMIT 1").fetchone()
                 if row:
                     stats['last_move'] = row['timestamp']
-                
-                # Total GB from current managed files (this is accurate)
-                row = conn.execute("SELECT SUM(size_bytes) as total FROM managed_files").fetchone()
-                if row and row['total']:
-                    stats['total_gb'] = row['total'] / (2**30)
-                
-                # Average file size from current managed files
-                row = conn.execute("SELECT AVG(size_bytes) as avg FROM managed_files").fetchone()
-                if row and row['avg']:
-                    stats['avg_size_gb'] = row['avg'] / (2**30)
+
+                # Total GB moved (historical) - parse from activity_log details
+                total_gb_moved = 0.0
+                rows = conn.execute("SELECT details FROM activity_log WHERE action = 'copy' AND details IS NOT NULL").fetchall()
+                for r in rows:
+                    details = r['details'] or ''
+                    try:
+                        if 'Size:' in details:
+                            size_str = details.split('Size:')[1].strip().split()[0]
+                            total_gb_moved += float(size_str)
+                    except (ValueError, IndexError, AttributeError):
+                        pass
+                stats['total_gb'] = round(total_gb_moved, 2)
+
+                # Average file size (historical) - from activity_log
+                if stats['total_moves'] > 0:
+                    stats['avg_size_gb'] = total_gb_moved / stats['total_moves']
+                else:
+                    stats['avg_size_gb'] = 0
                 
                 # Daily activity for last 7 days
                 rows = conn.execute('''
@@ -5021,7 +5048,7 @@ Intelligent media caching for Emby - automatically moves actively watched conten
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_emby_smart_cache"
-PLUGIN_VERSION="2026.02.01a"
+PLUGIN_VERSION="2026.02.02a"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
