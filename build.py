@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-ATP Plugin Build System - v2026.01.31
+ATP Plugin Build System - v2026.02.03
 Master build script for all ATP (A Tegenett Plugin) plugins
 
 Usage:
     python build.py              # Build all plugins
     python build.py backup       # Build only atp_backup
     python build.py emby         # Build only atp_emby_smart_cache
+    python build.py lsi          # Build only atp_lsi_monitor
     python build.py --validate   # Validate without building
     python build.py --bump       # Bump version for all plugins
-    python build.py --bump backup  # Bump version for specific plugin
+    python build.py --bump backup  # Bump version for specific plugin only
 
 Features:
 - Builds PLG files from source components
