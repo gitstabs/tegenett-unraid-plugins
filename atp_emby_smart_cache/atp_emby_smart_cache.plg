@@ -3,7 +3,7 @@
 <!ENTITY name        "atp_emby_smart_cache">
 <!ENTITY displayName "ATP Emby Smart Cache">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.02.03a">
+<!ENTITY version     "2026.02.03b">
 <!ENTITY launch      "Settings/AtpEmbySmartCache">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
@@ -168,7 +168,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.02.03a";
+$version = "v2026.02.03b";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -5058,7 +5058,7 @@ Intelligent media caching for Emby - automatically moves actively watched conten
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_emby_smart_cache"
-PLUGIN_VERSION="2026.02.03a"
+PLUGIN_VERSION="2026.02.03b"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"

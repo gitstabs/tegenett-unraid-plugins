@@ -1532,33 +1532,39 @@ class BackupEngine:
             bytes_transferred = 0
             files_transferred = 0
             
+            def parse_bytes(s):
+                """Parse bytes from rsync output, handling various formats"""
+                if not s:
+                    return 0
+                s = s.strip()
+                # Remove thousand separators (comma or period)
+                # Rsync always outputs whole numbers for bytes, never decimals
+                # So we can safely remove all non-digit characters
+                digits_only = re.sub(r'[^\d]', '', s)
+                try:
+                    return int(digits_only) if digits_only else 0
+                except:
+                    return 0
+
             for line in output.split('\n'):
                 line_lower = line.lower()
-                
+
                 # Try multiple patterns for bytes transferred
                 if 'total transferred file size:' in line_lower:
-                    match = re.search(r'([\d,\.]+)\s*bytes', line, re.IGNORECASE)
+                    match = re.search(r'([\d,\.\s]+)\s*bytes', line, re.IGNORECASE)
                     if match:
-                        try:
-                            bytes_transferred = int(match.group(1).replace(',', '').replace('.', ''))
-                        except:
-                            pass
+                        bytes_transferred = parse_bytes(match.group(1))
                 elif 'literal data:' in line_lower and bytes_transferred == 0:
                     # Fallback to "Literal data" which shows actual bytes sent
-                    match = re.search(r'([\d,\.]+)\s*bytes', line, re.IGNORECASE)
+                    match = re.search(r'([\d,\.\s]+)\s*bytes', line, re.IGNORECASE)
                     if match:
-                        try:
-                            bytes_transferred = int(match.group(1).replace(',', '').replace('.', ''))
-                        except:
-                            pass
+                        bytes_transferred = parse_bytes(match.group(1))
                 elif 'total bytes sent:' in line_lower and bytes_transferred == 0:
                     # Another fallback
-                    match = re.search(r'([\d,\.]+)', line.split(':')[1])
-                    if match:
-                        try:
-                            bytes_transferred = int(match.group(1).replace(',', '').replace('.', ''))
-                        except:
-                            pass
+                    if ':' in line:
+                        match = re.search(r'([\d,\.\s]+)', line.split(':')[1])
+                        if match:
+                            bytes_transferred = parse_bytes(match.group(1))
                             
                 # Files transferred
                 if 'number of regular files transferred:' in line_lower:
