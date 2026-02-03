@@ -3,7 +3,7 @@
 <!ENTITY name        "atp_backup">
 <!ENTITY displayName "ATP Backup">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.02.02b">
+<!ENTITY version     "2026.02.03a">
 <!ENTITY launch      "Settings/AtpBackup">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>
@@ -145,7 +145,7 @@ Icon="atp-backup.png"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.02.02b";
+$version = "v2026.02.03a";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 
@@ -4494,13 +4494,13 @@ class Database:
     def get_totals(self):
         with self._conn() as conn:
             row = conn.execute('''
-                SELECT 
+                SELECT
                     COUNT(*) as total_runs,
                     SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as successful,
                     SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
-                    SUM(bytes_transferred) as total_bytes,
-                    SUM(files_transferred) as total_files,
-                    SUM(duration_seconds) as total_duration
+                    COALESCE(SUM(bytes_transferred), 0) as total_bytes,
+                    COALESCE(SUM(files_transferred), 0) as total_files,
+                    COALESCE(SUM(duration_seconds), 0) as total_duration
                 FROM backup_history
             ''').fetchone()
             return dict(row) if row else {}
@@ -6395,7 +6395,7 @@ Smart backup solution for Unraid with local, remote SMB, Wake-on-LAN, and Discor
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_backup"
-PLUGIN_VERSION="2026.02.02b"
+PLUGIN_VERSION="2026.02.03a"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"

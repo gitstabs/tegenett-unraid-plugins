@@ -729,13 +729,13 @@ class Database:
     def get_totals(self):
         with self._conn() as conn:
             row = conn.execute('''
-                SELECT 
+                SELECT
                     COUNT(*) as total_runs,
                     SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as successful,
                     SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
-                    SUM(bytes_transferred) as total_bytes,
-                    SUM(files_transferred) as total_files,
-                    SUM(duration_seconds) as total_duration
+                    COALESCE(SUM(bytes_transferred), 0) as total_bytes,
+                    COALESCE(SUM(files_transferred), 0) as total_files,
+                    COALESCE(SUM(duration_seconds), 0) as total_duration
                 FROM backup_history
             ''').fetchone()
             return dict(row) if row else {}
