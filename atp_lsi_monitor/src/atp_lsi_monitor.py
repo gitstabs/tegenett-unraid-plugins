@@ -116,6 +116,7 @@ DEFAULT_SETTINGS = {
 
 settings = {}
 db_lock = threading.Lock()
+alert_lock = threading.Lock()  # Thread safety for alert cooldown tracking
 shutdown_event = threading.Event()
 last_alerts = {}  # Track last alert times to prevent spam
 monitor_thread = None
@@ -344,6 +345,16 @@ def get_temperature():
         dict: {success, ioc_temp, board_temp, unit}
     """
     port = settings.get("LSI_PORT", 1)
+
+    # SECURITY: Validate port number to prevent command injection
+    try:
+        port = int(port)
+        if port < 1 or port > 8:
+            logging.error(f"Invalid LSI port: {port}. Must be 1-8.")
+            return {"success": False, "error": "LSI port must be between 1 and 8"}
+    except (ValueError, TypeError):
+        logging.error(f"LSI port must be numeric: {port}")
+        return {"success": False, "error": "LSI port must be numeric"}
 
     # Command: lsiutil -p1 -a 25,2,0,0
     # This reads IOC temperature via diagnostic page
@@ -720,11 +731,14 @@ def should_alert(alert_key, severity):
     now = time.time()
 
     key = f"{alert_key}_{severity}"
-    last_time = last_alerts.get(key, 0)
 
-    if now - last_time >= cooldown:
-        last_alerts[key] = now
-        return True
+    # SECURITY: Use lock to prevent race condition in multi-threaded access
+    with alert_lock:
+        last_time = last_alerts.get(key, 0)
+
+        if now - last_time >= cooldown:
+            last_alerts[key] = now
+            return True
 
     return False
 
@@ -1210,15 +1224,16 @@ class APIHandler(BaseHTTPRequestHandler):
                 with db_lock:
                     conn = get_db()
                     cursor = conn.cursor()
-                    cursor.execute(f"""
+                    # SECURITY: Use parameterized query to prevent SQL injection
+                    cursor.execute("""
                         SELECT
                             MIN(ioc_temp) as min_temp,
                             MAX(ioc_temp) as max_temp,
                             AVG(ioc_temp) as avg_temp,
                             COUNT(*) as readings
                         FROM temperature_history
-                        WHERE timestamp > datetime('now', '{sql_period}')
-                    """)
+                        WHERE timestamp > datetime('now', ?)
+                    """, (sql_period,))
                     stats = dict(cursor.fetchone())
                     conn.close()
                 self.send_json({'success': True, **stats})

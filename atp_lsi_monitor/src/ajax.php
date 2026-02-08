@@ -37,7 +37,8 @@ $modifying_actions = [
 $action = $_REQUEST['action'] ?? '';
 
 if (in_array($action, $modifying_actions)) {
-    $csrf_token = $_POST['csrf_token'] ?? $_GET['csrf_token'] ?? $_REQUEST['csrf_token'] ?? '';
+    // SECURITY: CSRF token must come from POST body only, not GET (prevents URL-based attacks)
+    $csrf_token = $_POST['csrf_token'] ?? '';
     $valid_csrf = false;
 
     $var_file = '/var/local/emhttp/var.ini';
