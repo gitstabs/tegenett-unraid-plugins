@@ -1556,9 +1556,14 @@ class BackupEngine:
             transferred_size = 0  # "Total transferred file size" - what was actually transferred
             literal_data = 0  # "Literal data" - actual bytes sent
             total_bytes_sent = 0  # "Total bytes sent" - includes protocol overhead
+            total_bytes_received = 0  # "Total bytes received" - for pull operations
+
+            # Log raw output for debugging (first 2000 chars)
+            logger.debug(f"[BackupEngine] Raw rsync output (first 2000 chars):\n{output[:2000]}")
 
             for line in output.split('\n'):
                 line_lower = line.lower().strip()
+                line_stripped = line.strip()
 
                 # Primary: "Total transferred file size:" - best metric for actual backup size
                 if 'total transferred file size:' in line_lower or 'total transferred file size' in line_lower:
@@ -1568,7 +1573,7 @@ class BackupEngine:
                         match = re.search(r'([\d,\.\s]+)', after_colon)
                         if match:
                             transferred_size = parse_bytes(match.group(1))
-                            logger.debug(f"[BackupEngine] Found 'Total transferred file size': {transferred_size}")
+                            logger.info(f"[BackupEngine] Found 'Total transferred file size': {transferred_size}")
 
                 # Secondary: "Total file size:" - total size of source (may differ from transferred)
                 elif 'total file size:' in line_lower and 'transferred' not in line_lower:
@@ -1577,7 +1582,7 @@ class BackupEngine:
                         match = re.search(r'([\d,\.\s]+)', after_colon)
                         if match:
                             total_file_size = parse_bytes(match.group(1))
-                            logger.debug(f"[BackupEngine] Found 'Total file size': {total_file_size}")
+                            logger.info(f"[BackupEngine] Found 'Total file size': {total_file_size}")
 
                 # Tertiary: "Literal data:" - actual bytes transferred (without compression)
                 elif 'literal data:' in line_lower:
@@ -1586,18 +1591,42 @@ class BackupEngine:
                         match = re.search(r'([\d,\.\s]+)', after_colon)
                         if match:
                             literal_data = parse_bytes(match.group(1))
-                            logger.debug(f"[BackupEngine] Found 'Literal data': {literal_data}")
+                            logger.info(f"[BackupEngine] Found 'Literal data': {literal_data}")
 
-                # Last resort: "Total bytes sent:" - includes protocol overhead
+                # "Total bytes sent:" - includes protocol overhead
                 elif 'total bytes sent:' in line_lower:
                     if ':' in line:
                         after_colon = line.split(':', 1)[1]
                         match = re.search(r'([\d,\.\s]+)', after_colon)
                         if match:
                             total_bytes_sent = parse_bytes(match.group(1))
-                            logger.debug(f"[BackupEngine] Found 'Total bytes sent': {total_bytes_sent}")
+                            logger.info(f"[BackupEngine] Found 'Total bytes sent': {total_bytes_sent}")
+
+                # "Total bytes received:" - for pull/receive operations
+                elif 'total bytes received:' in line_lower:
+                    if ':' in line:
+                        after_colon = line.split(':', 1)[1]
+                        match = re.search(r'([\d,\.\s]+)', after_colon)
+                        if match:
+                            total_bytes_received = parse_bytes(match.group(1))
+                            logger.info(f"[BackupEngine] Found 'Total bytes received': {total_bytes_received}")
+
+                # Alternative format: "sent X bytes  received Y bytes" (single line)
+                elif 'sent' in line_lower and 'bytes' in line_lower and 'received' in line_lower:
+                    # Format: "sent 8,710,422,528 bytes  received 1,234 bytes  123.45 bytes/sec"
+                    sent_match = re.search(r'sent\s+([\d,\.\s]+)\s*bytes', line, re.IGNORECASE)
+                    if sent_match:
+                        sent_val = parse_bytes(sent_match.group(1))
+                        if sent_val > total_bytes_sent:
+                            total_bytes_sent = sent_val
+                            logger.info(f"[BackupEngine] Found 'sent X bytes': {total_bytes_sent}")
+
+            # Log all parsed values for debugging
+            logger.info(f"[BackupEngine] Parsed values: transferred={transferred_size}, total_file={total_file_size}, literal={literal_data}, sent={total_bytes_sent}, received={total_bytes_received}")
 
             # Choose best available metric (priority order)
+            # For push operations (backup TO destination), use sent bytes
+            # For pull operations (backup FROM source), use received bytes
             if transferred_size > 0:
                 bytes_transferred = transferred_size
             elif total_file_size > 0:
@@ -1606,6 +1635,8 @@ class BackupEngine:
                 bytes_transferred = literal_data
             elif total_bytes_sent > 0:
                 bytes_transferred = total_bytes_sent
+            elif total_bytes_received > 0:
+                bytes_transferred = total_bytes_received
 
             for line in output.split('\n'):
                 line_lower = line.lower()
