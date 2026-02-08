@@ -1622,17 +1622,23 @@ class BackupEngine:
                             total_bytes_sent = sent_val
                             logger.info(f"[BackupEngine] Found 'sent X bytes': {total_bytes_sent}")
 
-                # Parse --progress output: "116.83M 100%  43.96MB/s  0:00:02 (xfr#1, to-chk=113/1032)"
+                # Parse --progress output: "        116.83M 100%   43.96MB/s    0:00:02 (xfr#1, to-chk=113/1032)"
                 # This shows the actual file size being transferred
+                # Note: Line may have leading spaces and size can be in bytes, K, M, G, or T
                 elif '100%' in line and '(xfr#' in line:
-                    # Extract size from beginning of line: "116.83M 100%" or "21.97M 100%"
-                    size_match = re.match(r'\s*([\d,\.]+)([KMGT]?)\s+100%', line_stripped)
+                    # Extract size before 100%: "116.83M", "21.97M", "5.06K", "670" (bytes)
+                    # Pattern: number with optional decimal, optional unit, then 100%
+                    size_match = re.search(r'([\d,\.]+)\s*([KMGT]?)\s+100%', line, re.IGNORECASE)
                     if size_match:
-                        size_num = float(size_match.group(1).replace(',', ''))
-                        size_unit = size_match.group(2).upper()
-                        multipliers = {'': 1, 'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4}
-                        file_bytes = int(size_num * multipliers.get(size_unit, 1))
-                        progress_bytes_sum += file_bytes
+                        try:
+                            size_num = float(size_match.group(1).replace(',', ''))
+                            size_unit = size_match.group(2).upper() if size_match.group(2) else ''
+                            multipliers = {'': 1, 'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4}
+                            file_bytes = int(size_num * multipliers.get(size_unit, 1))
+                            progress_bytes_sum += file_bytes
+                            logger.debug(f"[BackupEngine] Progress line: {size_num}{size_unit} = {file_bytes} bytes")
+                        except (ValueError, TypeError) as e:
+                            logger.debug(f"[BackupEngine] Failed to parse progress line: {line[:50]}... - {e}")
 
             # Log all parsed values for debugging
             logger.info(f"[BackupEngine] Parsed values: transferred={transferred_size}, total_file={total_file_size}, literal={literal_data}, sent={total_bytes_sent}, received={total_bytes_received}, progress_sum={progress_bytes_sum}")
