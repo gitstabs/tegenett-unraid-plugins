@@ -3,7 +3,7 @@
 <!ENTITY name        "atp_backup">
 <!ENTITY displayName "ATP Backup">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.02.08b">
+<!ENTITY version     "2026.02.08c">
 <!ENTITY launch      "Settings/AtpBackup">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_backup/atp_backup.plg">
 ]>
@@ -146,7 +146,7 @@ Markdown="false"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.02.08b";
+$version = "v2026.02.08c";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 
@@ -5324,6 +5324,7 @@ class BackupEngine:
             literal_data = 0  # "Literal data" - actual bytes sent
             total_bytes_sent = 0  # "Total bytes sent" - includes protocol overhead
             total_bytes_received = 0  # "Total bytes received" - for pull operations
+            progress_bytes_sum = 0  # Sum of file sizes from --progress output
 
             # Log raw output for debugging (first 2000 chars)
             logger.debug(f"[BackupEngine] Raw rsync output (first 2000 chars):\n{output[:2000]}")
@@ -5388,13 +5389,29 @@ class BackupEngine:
                             total_bytes_sent = sent_val
                             logger.info(f"[BackupEngine] Found 'sent X bytes': {total_bytes_sent}")
 
+                # Parse --progress output: "116.83M 100%  43.96MB/s  0:00:02 (xfr#1, to-chk=113/1032)"
+                # This shows the actual file size being transferred
+                elif '100%' in line and '(xfr#' in line:
+                    # Extract size from beginning of line: "116.83M 100%" or "21.97M 100%"
+                    size_match = re.match(r'\s*([\d,\.]+)([KMGT]?)\s+100%', line_stripped)
+                    if size_match:
+                        size_num = float(size_match.group(1).replace(',', ''))
+                        size_unit = size_match.group(2).upper()
+                        multipliers = {'': 1, 'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4}
+                        file_bytes = int(size_num * multipliers.get(size_unit, 1))
+                        progress_bytes_sum += file_bytes
+
             # Log all parsed values for debugging
-            logger.info(f"[BackupEngine] Parsed values: transferred={transferred_size}, total_file={total_file_size}, literal={literal_data}, sent={total_bytes_sent}, received={total_bytes_received}")
+            logger.info(f"[BackupEngine] Parsed values: transferred={transferred_size}, total_file={total_file_size}, literal={literal_data}, sent={total_bytes_sent}, received={total_bytes_received}, progress_sum={progress_bytes_sum}")
 
             # Choose best available metric (priority order)
-            # For push operations (backup TO destination), use sent bytes
-            # For pull operations (backup FROM source), use received bytes
-            if transferred_size > 0:
+            # For incremental syncs, --progress output shows actual file sizes transferred
+            # The stats section only shows delta bytes (often 0 for unchanged files)
+            if progress_bytes_sum > 0:
+                # Progress output is most accurate for files actually transferred
+                bytes_transferred = progress_bytes_sum
+                logger.info(f"[BackupEngine] Using progress_sum as bytes_transferred: {bytes_transferred}")
+            elif transferred_size > 0:
                 bytes_transferred = transferred_size
             elif total_file_size > 0:
                 bytes_transferred = total_file_size
@@ -6478,7 +6495,7 @@ Smart backup solution for Unraid with local, remote SMB, Wake-on-LAN, and Discor
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_backup"
-PLUGIN_VERSION="2026.02.08b"
+PLUGIN_VERSION="2026.02.08c"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"
