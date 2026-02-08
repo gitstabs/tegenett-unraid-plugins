@@ -1426,7 +1426,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({'success': True, 'data': result})
             
             elif path == '/api/logs':
-                lines = int(query.get('lines', [100])[0])
+                # SECURITY: Bound lines parameter to prevent DoS (max 1000 lines)
+                try:
+                    lines = int(query.get('lines', [100])[0])
+                    lines = max(1, min(lines, 1000))  # Enforce 1-1000 range
+                except (ValueError, IndexError):
+                    lines = 100
                 log_content = ""
                 if os.path.exists(LOG_FILE):
                     try:

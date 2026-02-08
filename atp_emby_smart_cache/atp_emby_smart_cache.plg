@@ -3,7 +3,7 @@
 <!ENTITY name        "atp_emby_smart_cache">
 <!ENTITY displayName "ATP Emby Smart Cache">
 <!ENTITY author      "Tegenett">
-<!ENTITY version     "2026.02.03b">
+<!ENTITY version     "2026.02.08a">
 <!ENTITY launch      "Settings/AtpEmbySmartCache">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/gitstabs/tegenett-unraid-plugins/main/atp_emby_smart_cache/atp_emby_smart_cache.plg">
 ]>
@@ -168,7 +168,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 $plugin = "atp_emby_smart_cache";
-$version = "v2026.02.03b";
+$version = "v2026.02.08a";
 $configFile = "/boot/config/plugins/{$plugin}/settings.json";
 $dataDir = "/mnt/user/appdata/atp_emby_smart_cache";
 
@@ -4443,7 +4443,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({'success': True, 'data': result})
             
             elif path == '/api/logs':
-                lines = int(query.get('lines', [100])[0])
+                # SECURITY: Bound lines parameter to prevent DoS (max 1000 lines)
+                try:
+                    lines = int(query.get('lines', [100])[0])
+                    lines = max(1, min(lines, 1000))  # Enforce 1-1000 range
+                except (ValueError, IndexError):
+                    lines = 100
                 log_content = ""
                 if os.path.exists(LOG_FILE):
                     try:
@@ -4903,7 +4908,9 @@ switch ($action) {
         break;
 
     case 'get_logs':
+        // SECURITY: Bound lines parameter to prevent DoS (max 1000 lines)
         $lines = isset($_POST['lines']) ? intval($_POST['lines']) : 100;
+        $lines = max(1, min($lines, 1000));
         $result = apiCall("/api/logs?lines={$lines}");
         if (!$result['success']) {
             // Fallback: read log file directly
@@ -4982,6 +4989,27 @@ switch ($action) {
                 }
             }
         }
+
+        // SECURITY: Validate numeric settings with bounds checking
+        $new['SERVER_PORT'] = max(1024, min(65535, intval($new['SERVER_PORT'])));
+        $new['MIN_FREE_SPACE_GB'] = max(1, min(10000, intval($new['MIN_FREE_SPACE_GB'])));
+        $new['MAX_FILE_SIZE_GB'] = max(0, min(1000, intval($new['MAX_FILE_SIZE_GB'])));
+        $new['CLEANUP_DELAY_HOURS'] = max(0, min(720, intval($new['CLEANUP_DELAY_HOURS'])));
+        $new['COOLDOWN_MOVIE_SEC'] = max(0, min(3600, intval($new['COOLDOWN_MOVIE_SEC'])));
+        $new['COOLDOWN_EPISODE_SEC'] = max(0, min(3600, intval($new['COOLDOWN_EPISODE_SEC'])));
+        $new['PRECACHE_EPISODES'] = max(0, min(10, intval($new['PRECACHE_EPISODES'])));
+        $new['RSYNC_RETRIES'] = max(0, min(10, intval($new['RSYNC_RETRIES'])));
+        $new['LOG_RETENTION'] = max(1, min(30, intval($new['LOG_RETENTION'])));
+
+        // SECURITY: Validate paths start with /mnt/ to prevent writing outside storage
+        $path_fields = ['UNRAID_USER_PATH', 'CACHE_PATH', 'ARRAY_ONLY_PATH', 'LOG_FILE_PATH', 'MOVER_IGNORE_FILE'];
+        foreach ($path_fields as $field) {
+            if (!empty($new[$field]) && strpos($new[$field], '/mnt/') !== 0) {
+                // Reset to default if invalid path
+                $new[$field] = $defaults[$field];
+            }
+        }
+
         $saved = file_put_contents($configFile, json_encode($new, JSON_PRETTY_PRINT));
         exec("/usr/local/emhttp/plugins/{$plugin}/rc.atp_emby_smart_cache restart 2>&1", $out);
         echo json_encode(['success' => $saved !== false, 'message' => 'Settings saved, service restarted']);
@@ -5058,7 +5086,7 @@ Intelligent media caching for Emby - automatically moves actively watched conten
 <![CDATA[
 #!/bin/bash
 PLUGIN_NAME="atp_emby_smart_cache"
-PLUGIN_VERSION="2026.02.03b"
+PLUGIN_VERSION="2026.02.08a"
 DATA_DIR="/mnt/user/appdata/${PLUGIN_NAME}"
 CONFIG_DIR="/boot/config/plugins/${PLUGIN_NAME}"
 RC_SCRIPT="/usr/local/emhttp/plugins/${PLUGIN_NAME}/rc.${PLUGIN_NAME}"

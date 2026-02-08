@@ -146,7 +146,9 @@ switch ($action) {
         break;
 
     case 'get_logs':
+        // SECURITY: Bound lines parameter to prevent DoS (max 1000 lines)
         $lines = isset($_POST['lines']) ? intval($_POST['lines']) : 100;
+        $lines = max(1, min($lines, 1000));
         $result = apiCall("/api/logs?lines={$lines}");
         if (!$result['success']) {
             // Fallback: read log file directly
@@ -225,6 +227,27 @@ switch ($action) {
                 }
             }
         }
+
+        // SECURITY: Validate numeric settings with bounds checking
+        $new['SERVER_PORT'] = max(1024, min(65535, intval($new['SERVER_PORT'])));
+        $new['MIN_FREE_SPACE_GB'] = max(1, min(10000, intval($new['MIN_FREE_SPACE_GB'])));
+        $new['MAX_FILE_SIZE_GB'] = max(0, min(1000, intval($new['MAX_FILE_SIZE_GB'])));
+        $new['CLEANUP_DELAY_HOURS'] = max(0, min(720, intval($new['CLEANUP_DELAY_HOURS'])));
+        $new['COOLDOWN_MOVIE_SEC'] = max(0, min(3600, intval($new['COOLDOWN_MOVIE_SEC'])));
+        $new['COOLDOWN_EPISODE_SEC'] = max(0, min(3600, intval($new['COOLDOWN_EPISODE_SEC'])));
+        $new['PRECACHE_EPISODES'] = max(0, min(10, intval($new['PRECACHE_EPISODES'])));
+        $new['RSYNC_RETRIES'] = max(0, min(10, intval($new['RSYNC_RETRIES'])));
+        $new['LOG_RETENTION'] = max(1, min(30, intval($new['LOG_RETENTION'])));
+
+        // SECURITY: Validate paths start with /mnt/ to prevent writing outside storage
+        $path_fields = ['UNRAID_USER_PATH', 'CACHE_PATH', 'ARRAY_ONLY_PATH', 'LOG_FILE_PATH', 'MOVER_IGNORE_FILE'];
+        foreach ($path_fields as $field) {
+            if (!empty($new[$field]) && strpos($new[$field], '/mnt/') !== 0) {
+                // Reset to default if invalid path
+                $new[$field] = $defaults[$field];
+            }
+        }
+
         $saved = file_put_contents($configFile, json_encode($new, JSON_PRETTY_PRINT));
         exec("/usr/local/emhttp/plugins/{$plugin}/rc.atp_emby_smart_cache restart 2>&1", $out);
         echo json_encode(['success' => $saved !== false, 'message' => 'Settings saved, service restarted']);
