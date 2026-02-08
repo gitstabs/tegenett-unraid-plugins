@@ -1,10 +1,11 @@
 Menu="Utilities"
 Title="ATP Backup"
 Icon="atp-backup.png"
+Markdown="false"
 ---
 <?php
 $plugin = "atp_backup";
-$version = "v2026.02.03b";
+$version = "v2026.02.08a";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $pluginDir = "{$docroot}/plugins/{$plugin}";
 
@@ -1703,8 +1704,9 @@ async function toggleJobEnabled(jobId, enabled) {
 async function runJob(jobId, dryRun = false) {
     const action = dryRun ? 'dry run' : 'run';
     if (!confirm(`Are you sure you want to ${action} this job?`)) return;
-    
-    const result = await apiCall('run_job', { id: jobId, dry_run: dryRun ? 'true' : 'false' });
+
+    // Use apiPost for CSRF-protected modifying action
+    const result = await apiPost('run_job', { id: jobId, dry_run: dryRun ? 'true' : 'false' });
     
     if (result.success) {
         alert(`Job started${dryRun ? ' (dry run)' : ''}!`);

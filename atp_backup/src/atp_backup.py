@@ -1533,38 +1533,82 @@ class BackupEngine:
             files_transferred = 0
             
             def parse_bytes(s):
-                """Parse bytes from rsync output, handling various formats"""
+                """Parse bytes from rsync output, handling various formats.
+
+                Rsync output formats:
+                - "Total transferred file size: 8,710,422,528 bytes"
+                - "Total transferred file size: 8.710.422.528 bytes" (some locales)
+                - "Literal data: 8710422528 bytes"
+                """
                 if not s:
                     return 0
                 s = s.strip()
-                # Remove thousand separators (comma or period)
+                # Remove thousand separators (comma, period, space)
                 # Rsync always outputs whole numbers for bytes, never decimals
-                # So we can safely remove all non-digit characters
                 digits_only = re.sub(r'[^\d]', '', s)
                 try:
                     return int(digits_only) if digits_only else 0
                 except:
                     return 0
 
+            # Parse rsync statistics - look for the best indicator of actual file size
+            total_file_size = 0  # "Total file size" - total size of all files in source
+            transferred_size = 0  # "Total transferred file size" - what was actually transferred
+            literal_data = 0  # "Literal data" - actual bytes sent
+            total_bytes_sent = 0  # "Total bytes sent" - includes protocol overhead
+
+            for line in output.split('\n'):
+                line_lower = line.lower().strip()
+
+                # Primary: "Total transferred file size:" - best metric for actual backup size
+                if 'total transferred file size:' in line_lower or 'total transferred file size' in line_lower:
+                    # Extract everything after the colon
+                    if ':' in line:
+                        after_colon = line.split(':', 1)[1]
+                        match = re.search(r'([\d,\.\s]+)', after_colon)
+                        if match:
+                            transferred_size = parse_bytes(match.group(1))
+                            logger.debug(f"[BackupEngine] Found 'Total transferred file size': {transferred_size}")
+
+                # Secondary: "Total file size:" - total size of source (may differ from transferred)
+                elif 'total file size:' in line_lower and 'transferred' not in line_lower:
+                    if ':' in line:
+                        after_colon = line.split(':', 1)[1]
+                        match = re.search(r'([\d,\.\s]+)', after_colon)
+                        if match:
+                            total_file_size = parse_bytes(match.group(1))
+                            logger.debug(f"[BackupEngine] Found 'Total file size': {total_file_size}")
+
+                # Tertiary: "Literal data:" - actual bytes transferred (without compression)
+                elif 'literal data:' in line_lower:
+                    if ':' in line:
+                        after_colon = line.split(':', 1)[1]
+                        match = re.search(r'([\d,\.\s]+)', after_colon)
+                        if match:
+                            literal_data = parse_bytes(match.group(1))
+                            logger.debug(f"[BackupEngine] Found 'Literal data': {literal_data}")
+
+                # Last resort: "Total bytes sent:" - includes protocol overhead
+                elif 'total bytes sent:' in line_lower:
+                    if ':' in line:
+                        after_colon = line.split(':', 1)[1]
+                        match = re.search(r'([\d,\.\s]+)', after_colon)
+                        if match:
+                            total_bytes_sent = parse_bytes(match.group(1))
+                            logger.debug(f"[BackupEngine] Found 'Total bytes sent': {total_bytes_sent}")
+
+            # Choose best available metric (priority order)
+            if transferred_size > 0:
+                bytes_transferred = transferred_size
+            elif total_file_size > 0:
+                bytes_transferred = total_file_size
+            elif literal_data > 0:
+                bytes_transferred = literal_data
+            elif total_bytes_sent > 0:
+                bytes_transferred = total_bytes_sent
+
             for line in output.split('\n'):
                 line_lower = line.lower()
-
-                # Try multiple patterns for bytes transferred
-                if 'total transferred file size:' in line_lower:
-                    match = re.search(r'([\d,\.\s]+)\s*bytes', line, re.IGNORECASE)
-                    if match:
-                        bytes_transferred = parse_bytes(match.group(1))
-                elif 'literal data:' in line_lower and bytes_transferred == 0:
-                    # Fallback to "Literal data" which shows actual bytes sent
-                    match = re.search(r'([\d,\.\s]+)\s*bytes', line, re.IGNORECASE)
-                    if match:
-                        bytes_transferred = parse_bytes(match.group(1))
-                elif 'total bytes sent:' in line_lower and bytes_transferred == 0:
-                    # Another fallback
-                    if ':' in line:
-                        match = re.search(r'([\d,\.\s]+)', line.split(':')[1])
-                        if match:
-                            bytes_transferred = parse_bytes(match.group(1))
                             
                 # Files transferred
                 if 'number of regular files transferred:' in line_lower:
